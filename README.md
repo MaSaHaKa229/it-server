@@ -115,6 +115,54 @@ E-mail сотрудника ИТ берётся из его профиля по�
 | Порт занят (`EADDRINUSE`) | Не остановлен старый инвентарь, либо поменяйте `PORT` / `HELPDESK_PORT` в `.env` |
 | Вернуть всё как было | Остановить портал, восстановить копию: `pg_restore -U itdb -h localhost -d itdb --clean C:\backup\itdb-before-portal.dump`, запустить старый инвентарь |
 
+## Свои адреса для портала и сайта заявок (nginx)
+
+Чтобы сотрудники открывали не `http://сервер:3100`, а понятные адреса, перед порталом ставится nginx:
+
+- `http://it.company.local` → ИТ-портал (`127.0.0.1:3000`)
+- `http://helpdesk.company.local` → сайт заявок (`127.0.0.1:3100`)
+- обращение по IP сервера → перенаправление на сайт заявок
+
+Имена условные — замените на свои во всех шагах.
+
+1. **Имена в сети.** Если есть Active Directory / DNS-сервер: в «Диспетчере DNS» в зоне `company.local`
+   создайте A-записи `it` и `helpdesk` на IP сервера портала. Без DNS-сервера — строки в
+   `C:\Windows\System32\drivers\etc\hosts` на каждом компьютере:
+   ```
+   192.168.1.10  it.company.local
+   192.168.1.10  helpdesk.company.local
+   ```
+2. **nginx.** На компьютере с интернетом скачайте с nginx.org архив *nginx/Windows* (stable), перенесите на сервер,
+   распакуйте в `C:\nginx`. Скопируйте `scripts\nginx.conf` в `C:\nginx\conf\nginx.conf` и замените в нём имена.
+3. **`.env` портала** — раскомментируйте и заполните, затем перезапустите портал:
+   ```
+   TRUST_PROXY=1
+   PORTAL_URL=http://it.company.local
+   HELPDESK_URL=http://helpdesk.company.local
+   ```
+   `TRUST_PROXY=1` нужен, чтобы портал видел настоящий IP пользователя (защита от перебора паролей),
+   адреса — для ссылок на главной странице, странице входа и в письмах.
+4. **Автозапуск и брандмауэр** (PowerShell от имени администратора):
+   ```
+   powershell -ExecutionPolicy Bypass -File scripts\install-nginx-autostart.ps1 -ClosePortalPorts
+   ```
+   Скрипт проверяет конфигурацию, создаёт задание «nginx» в Планировщике заданий, открывает порт 80,
+   а с `-ClosePortalPorts` закрывает из сети прямой доступ к портам 3000 и 3100 (портал доступен только через nginx).
+   Без ключа порты остаются открытыми — удобно на время перехода.
+
+После изменения `nginx.conf`: `cd C:\nginx` → `nginx -t` → `nginx -s reload`.
+
+| Проблема | Что проверить |
+|---|---|
+| Адрес не открывается | `ping it.company.local` должен отвечать IP сервера (DNS / hosts) |
+| 502 Bad Gateway | Не запущен портал (задание «IT Portal», `portal.log`) |
+| 413 Request Entity Too Large | Увеличить `client_max_body_size` в `nginx.conf` |
+| Открывается не тот сайт | Имя в адресе не совпадает с `server_name` в `nginx.conf` |
+
+**HTTPS** (по желанию): выпустите сертификат на оба имени во внутреннем центре сертификации (например, AD CS),
+раскомментируйте блоки `listen 443 ssl` в конце `scripts\nginx.conf`, в блоках на порту 80 замените `proxy_pass`
+на `return 301 https://$host$request_uri;`, в `.env` укажите `COOKIE_SECURE=true` и адреса с `https://`.
+
 ## Новая установка (без существующего инвентаря)
 
 Нужны Node.js 18.11+ и PostgreSQL 13+.
@@ -159,7 +207,7 @@ public/
   helpdesk/           сайт заявок для сотрудников
   shared/             общие стили и компоненты
 clients/docs, clients/calendar   исходники React-приложений (Vite)
-scripts/              брандмауэр и автозапуск для Windows
+scripts/              брандмауэр, автозапуск портала и nginx для Windows, nginx.conf
 ```
 
 Пользователи портала (`public.users`) копируются в `docs.users` и `calendar.users` с теми же id —
