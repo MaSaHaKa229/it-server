@@ -12,7 +12,8 @@ import Icon from './components/Icon.jsx';
 
 // Простая навигация по hash (#/calendar, #/users, ...) — без внешнего роутера
 function useHashRoute() {
-  const get = () => window.location.hash.replace(/^#\/?/, '') || 'calendar';
+  // #/calendar?task=12 — открыть задачу по ссылке (например, из заявки helpdesk)
+  const get = () => window.location.hash.replace(/^#\/?/, '').split('?')[0] || 'calendar';
   const [route, setRoute] = useState(get);
   useEffect(() => {
     const on = () => setRoute(get());

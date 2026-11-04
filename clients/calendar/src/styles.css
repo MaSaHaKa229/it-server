@@ -383,3 +383,8 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 16
   .modal-backdrop { padding: 0; align-items: end; }
   .modal, .modal.wide { max-width: none; border-radius: 16px 16px 0 0; max-height: 92vh; }
 }
+
+/* Задача из заявки helpdesk */
+.helpdesk-note { margin: 4px 0 12px; padding: 10px 12px; border-radius: 8px; background: rgba(255, 139, 0, .12); border: 1px solid rgba(255, 139, 0, .35); display: flex; flex-direction: column; gap: 4px; }
+.helpdesk-note a { font-weight: 600; }
+.helpdesk-note .muted { font-size: 12px; }

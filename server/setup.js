@@ -39,6 +39,10 @@ async function initAll({ demo = false, quiet = false } = {}) {
 
   // 4. Пользователи портала → модули
   await require('./portal/sync').syncAll();
+
+  // 5. Заявки с исполнителем, которых ещё нет в календаре
+  const n = await require('./helpdesk/calendar-sync').backfill();
+  if (n) log(`  ✓ В календарь добавлено заявок: ${n}`);
 }
 
 module.exports = { initAll };

@@ -137,7 +137,7 @@ const PRIORITIES = { low: 'Низкий', normal: 'Обычный', high: 'Вы�
 // Общий SELECT заявки
 const TICKET_SELECT = `
   SELECT t.id, t.title, t.description, t.location, t.priority, t.due_at, t.created_at, t.updated_at, t.closed_at,
-         t.requester_id, t.category_id, t.status_id, t.assignee_id, t.device_id,
+         t.requester_id, t.category_id, t.status_id, t.assignee_id, t.device_id, t.calendar_task_id,
          c.name AS category_name, c.icon AS category_icon,
          s.name AS status_name, s.color AS status_color, s.is_closed,
          r.full_name AS requester_name, r.email AS requester_email, r.department AS requester_department,

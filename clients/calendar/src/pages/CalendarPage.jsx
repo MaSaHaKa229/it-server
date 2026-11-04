@@ -37,6 +37,17 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(null); // { id } | { create: {start, end, allDay} }
 
+  // Ссылка вида #/calendar?task=12 открывает задачу
+  useEffect(() => {
+    const open = () => {
+      const id = Number(new URLSearchParams(window.location.hash.split('?')[1] || '').get('task'));
+      if (id) setModal({ id });
+    };
+    open();
+    window.addEventListener('hashchange', open);
+    return () => window.removeEventListener('hashchange', open);
+  }, []);
+
   useEffect(() => localStorage.setItem('cal.view', JSON.stringify(view)), [view]);
   useEffect(() => localStorage.setItem('cal.filters', JSON.stringify(filters)), [filters]);
   useEffect(() => { const t = setTimeout(() => setDebounced(search.trim()), 300); return () => clearTimeout(t); }, [search]);
@@ -169,7 +180,7 @@ export default function CalendarPage() {
         <TaskModal
           taskId={modal.id}
           createDefaults={modal.create}
-          onClose={() => setModal(null)}
+          onClose={() => { setModal(null); if (window.location.hash.includes('task=')) history.replaceState(null, '', '#/calendar'); }}
           onChanged={load}
         />
       )}

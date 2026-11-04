@@ -9,6 +9,7 @@ const { HttpError, ah, str, intOrNull } = require('../inventory/util');
 const { level, atLeast } = require('../portal/modules');
 const L = require('./lib');
 const notify = require('./notify');
+const calendarSync = require('./calendar-sync');
 
 const { query, tx } = L;
 const router = express.Router();
@@ -224,6 +225,7 @@ router.patch('/tickets/:id', ah(async (req, res) => {
     }
     if (sets.length) await db.query(`UPDATE tickets SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`, vals);
   });
+  await calendarSync.syncTicket(id, req.user.id);
   if (events.includes('status')) notify.statusChanged(id).catch(() => {});
   if (events.includes('assigned')) notify.assigned(id).catch(() => {});
   res.json(await loadTicket(id));
@@ -246,6 +248,7 @@ router.post('/tickets/:id/comments', L.upload.array('files', 5), ah(async (req, 
 }));
 
 router.delete('/tickets/:id', requireAdmin, ah(async (req, res) => {
+  await calendarSync.removeTicketTask(intOrNull(req.params.id));
   const { rowCount } = await query('DELETE FROM tickets WHERE id = $1', [intOrNull(req.params.id)]);
   if (!rowCount) throw new HttpError(404, 'Заявка не найдена');
   res.json({ ok: true });
