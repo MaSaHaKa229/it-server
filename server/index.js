@@ -1,0 +1,165 @@
+// ИТ-портал: главная страница, ИТ-инвентарь, документы, задачи с календарём, заявки (helpdesk).
+//   PORT          (3000) — портал для сотрудников ИТ-отдела
+//   HELPDESK_PORT (3100) — сайт заявок для всех сотрудников предприятия
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const express = require('express');
+const session = require('express-session');
+const PgStore = require('connect-pg-simple')(session);
+const helmet = require('helmet');
+const { poolFor } = require('./db');
+const { initAll } = require('./setup');
+const { loadUser, requireAuth, requireStaff } = require('./inventory/access');
+const { atLeast, requireModule } = require('./portal/modules');
+
+const PORT = Number(process.env.PORT || 3000);
+const HELPDESK_PORT = Number(process.env.HELPDESK_PORT || 3100);
+const isProd = process.env.NODE_ENV === 'production';
+const PUB = path.join(__dirname, '..', 'public');
+
+if (!process.env.SESSION_SECRET || !process.env.APP_SECRET_KEY) {
+  console.error('Заполните SESSION_SECRET и APP_SECRET_KEY в файле .env (см. .env.example)');
+  process.exit(1);
+}
+
+async function main() {
+  console.log('Подготовка базы данных…');
+  await initAll();
+  const calendar = await import('./calendar/index.js');
+
+  const app = express();
+  app.disable('x-powered-by');
+  if (process.env.TRUST_PROXY) app.set('trust proxy', 1);
+
+  app.use(helmet({
+    hsts: process.env.COOKIE_SECURE === 'true',
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        'script-src': ["'self'"],
+        'style-src': ["'self'", "'unsafe-inline'"],
+        'img-src': ["'self'", 'data:', 'blob:'],
+        // Не принуждаем к HTTPS: сайт часто работает во внутренней сети по HTTP
+        'upgrade-insecure-requests': process.env.COOKIE_SECURE === 'true' ? [] : null,
+      },
+    },
+  }));
+
+  // Общая сессия для всех разделов портала (cookie та же, что была у ИТ-инвентаря)
+  app.use(session({
+    name: 'itdb.sid',
+    store: new PgStore({ pool: poolFor('public'), tableName: 'session', createTableIfMissing: false }),
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    rolling: true,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.COOKIE_SECURE === 'true',
+      maxAge: 12 * 60 * 60 * 1000,
+    },
+  }));
+
+  // Защита от CSRF: изменяющие запросы к API должны прийти из нашего фронтенда
+  const API = /^\/(api|inventory\/api|docs\/api|calendar\/api|helpdesk\/api)(\/|$)/;
+  app.use((req, res, next) => {
+    if (!API.test(req.path) || ['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    if (!req.get('X-Requested-With')) return res.status(403).json({ error: 'Запрос отклонён' });
+    next();
+  });
+
+  app.use(loadUser);
+
+  // ---------- API портала ----------
+  const portalApi = express.Router();
+  portalApi.use(express.json({ limit: '1mb' }));
+  portalApi.use('/auth', require('./portal/auth').router);
+  portalApi.use('/admin', require('./portal/admin'));
+  portalApi.use('/summary', require('./portal/summary'));
+  app.use('/api', portalApi);
+
+  // ---------- ИТ-инвентарь ----------
+  const inv = express.Router();
+  const jsonSmall = express.json({ limit: '1mb' });
+  const jsonBig = express.json({ limit: '40mb' }); // импорт из Excel передаёт файл целиком
+  inv.use((req, res, next) => (req.url.startsWith('/import/') ? jsonBig : jsonSmall)(req, res, next));
+  inv.use(requireModule('inventory'));
+  inv.get('/auth/me', (req, res) => {
+    const { id, username, full_name, email, role } = req.user;
+    res.json({ user: { id, username, full_name, email, role }, perms: req.perms });
+  });
+  inv.use('/users', require('./inventory/routes/users'));
+  inv.use('/devices', requireAuth, require('./inventory/routes/devices'));
+  inv.use('/export', requireAuth, require('./inventory/routes/export'));
+  inv.use('/import', requireStaff, require('./inventory/routes/import'));
+  inv.use('/', requireAuth, require('./inventory/routes/catalog'));
+  app.use('/inventory/api', inv);
+
+  // ---------- Документы, календарь, helpdesk ----------
+  app.use('/docs/api', require('./docs').apiRouter());
+  app.use('/calendar/api', calendar.apiRouter());
+  app.use('/helpdesk/api', require('./helpdesk/staff'));
+
+  const API_ONLY = /^\/(api|inventory\/api|docs\/api|calendar\/api|helpdesk\/api)(\/|$)/;
+  app.use((req, res, next) => (API_ONLY.test(req.path) ? res.status(404).json({ error: 'Не найдено' }) : next()));
+
+  // ---------- Страницы ----------
+  const staticOpts = { index: false, maxAge: isProd ? '1h' : 0 };
+  const sendPage = (file) => (req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(file);
+  };
+  /** Страница доступна только вошедшим пользователям с доступом к модулю */
+  const guard = (mod, min) => (req, res, next) => {
+    if (!req.user) return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl));
+    if (mod && !atLeast(req.user, mod, min)) return res.redirect('/?denied=' + mod);
+    next();
+  };
+
+  app.get('/login', (req, res, next) => (req.user ? res.redirect(safeNext(req.query.next)) : next()),
+    sendPage(path.join(PUB, 'portal', 'login.html')));
+  app.get('/', guard(), sendPage(path.join(PUB, 'portal', 'index.html')));
+  app.get('/admin', guard(), (req, res, next) => (req.user.role === 'superadmin' ? next() : res.redirect('/?denied=admin')),
+    sendPage(path.join(PUB, 'portal', 'admin.html')));
+  app.use('/portal', express.static(path.join(PUB, 'portal'), staticOpts));
+  app.use('/shared', express.static(path.join(PUB, 'shared'), staticOpts));
+
+  const mountSpa = (prefix, dir, mod, min) => {
+    app.get(prefix, (req, res, next) => (req.originalUrl.split('?')[0] === prefix ? res.redirect(prefix + '/') : next()));
+    app.use(prefix, express.static(path.join(PUB, dir), staticOpts));
+    app.get(prefix + '/*', guard(mod, min), sendPage(path.join(PUB, dir, 'index.html')));
+  };
+  mountSpa('/inventory', 'inventory', 'inventory', 'view');
+  mountSpa('/docs', 'docs', 'docs', 'view');
+  mountSpa('/calendar', 'calendar', 'calendar', 'view');
+  mountSpa('/helpdesk', 'helpdesk-staff', 'helpdesk', 'executor');
+
+  app.use((req, res) => res.redirect('/'));
+
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    const status = err.status || err.statusCode || 500;
+    if (status >= 500) console.error(err);
+    res.status(status).json({ error: status >= 500 && isProd ? 'Внутренняя ошибка сервера' : err.message });
+  });
+
+  app.listen(PORT, () => console.log(`ИТ-портал запущен: http://localhost:${PORT}`));
+
+  if (HELPDESK_PORT) {
+    const { createHelpdeskApp } = require('./helpdesk/public');
+    createHelpdeskApp().listen(HELPDESK_PORT, () =>
+      console.log(`Сайт заявок (helpdesk) запущен: http://localhost:${HELPDESK_PORT}`));
+  }
+}
+
+/** Переход после входа — только на страницы этого же сайта */
+function safeNext(next) {
+  const n = String(next || '/');
+  return n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/\\') ? n : '/';
+}
+
+main().catch((e) => {
+  console.error('Не удалось запустить портал:', e.message);
+  process.exit(1);
+});

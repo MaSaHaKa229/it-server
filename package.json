@@ -1,0 +1,31 @@
+{
+  "name": "it-portal",
+  "version": "2.0.0",
+  "description": "ИТ-портал: ИТ-инвентарь, реестр документов, задачи с календарём и helpdesk (Node.js + PostgreSQL)",
+  "main": "server/index.js",
+  "private": true,
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "init-db": "node server/setup.js",
+    "demo": "node server/setup.js --demo",
+    "build": "npm --prefix clients/docs run build && npm --prefix clients/calendar run build",
+    "build:install": "npm --prefix clients/docs install && npm --prefix clients/calendar install"
+  },
+  "engines": { "node": ">=18.11" },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "connect-pg-simple": "^10.0.0",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "helmet": "^8.0.0",
+    "mammoth": "^1.8.0",
+    "multer": "^2.0.2",
+    "nodemailer": "^6.9.16",
+    "pdf-parse": "^1.1.1",
+    "pg": "^8.13.1",
+    "zod": "^3.23.8"
+  }
+}

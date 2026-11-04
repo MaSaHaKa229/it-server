@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Вход — ИТ-портал</title>
+  <link rel="icon" href="/portal/favicon.svg">
+  <link rel="stylesheet" href="/shared/base.css">
+  <link rel="stylesheet" href="/portal/portal.css">
+  <script type="module" src="/portal/login.js"></script>
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-brand"><span class="brand-logo">IT</span> ИТ-портал</div>
+    <div class="card auth-card">
+      <h2 style="margin-bottom:16px">Вход в систему</h2>
+      <form id="form" class="stack">
+        <div id="err" class="error-box hidden"></div>
+        <label class="field"><span>Логин или e-mail</span><input type="text" name="username" autocomplete="username" required autofocus></label>
+        <label class="field"><span>Пароль</span><input type="password" name="password" autocomplete="current-password" required></label>
+        <button class="btn primary" type="submit">Войти</button>
+      </form>
+    </div>
+    <p class="muted small" style="margin-top:20px">ИТ-инвентарь · Документы · Задачи · Заявки</p>
+    <p class="small" id="hd" style="margin-top:4px"></p>
+  </div>
+</body>
+</html>

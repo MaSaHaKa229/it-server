@@ -1,0 +1,5 @@
+node_modules/
+clients/*/node_modules/
+.env
+*.log
+dist-offline/

@@ -1,0 +1,374 @@
+// Сайт заявок в ИТ-отдел для сотрудников предприятия
+import { h, clear, makeApi, run, toast, avatar, fmtDateTime, relTime, statusPill, parseHash } from '/shared/ui.js';
+import { thread, fileList, fileInput, historyList } from '/shared/thread.js';
+
+const api = makeApi('/api', { csrf: 'helpdesk', onUnauthorized: () => { if (me) { me = null; location.hash = '#/login'; } } });
+const fileUrl = (f) => '/api/attachments/' + f.id;
+const app = document.getElementById('app');
+let me = null;
+let cfg = null;
+let statuses = [];
+
+async function boot() {
+  cfg = await api.get('/config');
+  try { me = await api.get('/me'); } catch { me = null; }
+  window.addEventListener('hashchange', route);
+  route();
+}
+
+const PUBLIC = ['login', 'register', 'verify', 'forgot', 'pending'];
+
+async function route() {
+  const { parts, params } = parseHash();
+  const page = parts[0] || '';
+  window.scrollTo(0, 0);
+  if (!me && !PUBLIC.includes(page)) { location.hash = '#/login'; return; }
+  if (me && PUBLIC.includes(page)) { location.hash = '#/'; return; }
+  try {
+    if (page === 'login') renderLogin();
+    else if (page === 'register') renderRegister();
+    else if (page === 'verify') renderVerify(params.get('email') || '');
+    else if (page === 'forgot') renderForgot();
+    else if (page === 'pending') renderPending();
+    else if (page === 'new') await renderNew();
+    else if (page === 'tickets' && parts[1]) await renderTicket(Number(parts[1]));
+    else if (page === 'profile') renderProfile();
+    else await renderList(params.get('state') || 'open');
+  } catch (e) {
+    shell(h('div.card.empty', 'Не удалось загрузить: ' + e.message));
+  }
+}
+
+// ---------------- Каркас ----------------
+function shell(...content) {
+  const nav = [['', '#/', 'Мои заявки'], ['new', '#/new', 'Новая заявка'], ['profile', '#/profile', 'Профиль']];
+  const cur = parseHash().parts[0] || '';
+  clear(app,
+    h('header.topbar',
+      h('a.brand', { href: '#/' }, h('span.brand-logo.hd', '?'), h('span.brand-text', 'Заявки в ИТ-отдел')),
+      h('nav.topnav', nav.map(([k, href, label]) => h('a' + (cur === k || (k === '' && cur === 'tickets') ? '.active' : ''), { href }, label))),
+      h('span.spacer'),
+      h('span.row', avatar(me.full_name, 'sm'), h('span.small.brand-text', me.full_name)),
+      h('button.btn.subtle.sm', { onclick: logout }, 'Выйти')),
+    h('main.page', content));
+}
+
+function authPage(title, ...content) {
+  clear(app, h('div.auth-page',
+    h('div.auth-brand', h('span.brand-logo.hd', '?'), 'Заявки в ИТ-отдел'),
+    h('div.card.auth-card', { style: { maxWidth: title === 'Регистрация' ? '560px' : '400px' } },
+      h('h2', { style: { marginBottom: '16px' } }, title), content),
+    cfg.portalUrl ? h('p.muted.small', { style: { marginTop: '20px' } }, 'Сотрудникам ИТ-отдела: ',
+      h('a', { href: portalLink() }, 'вход в ИТ-портал')) : null));
+  setTimeout(() => app.querySelector('input')?.focus(), 30);
+}
+// Ссылка на портал: если адрес в .env не задан, берём имя компьютера из адресной строки
+function portalLink() {
+  try {
+    const u = new URL(cfg.portalUrl);
+    if (u.hostname === 'localhost' && location.hostname !== 'localhost') u.hostname = location.hostname;
+    return u.toString();
+  } catch { return cfg.portalUrl; }
+}
+
+async function logout() {
+  await api.post('/logout').catch(() => {});
+  me = null;
+  location.hash = '#/login';
+}
+
+const errBox = () => h('div.error-box.hidden');
+const showErr = (box, e) => { box.textContent = e.message; box.classList.remove('hidden'); };
+
+// ---------------- Вход и регистрация ----------------
+function renderLogin() {
+  const email = h('input', { type: 'email', autocomplete: 'username', required: true, placeholder: cfg.domains[0] ? 'ivanov@' + cfg.domains[0] : '' });
+  const pass = h('input', { type: 'password', autocomplete: 'current-password', required: true });
+  const err = errBox();
+  const btn = h('button.btn.primary', { type: 'submit' }, 'Войти');
+  authPage('Вход',
+    h('form.stack', {
+      onsubmit: async (e) => {
+        e.preventDefault(); btn.disabled = true; err.classList.add('hidden');
+        try {
+          await api.post('/login', { email: email.value, password: pass.value });
+          me = await api.get('/me');
+          location.hash = '#/';
+        } catch (ex) {
+          if (ex.data?.next === 'verify') { location.hash = '#/verify?email=' + encodeURIComponent(ex.data.email); return; }
+          showErr(err, ex);
+        } finally { btn.disabled = false; }
+      },
+    }, err,
+    h('label.field', h('span', 'Рабочий e-mail'), email),
+    h('label.field', h('span', 'Пароль'), pass),
+    btn,
+    h('div.row.wrap', { style: { justifyContent: 'space-between' } },
+      h('a', { href: '#/register' }, 'Регистрация'),
+      h('a', { href: '#/forgot' }, 'Забыли пароль?'))));
+}
+
+function renderRegister() {
+  const f = {
+    email: h('input', { type: 'email', required: true, autocomplete: 'email', placeholder: cfg.domains[0] ? 'ivanov@' + cfg.domains[0] : 'ivanov@company.local' }),
+    full_name: h('input', { type: 'text', required: true, autocomplete: 'name', placeholder: 'Иванов Иван Иванович' }),
+    department: h('input', { type: 'text', placeholder: 'Бухгалтерия' }),
+    position: h('input', { type: 'text', placeholder: 'Бухгалтер' }),
+    room: h('input', { type: 'text', placeholder: 'Каб. 101' }),
+    phone: h('input', { type: 'tel', placeholder: 'внутр. 123' }),
+    password: h('input', { type: 'password', required: true, minlength: 8, autocomplete: 'new-password' }),
+  };
+  const pass2 = h('input', { type: 'password', required: true, autocomplete: 'new-password' });
+  const err = errBox();
+  const btn = h('button.btn.primary', { type: 'submit' }, 'Зарегистрироваться');
+  authPage('Регистрация',
+    h('form.stack', {
+      onsubmit: async (e) => {
+        e.preventDefault(); err.classList.add('hidden');
+        if (f.password.value !== pass2.value) { showErr(err, new Error('Пароли не совпадают')); return; }
+        btn.disabled = true;
+        try {
+          const res = await api.post('/register', Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value])));
+          if (res.next === 'verify') location.hash = '#/verify?email=' + encodeURIComponent(res.email);
+          else if (res.next === 'approval') location.hash = '#/pending';
+          else { me = await api.get('/me'); toast('Добро пожаловать!'); location.hash = '#/new'; }
+        } catch (ex) { showErr(err, ex); } finally { btn.disabled = false; }
+      },
+    }, err,
+    cfg.domains.length ? h('div.info-box.small', 'Регистрация по рабочей почте: ', cfg.domains.map((d) => '@' + d).join(', ')) : null,
+    h('label.field', h('span', 'Рабочий e-mail *'), f.email),
+    h('label.field', h('span', 'ФИО *'), f.full_name),
+    h('div.grid2',
+      h('label.field', h('span', 'Отдел'), f.department),
+      h('label.field', h('span', 'Должность'), f.position),
+      h('label.field', h('span', 'Кабинет'), f.room),
+      h('label.field', h('span', 'Телефон'), f.phone),
+      h('label.field', h('span', 'Пароль * (от 8 символов)'), f.password),
+      h('label.field', h('span', 'Повторите пароль *'), pass2)),
+    cfg.mailEnabled ? h('p.hint', 'На почту придёт код подтверждения.') : null,
+    cfg.requireApproval ? h('p.hint', 'После регистрации ИТ-отдел подтвердит вашу учётную запись.') : null,
+    btn,
+    h('div', 'Уже зарегистрированы? ', h('a', { href: '#/login' }, 'Войти'))));
+}
+
+function renderVerify(email) {
+  const code = h('input.code-input', { type: 'text', inputmode: 'numeric', maxlength: 6, autocomplete: 'one-time-code', required: true });
+  const err = errBox();
+  const btn = h('button.btn.primary', { type: 'submit' }, 'Подтвердить');
+  authPage('Подтверждение e-mail',
+    h('form.stack', {
+      onsubmit: async (e) => {
+        e.preventDefault(); btn.disabled = true; err.classList.add('hidden');
+        try {
+          const res = await api.post('/verify', { email, code: code.value });
+          if (res.next === 'approval') { location.hash = '#/pending'; return; }
+          me = await api.get('/me'); toast('Почта подтверждена'); location.hash = '#/new';
+        } catch (ex) { showErr(err, ex); } finally { btn.disabled = false; }
+      },
+    }, err,
+    h('p', 'Мы отправили 6-значный код на ', h('strong', email), '. Введите его ниже.'),
+    code, btn,
+    h('button.btn.subtle', { type: 'button', onclick: (e) => run(async () => { await api.post('/resend', { email }); toast('Код отправлен ещё раз'); }, e.currentTarget) }, 'Отправить код ещё раз')));
+}
+
+function renderPending() {
+  authPage('Регистрация принята',
+    h('div.stack',
+      h('div.ok-box', 'Спасибо! Ваша учётная запись ждёт подтверждения ИТ-отделом.'),
+      h('p.muted', 'Когда её подтвердят, вы сможете войти с указанными e-mail и паролем.'),
+      h('a.btn', { href: '#/login' }, 'Ко входу')));
+}
+
+function renderForgot() {
+  if (!cfg.mailEnabled) {
+    authPage('Восстановление пароля', h('div.stack',
+      h('div.info-box', 'Чтобы сменить пароль, обратитесь в ИТ-отдел — вам установят новый.'),
+      h('a.btn', { href: '#/login' }, 'Ко входу')));
+    return;
+  }
+  const email = h('input', { type: 'email', required: true });
+  const code = h('input.code-input', { type: 'text', inputmode: 'numeric', maxlength: 6 });
+  const pass = h('input', { type: 'password', minlength: 8, autocomplete: 'new-password' });
+  const step2 = h('div.stack.hidden', h('label.field', h('span', 'Код из письма'), code), h('label.field', h('span', 'Новый пароль (от 8 символов)'), pass));
+  const err = errBox();
+  const btn = h('button.btn.primary', { type: 'submit' }, 'Получить код');
+  let sent = false;
+  authPage('Восстановление пароля',
+    h('form.stack', {
+      onsubmit: async (e) => {
+        e.preventDefault(); btn.disabled = true; err.classList.add('hidden');
+        try {
+          if (!sent) {
+            await api.post('/forgot', { email: email.value });
+            sent = true; step2.classList.remove('hidden'); btn.textContent = 'Сменить пароль'; email.disabled = true;
+            toast('Если адрес зарегистрирован, на него отправлен код');
+          } else {
+            await api.post('/reset', { email: email.value, code: code.value, password: pass.value });
+            toast('Пароль изменён. Войдите с новым паролем'); location.hash = '#/login';
+          }
+        } catch (ex) { showErr(err, ex); } finally { btn.disabled = false; }
+      },
+    }, err, h('label.field', h('span', 'Рабочий e-mail'), email), step2, btn, h('a', { href: '#/login' }, 'Ко входу')));
+}
+
+// ---------------- Мои заявки ----------------
+async function renderList(state) {
+  const [tickets] = await Promise.all([api.get('/tickets?state=' + state)]);
+  const tabs = [['open', 'Открытые'], ['closed', 'Закрытые'], ['all', 'Все']];
+  shell(
+    h('div.hero',
+      h('div', h('h1', 'Мои заявки'), cfg.welcome ? h('p', cfg.welcome) : null),
+      h('a.btn.primary', { href: '#/new' }, '+ Новая заявка')),
+    h('div.tabs', tabs.map(([k, l]) => h('a' + (k === state ? '.active' : ''), { href: '#/?state=' + k }, l))),
+    tickets.length ? tickets.map((t) => h('a.tcard', { href: '#/tickets/' + t.id },
+      h('div.tcard-top', h('span.ticket-key', '#' + t.id), statusPill(t.status_name, t.status_color),
+        t.is_overdue ? h('span.lozenge.red', 'срок прошёл') : null),
+      h('div.tcard-title', t.title),
+      h('div.tcard-meta',
+        h('span', (t.category_icon || '') + ' ' + (t.category_name || 'Без вида')),
+        h('span', 'Создана ', fmtDateTime(t.created_at)),
+        h('span', 'Исполнитель: ', t.assignee_name || 'ещё не назначен'),
+        t.due_at ? h('span', 'Срок: ', fmtDateTime(t.due_at)) : null,
+        h('span', 'Обновлена ', relTime(t.updated_at)))))
+      : h('div.card.empty', state === 'open' ? 'Открытых заявок нет. ' : 'Заявок нет. ', h('a', { href: '#/new' }, 'Создать заявку')));
+}
+
+// ---------------- Новая заявка ----------------
+async function renderNew() {
+  const cats = await api.get('/categories');
+  let catId = null;
+  const catBtns = cats.map((c) => {
+    const b = h('button.cat-opt', {
+      type: 'button',
+      onclick: () => { catId = c.id; catBtns.forEach((x) => x.classList.toggle('on', x === b)); if (!title.value) title.focus(); },
+    }, h('span.ic', c.icon), h('div', h('div.t', c.name), c.description ? h('div.d', c.description) : null));
+    return b;
+  });
+  const title = h('input', { type: 'text', maxlength: 200, required: true, placeholder: 'Например: не печатает принтер в бухгалтерии' });
+  const desc = h('textarea', { rows: 6, placeholder: 'Что произошло, когда, какие сообщения об ошибке видите, что уже пробовали сделать' });
+  const location_ = h('input', { type: 'text', value: me.room || '', placeholder: 'Кабинет / рабочее место' });
+  const prio = h('select', Object.entries(cfg.priorities).map(([k, l]) => h('option', { value: k }, l)));
+  prio.value = 'normal';
+  const files = fileInput();
+  const err = errBox();
+  const btn = h('button.btn.primary', { type: 'submit' }, 'Отправить заявку');
+  shell(h('div.page.narrow', { style: { padding: 0 } },
+    h('h1', { style: { marginBottom: '16px' } }, 'Новая заявка'),
+    h('form.card.stack', {
+      onsubmit: async (e) => {
+        e.preventDefault(); err.classList.add('hidden');
+        if (cats.length && !catId) { showErr(err, new Error('Выберите, что случилось')); window.scrollTo(0, 0); return; }
+        btn.disabled = true;
+        try {
+          const fd = new FormData();
+          if (catId) fd.append('category_id', catId);
+          fd.append('title', title.value);
+          fd.append('description', desc.value);
+          fd.append('location', location_.value);
+          fd.append('priority', prio.value);
+          files.files().forEach((f) => fd.append('files', f));
+          const { id } = await api.post('/tickets', fd);
+          toast(`Заявка #${id} отправлена`);
+          location.hash = '#/tickets/' + id;
+        } catch (ex) { showErr(err, ex); } finally { btn.disabled = false; }
+      },
+    }, err,
+    cats.length ? [h('div.field', h('span', 'Что случилось? *')), h('div.cat-grid', catBtns)] : null,
+    h('label.field', h('span', 'Тема *'), title),
+    h('label.field', h('span', 'Подробное описание'), desc),
+    h('div.grid2',
+      h('label.field', h('span', 'Где находится (кабинет, рабочее место)'), location_),
+      h('label.field', h('span', 'Срочность'), prio)),
+    files.el,
+    h('p.hint', 'Приложите фото или скриншот ошибки — так проблему решат быстрее.'),
+    h('div.row', btn, h('a.btn.subtle', { href: '#/' }, 'Отмена')))));
+}
+
+// ---------------- Заявка ----------------
+async function renderTicket(id) {
+  const [t, sts] = await Promise.all([api.get('/tickets/' + id), statuses.length ? statuses : api.get('/statuses')]);
+  statuses = sts;
+  const body = h('textarea', { placeholder: t.is_closed ? 'Заявка закрыта. Если проблема осталась — напишите, ИТ-отдел увидит сообщение.' : 'Уточнение, ответ на вопрос ИТ-отдела…' });
+  const files = fileInput();
+  const send = h('button.btn.primary', {
+    onclick: () => run(async () => {
+      const fd = new FormData();
+      fd.append('body', body.value);
+      files.files().forEach((f) => fd.append('files', f));
+      await api.post(`/tickets/${id}/comments`, fd);
+      toast('Сообщение отправлено');
+      renderTicket(id);
+    }, send),
+  }, 'Отправить');
+
+  // Ход выполнения: открытые статусы по порядку, затем закрытие
+  const open = statuses.filter((s) => !s.is_closed);
+  const curIdx = open.findIndex((s) => s.name === t.status_name);
+  const steps = [...open.map((s, i) => ({ label: s.name, done: t.is_closed || i < curIdx, cur: !t.is_closed && i === curIdx })),
+    { label: t.is_closed ? t.status_name : 'Закрыта', done: false, cur: t.is_closed }];
+
+  const topFiles = t.attachments.filter((a) => !a.comment_id);
+  shell(h('div.ticket-page',
+    h('div.stack',
+      h('div', h('a', { href: '#/' }, '← Мои заявки')),
+      h('div.card',
+        h('div.row.wrap', h('span.ticket-key', 'Заявка #' + t.id), statusPill(t.status_name, t.status_color),
+          t.is_overdue ? h('span.lozenge.red', 'срок прошёл') : null),
+        h('h1', { style: { marginTop: '8px' } }, t.title),
+        h('div.steps', steps.map((s) => h('div.step' + (s.done ? '.done' : '') + (s.cur ? '.cur' : ''), s.label))),
+        h('div.ticket-desc', t.description || h('span.muted', 'Без описания')),
+        fileList(topFiles, fileUrl)),
+      h('div.card',
+        h('h3', 'Переписка с ИТ-отделом'),
+        thread(t.comments, t.attachments, { urlFor: fileUrl }),
+        h('div.reply', body, files.el, h('div.row', h('span.spacer'), send)))),
+    h('div.side-panel',
+      h('div.card',
+        h('dl.kv',
+          h('dt', 'Статус'), h('dd', statusPill(t.status_name, t.status_color)),
+          h('dt', 'Вид проблемы'), h('dd', (t.category_icon || '') + ' ' + (t.category_name || '—')),
+          h('dt', 'Срочность'), h('dd', cfg.priorities[t.priority]),
+          h('dt', 'Исполнитель'), h('dd', t.assignee_name || h('span.muted', 'ещё не назначен')),
+          h('dt', 'Срок выполнения'), h('dd' + (t.is_overdue ? '.overdue' : ''), t.due_at ? fmtDateTime(t.due_at) : h('span.muted', 'не установлен')),
+          h('dt', 'Место'), h('dd', t.location || '—'),
+          h('dt', 'Создана'), h('dd', fmtDateTime(t.created_at)),
+          t.closed_at ? [h('dt', 'Закрыта'), h('dd', fmtDateTime(t.closed_at))] : null)),
+      t.history.length ? h('div.card', h('h3', 'Ход выполнения'), historyList(t.history)) : null)));
+}
+
+// ---------------- Профиль ----------------
+function renderProfile() {
+  const f = {};
+  const field = (k, label, type = 'text') => { f[k] = h('input', { type, value: me[k] || '' }); return h('label.field', h('span', label), f[k]); };
+  const save = h('button.btn.primary', {
+    onclick: () => run(async () => {
+      me = { ...me, ...(await api.patch('/me', Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value])))) };
+      toast('Профиль сохранён'); renderProfile();
+    }, save),
+  }, 'Сохранить');
+  const cur = h('input', { type: 'password', autocomplete: 'current-password' });
+  const next = h('input', { type: 'password', autocomplete: 'new-password' });
+  const next2 = h('input', { type: 'password', autocomplete: 'new-password' });
+  const savePw = h('button.btn', {
+    onclick: () => run(async () => {
+      if (next.value !== next2.value) throw new Error('Пароли не совпадают');
+      await api.post('/me/password', { current: cur.value, next: next.value });
+      cur.value = next.value = next2.value = '';
+      toast('Пароль изменён');
+    }, savePw),
+  }, 'Сменить пароль');
+  shell(h('div.page.narrow.stack', { style: { padding: 0 } },
+    h('h1', 'Профиль'),
+    h('div.card.stack',
+      h('div.muted', 'E-mail: ', h('strong', me.email)),
+      field('full_name', 'ФИО'),
+      h('div.grid2', field('department', 'Отдел'), field('position', 'Должность'), field('room', 'Кабинет'), field('phone', 'Телефон', 'tel')),
+      h('div', save)),
+    h('div.card.stack',
+      h('h3', 'Смена пароля'),
+      h('label.field', h('span', 'Текущий пароль'), cur),
+      h('div.grid2', h('label.field', h('span', 'Новый пароль (от 8 символов)'), next), h('label.field', h('span', 'Повторите'), next2)),
+      h('div', savePw))));
+}
+
+boot().catch((e) => { app.textContent = 'Ошибка загрузки: ' + e.message; });
