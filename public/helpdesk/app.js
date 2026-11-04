@@ -278,7 +278,7 @@ async function renderNew() {
     h('label.field', h('span', 'Подробное описание'), desc),
     h('div.grid2',
       h('label.field', h('span', 'Где находится (кабинет, рабочее место)'), location_),
-      h('label.field', h('span', 'Срочность'), prio)),
+      h('label.field', h('span', 'Срочность'), prio, h('span.hint', 'Срок выполнения назначит ИТ-отдел'))),
     files.el,
     h('p.hint', 'Приложите фото или скриншот ошибки — так проблему решат быстрее.'),
     h('div.row', btn, h('a.btn.subtle', { href: '#/' }, 'Отмена')))));
@@ -329,7 +329,7 @@ async function renderTicket(id) {
           h('dt', 'Вид проблемы'), h('dd', (t.category_icon || '') + ' ' + (t.category_name || '—')),
           h('dt', 'Срочность'), h('dd', cfg.priorities[t.priority]),
           h('dt', 'Исполнитель'), h('dd', t.assignee_name || h('span.muted', 'ещё не назначен')),
-          h('dt', 'Срок выполнения'), h('dd' + (t.is_overdue ? '.overdue' : ''), t.due_at ? fmtDateTime(t.due_at) : h('span.muted', 'не установлен')),
+          h('dt', 'Срок выполнения'), h('dd' + (t.is_overdue ? '.overdue' : ''), t.due_at ? fmtDateTime(t.due_at) : h('span.muted', 'назначит ИТ-отдел')),
           h('dt', 'Место'), h('dd', t.location || '—'),
           h('dt', 'Создана'), h('dd', fmtDateTime(t.created_at)),
           t.closed_at ? [h('dt', 'Закрыта'), h('dd', fmtDateTime(t.closed_at))] : null)),
