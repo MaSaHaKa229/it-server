@@ -11,6 +11,7 @@ const multer = require('multer');
 const { HttpError, ah, str, intOrNull } = require('../inventory/util');
 const L = require('./lib');
 const notify = require('./notify');
+const calendarSync = require('./calendar-sync');
 
 const { query, tx } = L;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -308,6 +309,7 @@ function createHelpdeskApp() {
       await L.saveAttachments(db, rows[0].id, null, req.files, me(req));
       return rows[0].id;
     });
+    await calendarSync.syncTicket(id);
     notify.ticketCreated(id).catch(() => {});
     res.status(201).json({ id });
   }));

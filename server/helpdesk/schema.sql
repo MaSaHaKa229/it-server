@@ -146,3 +146,6 @@ INSERT INTO settings (key, value) VALUES
   ('require_approval', 'false'::jsonb),
   ('welcome_text',     '"Опишите проблему — специалисты ИТ-отдела возьмут заявку в работу и сообщат о результате."'::jsonb)
 ON CONFLICT (key) DO NOTHING;
+
+-- Задача в календаре исполнителя, созданная из заявки
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS calendar_task_id INT REFERENCES calendar.tasks(id) ON DELETE SET NULL;
