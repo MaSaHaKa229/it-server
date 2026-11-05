@@ -17,8 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS documents (
   id          SERIAL PRIMARY KEY,
   title       TEXT         NOT NULL,
-  doc_type    VARCHAR(20)  NOT NULL DEFAULT 'other'
-              CHECK (doc_type IN ('law', 'gost', 'decree', 'regulation', 'other')),
+  doc_type    VARCHAR(40)  NOT NULL DEFAULT 'other',
   number      VARCHAR(100) NOT NULL DEFAULT '',
   adopted_at  DATE,
   status      VARCHAR(20)  NOT NULL DEFAULT 'active'
@@ -63,7 +62,7 @@ CREATE TABLE IF NOT EXISTS document_versions (
   id          SERIAL PRIMARY KEY,
   document_id INTEGER     NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   title       TEXT        NOT NULL,
-  doc_type    VARCHAR(20) NOT NULL,
+  doc_type    VARCHAR(40) NOT NULL,
   number      VARCHAR(100) NOT NULL DEFAULT '',
   adopted_at  DATE,
   status      VARCHAR(20) NOT NULL,
@@ -72,3 +71,32 @@ CREATE TABLE IF NOT EXISTS document_versions (
   edited_at   TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS document_versions_doc_idx ON document_versions (document_id, edited_at DESC);
+
+-- Виды документов (справочник; добавляются редакторами и администратором)
+CREATE TABLE IF NOT EXISTS doc_types (
+  code       VARCHAR(40)  PRIMARY KEY,
+  name       VARCHAR(100) NOT NULL UNIQUE,
+  color      VARCHAR(7)   NOT NULL DEFAULT '#6B778C',
+  sort       INTEGER      NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+INSERT INTO doc_types (code, name, color, sort) VALUES
+  ('law',        'Закон',     '#0052CC', 1),
+  ('gost',       'ГОСТ',      '#00875A', 2),
+  ('decree',     'Указ',      '#FF8B00', 3),
+  ('regulation', 'Регламент', '#5243AA', 4),
+  ('other',      'Прочее',    '#6B778C', 99)
+ON CONFLICT (code) DO NOTHING;
+-- Виды, которые уже встречаются в документах, но отсутствуют в справочнике
+INSERT INTO doc_types (code, name, sort)
+SELECT DISTINCT d.doc_type, d.doc_type, 100 FROM documents d
+ WHERE NOT EXISTS (SELECT 1 FROM doc_types t WHERE t.code = d.doc_type)
+ON CONFLICT DO NOTHING;
+-- Раньше список видов был зашит ограничением — теперь он берётся из справочника
+ALTER TABLE documents DROP CONSTRAINT IF EXISTS documents_doc_type_check;
+ALTER TABLE documents ALTER COLUMN doc_type TYPE VARCHAR(40);
+ALTER TABLE document_versions ALTER COLUMN doc_type TYPE VARCHAR(40);
+DO $$ BEGIN
+  ALTER TABLE documents ADD CONSTRAINT documents_doc_type_fk
+    FOREIGN KEY (doc_type) REFERENCES doc_types(code) ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
