@@ -122,11 +122,16 @@ export default function TaskForm({ task, defaults, onSaved, onCancel }) {
         <span>Исполнители</span>
         <div className="assignee-picker">
           {users.filter((u) => u.is_active || f.assignees.includes(u.id)).map((u) => (
-            <button type="button" key={u.id} className={`assignee ${f.assignees.includes(u.id) ? 'on' : ''}`} onClick={() => toggleAssignee(u.id)}>
+            <button type="button" key={u.id} className={`assignee ${f.assignees.includes(u.id) ? 'on' : ''} ${u.has_access === false ? 'no-access' : ''}`}
+              onClick={() => toggleAssignee(u.id)} title={u.has_access === false ? 'Нет доступа к разделу «Задачи» — задачу в календаре не увидит' : ''}>
               <span className="avatar sm" style={{ background: u.color }}>{initials(u.name)}</span>{u.name}
+              {u.has_access === false && <small className="no-access-mark">без доступа</small>}
             </button>
           ))}
         </div>
+        {users.some((u) => u.has_access === false && f.assignees.includes(u.id)) && (
+          <div className="hint">Исполнители с пометкой «без доступа» не видят раздел «Задачи». Сообщите им о задаче или выдайте доступ в «Администрировании».</div>
+        )}
       </div>
 
       <label className="field">

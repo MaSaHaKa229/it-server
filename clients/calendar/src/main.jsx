@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import './styles.css';
 
-document.documentElement.dataset.theme = localStorage.getItem('theme') || 'light';
+document.documentElement.dataset.theme = 'light';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

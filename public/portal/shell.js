@@ -1,5 +1,5 @@
-// Общая шапка страниц портала
-import { h, makeApi, modal, run, toast, avatar } from '/shared/ui.js';
+// Общая шапка страниц портала (в стиле ИТ-инвентаря)
+import { h, makeApi, modal, run, toast, topbar } from '/shared/ui.js';
 
 export const api = makeApi('', {
   onUnauthorized: () => { location.href = '/login?next=' + encodeURIComponent(location.pathname + location.hash); },
@@ -13,37 +13,51 @@ export function helpdeskUrl(me) {
   return me.helpdeskUrl || `${location.protocol}//${location.hostname}:${me.helpdeskPort}/`;
 }
 
-export function topbar(me, active) {
-  const u = me.user;
-  const name = u.full_name || u.username;
-  const menu = h('div.user-menu.hidden',
-    h('div.user-menu-head', h('strong', name), h('div.muted.small', u.isAdmin ? 'Администратор портала' : u.username)),
-    h('button.menu-item', { onclick: () => profileDialog(me) }, 'Профиль и пароль'),
-    h('button.menu-item', { onclick: logout }, 'Выйти'));
-  const btn = h('button.avatar-btn', { title: name, onclick: (e) => { e.stopPropagation(); menu.classList.toggle('hidden'); } }, avatar(name));
-  document.addEventListener('click', (e) => { if (!menu.contains(e.target)) menu.classList.add('hidden'); });
-
-  const links = [
+/** Разделы портала, доступные пользователю: [key, href, label] */
+export function sections(me) {
+  return [
     ['home', '/', 'Главная'],
     me.access.inventory !== 'none' && ['inventory', '/inventory/', 'ИТ-инвентарь'],
     me.access.docs !== 'none' && ['docs', '/docs/', 'Документы'],
     me.access.calendar !== 'none' && ['calendar', '/calendar/', 'Задачи'],
     me.access.helpdesk !== 'none' && ['helpdesk', '/helpdesk/', 'Заявки'],
-    u.isAdmin && ['admin', '/admin', 'Администрирование'],
+    me.user.isAdmin && ['admin', '/admin', 'Администрирование'],
   ].filter(Boolean);
-  return h('header.topbar',
-    h('a.brand', { href: '/' }, h('span.brand-logo', 'IT'), h('span.brand-text', 'ИТ-портал')),
-    h('nav.topnav', links.map(([k, href, label]) => h('a' + (k === active ? '.active' : ''), { href }, label))),
-    h('span.spacer'),
-    h('div.user-wrap', btn, menu));
 }
 
-async function logout() {
+/** Меню пользователя: переход в другие разделы, профиль, выход */
+export function userMenu(me) {
+  return [
+    { head: 'Разделы' },
+    ...sections(me).map(([, href, label]) => ({ label, href })),
+    '-',
+    { label: 'Профиль и пароль', onClick: () => profileDialog(me) },
+    { label: 'Выйти', onClick: logout },
+  ];
+}
+
+/**
+ * Шапка раздела. Для главной и администрирования — навигация по разделам портала,
+ * для остальных — свой раздел и его страницы.
+ */
+export function portalTopbar(me, active, opts = {}) {
+  return topbar({
+    section: opts.section, sectionHref: opts.sectionHref,
+    nav: opts.nav || sections(me), active,
+    actions: opts.actions,
+    onBurger: opts.onBurger,
+    userName: me.user.full_name || me.user.username,
+    userSub: me.user.isAdmin ? 'Администратор' : me.user.username,
+    menu: userMenu(me),
+  });
+}
+
+export async function logout() {
   await api.post('/api/auth/logout').catch(() => {});
   location.href = '/login';
 }
 
-function profileDialog(me) {
+export function profileDialog(me) {
   const u = me.user;
   const fullName = h('input', { type: 'text', value: u.full_name || '' });
   const email = h('input', { type: 'email', value: u.email || '' });
@@ -64,16 +78,16 @@ function profileDialog(me) {
   }, 'Сохранить');
   const m = modal({
     title: 'Профиль',
-    body: h('div.stack',
+    body: h('div.stack', { style: { gap: '12px' } },
       h('div.muted', 'Логин: ', h('strong', u.username)),
       h('label.field', h('span', 'ФИО'), fullName),
       h('label.field', h('span', 'E-mail (для уведомлений о заявках)'), email),
       h('h3', { style: { marginTop: '8px' } }, 'Смена пароля'),
       h('p.hint', 'Пароль общий для всех разделов портала. Оставьте поля пустыми, чтобы не менять.'),
       h('label.field', h('span', 'Текущий пароль'), cur),
-      h('div.grid2',
+      h('div.form-grid',
         h('label.field', h('span', 'Новый пароль (от 8 символов)'), next),
         h('label.field', h('span', 'Повторите новый пароль'), next2))),
-    footer: [h('button.btn', { onclick: () => m.close() }, 'Отмена'), save],
+    footer: [h('button.btn.subtle', { onclick: () => m.close() }, 'Отмена'), save],
   });
 }

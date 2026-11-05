@@ -24,4 +24,14 @@ export const isOverdue = (t) => (t.status === 'todo' || t.status === 'in_progres
 
 export const taskColor = (t) => t.category_color || '#64748b';
 
+// «Иванов Иван Иванович» → «Иванов И.И.»; «Иванов И.И.» и одиночные имена — как есть
+export function shortName(name = '') {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2 || /\./.test(parts[1])) return parts.join(' ');
+  return parts[0] + ' ' + parts.slice(1, 3).map((p) => p[0].toUpperCase() + '.').join('');
+}
+/** Исполнители задачи: кратко (для плашек) и полностью (для подсказки) */
+export const whoShort = (people) => (people?.length ? people.map((p) => shortName(p.name)).join(', ') : 'без исполнителя');
+export const whoFull = (people) => (people?.length ? people.map((p) => p.name).join(', ') : 'Исполнитель не назначен');
+
 export const initials = (name = '') => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
