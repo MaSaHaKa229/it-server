@@ -8,7 +8,7 @@ export function fileList(files, urlFor) {
   return h('div.files', files.map((f) => h('a.file', { href: urlFor(f), target: '_blank', rel: 'noopener', title: f.filename },
     isImage(f) ? h('img', { src: urlFor(f), alt: '' }) : '📎',
     h('span', f.filename), h('span.muted.small', fmtSize(f.size)),
-    f.is_internal ? h('span.lozenge.orange', 'внутр.') : null)));
+    f.is_internal ? h('span.lozenge.yellow', 'внутр.') : null)));
 }
 
 /** comments: [{id, author, body, created_at, mine?, is_internal?}] */
@@ -20,7 +20,7 @@ export function thread(comments, attachments, { urlFor, isMine = (c) => c.mine }
       avatar(c.author || '?', 'sm'),
       h('div.msg-body',
         h('div.msg-head', h('strong', c.author || '—'), h('span', { title: fmtDateTime(c.created_at) }, relTime(c.created_at)),
-          c.is_internal ? h('span.lozenge.orange', 'внутренний — заявитель не видит') : null),
+          c.is_internal ? h('span.lozenge.yellow', 'внутренний — заявитель не видит') : null),
         h('div.msg-text', c.body),
         fileList(files, urlFor)));
   }));

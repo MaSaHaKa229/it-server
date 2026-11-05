@@ -3,12 +3,14 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, downloadFile } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import {
-  DOC_STATUSES, DOC_TYPES, canEdit, formatDate, formatDateTime, formatSize,
+  DOC_STATUSES, canEdit, formatDate, formatDateTime, formatSize,
 } from '../constants.js';
 import MarkdownView from '../components/MarkdownView.jsx';
 import Modal from '../components/Modal.jsx';
+import TypeBadge from '../components/TypeBadge.jsx';
 
 function DocList({ title, items, empty }) {
+  const { typeName } = useAuth();
   return (
     <section className="side-block">
       <h4>{title}</h4>
@@ -17,7 +19,7 @@ function DocList({ title, items, empty }) {
           {items.map((d) => (
             <li key={d.id}>
               <Link to={`/documents/${d.id}`}>{d.title}</Link>
-              <span className="muted small"> {DOC_TYPES[d.doc_type]}{d.number ? ` № ${d.number}` : ''}</span>
+              <span className="muted small"> {typeName(d.doc_type)}{d.number ? ` № ${d.number}` : ''}</span>
             </li>
           ))}
         </ul>
@@ -30,7 +32,7 @@ function DocList({ title, items, empty }) {
 
 export default function DocumentView() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, reloadTypes } = useAuth();
   const navigate = useNavigate();
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState('');
@@ -54,6 +56,7 @@ export default function DocumentView() {
     if (!window.confirm(`Удалить документ «${doc.title}»? Действие необратимо.`)) return;
     try {
       await api(`/documents/${id}`, { method: 'DELETE' });
+      reloadTypes();
       navigate('/');
     } catch (e) {
       alert(e.message);
@@ -87,7 +90,7 @@ export default function DocumentView() {
       <div className="doc-layout">
         <article className="card doc-main">
           <div className="result-meta">
-            <span className={`badge type-${doc.doc_type}`}>{DOC_TYPES[doc.doc_type]}</span>
+            <TypeBadge code={doc.doc_type} />
             {doc.number && <span>№ {doc.number}</span>}
             {doc.adopted_at && <span>от {formatDate(doc.adopted_at)}</span>}
             <span className={`status status-${doc.status}`}>{DOC_STATUSES[doc.status]}</span>
