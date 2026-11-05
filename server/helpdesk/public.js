@@ -365,8 +365,10 @@ function createHelpdeskApp() {
   app.use('/api', (req, res) => res.status(404).json({ error: 'Не найдено' }));
 
   const pub = path.join(__dirname, '..', '..', 'public', 'helpdesk');
-  app.use('/shared', express.static(path.join(__dirname, '..', '..', 'public', 'shared')));
-  app.use(express.static(pub, { index: 'index.html' }));
+  // Скрипты и стили перепроверяются при каждом открытии (см. cacheHeaders в server/index.js)
+  const noCache = { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') };
+  app.use('/shared', express.static(path.join(__dirname, '..', '..', 'public', 'shared'), noCache));
+  app.use(express.static(pub, { index: 'index.html', ...noCache }));
   app.get('*', (req, res) => res.sendFile(path.join(pub, 'index.html')));
 
   // eslint-disable-next-line no-unused-vars

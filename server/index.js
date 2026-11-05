@@ -105,7 +105,7 @@ async function main() {
   app.use((req, res, next) => (API_ONLY.test(req.path) ? res.status(404).json({ error: 'Не найдено' }) : next()));
 
   // ---------- Страницы ----------
-  const staticOpts = { index: false, maxAge: isProd ? '1h' : 0 };
+  const staticOpts = { index: false, setHeaders: cacheHeaders };
   const sendPage = (file) => (req, res) => {
     res.set('Cache-Control', 'no-cache');
     res.sendFile(file);
@@ -150,6 +150,21 @@ async function main() {
     const { createHelpdeskApp } = require('./helpdesk/public');
     createHelpdeskApp().listen(HELPDESK_PORT, () =>
       console.log(`Сайт заявок (helpdesk) запущен: http://localhost:${HELPDESK_PORT}`));
+  }
+}
+
+/**
+ * Кэширование статики.
+ * Скрипты и стили портала подключаются по постоянным адресам (/shared/ui.js и т.п.), поэтому браузер
+ * должен перепроверять их при каждом открытии (no-cache + ETag: если файл не менялся — ответ 304).
+ * Иначе после обновления сервера браузер смешивает старые и новые модули и страница не открывается.
+ * Долго кэшируются только собранные файлы «Документов» и «Календаря» — у них хэш в имени.
+ */
+function cacheHeaders(res, filePath) {
+  if (/[\\/]assets[\\/][^\\/]+-[\w-]{8,}\.(js|css)$/.test(filePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  } else {
+    res.setHeader('Cache-Control', 'no-cache');
   }
 }
 
