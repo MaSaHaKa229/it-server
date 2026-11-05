@@ -187,7 +187,9 @@ const PUBLIC_DIRS = ['portal', 'shared', 'inventory', 'docs', 'calendar', 'helpd
 /** Проверка при запуске: все ли папки интерфейса на месте (частая ошибка при ручном обновлении) */
 function checkPublic() {
   const fs = require('fs');
-  const missing = PUBLIC_DIRS.filter((d) => !fs.existsSync(path.join(PUB, d, 'index.html')));
+  // В shared нет страниц — только общие стили и скрипты
+  const marker = (d) => (d === 'shared' ? 'ui.js' : 'index.html');
+  const missing = PUBLIC_DIRS.filter((d) => !fs.existsSync(path.join(PUB, d, marker(d))));
   if (!missing.length) return;
   console.error('\n  ВНИМАНИЕ: папка public неполная. Нет: ' + missing.map((d) => `public\\${d}`).join(', '));
   console.error(`  Папка: ${PUB}`);
