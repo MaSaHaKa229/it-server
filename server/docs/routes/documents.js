@@ -3,7 +3,7 @@ const multer = require('multer');
 const { query, withTx } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { extractText, fixFilename, ALLOWED_EXT } = require('../extract');
-const { ah, httpError, parseId, TYPES, STATUSES, EDITORS } = require('../utils');
+const { ah, httpError, parseId, STATUSES, EDITORS } = require('../utils');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -32,7 +32,7 @@ function parseDocFields(body) {
   }
   return {
     title,
-    doc_type: TYPES.includes(body.doc_type) ? body.doc_type : 'other',
+    doc_type: String(body.doc_type || 'other').slice(0, 40),
     number: String(body.number || '').trim().slice(0, 100),
     adopted_at,
     status: STATUSES.includes(body.status) ? body.status : 'active',
@@ -49,8 +49,10 @@ async function assertVisible(req, id) {
   if (!rows[0] || !typeAllowed(req, rows[0].doc_type)) throw httpError(404, 'Документ не найден');
 }
 
-function assertTypeAllowed(req, t) {
+async function assertTypeAllowed(req, t) {
   if (!typeAllowed(req, t)) throw httpError(403, 'Нет доступа к документам этого вида');
+  const { rows } = await query('SELECT 1 FROM doc_types WHERE code = $1', [t]);
+  if (!rows[0]) throw httpError(400, 'Неизвестный вид документа');
 }
 
 async function syncLinks(client, id, content) {
@@ -95,7 +97,7 @@ router.get('/', ah(async (req, res) => {
   const p = (v) => { params.push(v); return `$${params.length}`; };
   const where = [];
 
-  if (TYPES.includes(req.query.type)) where.push(`d.doc_type = ${p(req.query.type)}`);
+  if (req.query.type) where.push(`d.doc_type = ${p(String(req.query.type))}`);
   if (req.user.docTypes) where.push(`d.doc_type = ANY(${p(req.user.docTypes)}::text[])`);
   if (STATUSES.includes(req.query.status)) where.push(`d.status = ${p(req.query.status)}`);
 
@@ -244,7 +246,7 @@ router.get('/:id/versions/:vid', ah(async (req, res) => {
 /* ---------- Создание ---------- */
 router.post('/', requireRole(...EDITORS), upload.single('file'), ah(async (req, res) => {
   const f = parseDocFields(req.body);
-  assertTypeAllowed(req, f.doc_type);
+  await assertTypeAllowed(req, f.doc_type);
   if (req.file && !f.content.trim()) f.content = await extractText(req.file);
 
   try {
@@ -269,7 +271,7 @@ router.post('/', requireRole(...EDITORS), upload.single('file'), ah(async (req, 
 router.put('/:id', requireRole(...EDITORS), upload.single('file'), ah(async (req, res) => {
   const id = parseId(req.params.id);
   const f = parseDocFields(req.body);
-  assertTypeAllowed(req, f.doc_type);
+  await assertTypeAllowed(req, f.doc_type);
   await assertVisible(req, id);
   if (req.file && !f.content.trim()) f.content = await extractText(req.file);
 
