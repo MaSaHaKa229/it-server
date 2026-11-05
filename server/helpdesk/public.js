@@ -299,12 +299,11 @@ function createHelpdeskApp() {
       if (categoryId && !cat) throw new HttpError(400, 'Вид проблемы не найден');
       const st = (await db.query('SELECT id FROM statuses ORDER BY is_default DESC, sort, id LIMIT 1')).rows[0];
       const { rows } = await db.query(
-        `INSERT INTO tickets (requester_id, category_id, status_id, priority, title, description, location, assignee_id, due_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-                 CASE WHEN $9::int IS NULL THEN NULL ELSE now() + make_interval(hours => $9::int) END)
-         RETURNING id`,
+        // Срок выполнения заявитель не задаёт — его выставляет администратор helpdesk
+        `INSERT INTO tickets (requester_id, category_id, status_id, priority, title, description, location, assignee_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
         [req.requester.id, cat ? cat.id : null, st.id, priority, title, description,
-          str(b.location, 200) || req.requester.room, cat ? cat.default_assignee_id : null, cat ? cat.sla_hours : null]);
+          str(b.location, 200) || req.requester.room, cat ? cat.default_assignee_id : null]);
       await L.addHistory(db, rows[0].id, me(req), 'created');
       await L.saveAttachments(db, rows[0].id, null, req.files, me(req));
       return rows[0].id;
@@ -366,8 +365,10 @@ function createHelpdeskApp() {
   app.use('/api', (req, res) => res.status(404).json({ error: 'Не найдено' }));
 
   const pub = path.join(__dirname, '..', '..', 'public', 'helpdesk');
-  app.use('/shared', express.static(path.join(__dirname, '..', '..', 'public', 'shared')));
-  app.use(express.static(pub, { index: 'index.html' }));
+  // Скрипты и стили перепроверяются при каждом открытии (см. cacheHeaders в server/index.js)
+  const noCache = { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') };
+  app.use('/shared', express.static(path.join(__dirname, '..', '..', 'public', 'shared'), noCache));
+  app.use(express.static(pub, { index: 'index.html', ...noCache }));
   app.get('*', (req, res) => res.sendFile(path.join(pub, 'index.html')));
 
   // eslint-disable-next-line no-unused-vars
