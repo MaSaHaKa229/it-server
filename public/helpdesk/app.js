@@ -45,7 +45,7 @@ function shell(...content) {
   const cur = parseHash().parts[0] || '';
   clear(app,
     topbar({
-      brandText: 'Заявки в ИТ-отдел', brandHref: '#/', logo: 'hd',
+      brandText: 'HelpDesk', brandHref: '#/', logo: 'hd',
       nav, active: cur === 'tickets' ? '' : cur,
       actions: cur === 'new' ? [] : [h('a.btn.primary', { href: '#/new' }, '+ Новая заявка')],
       userName: me.full_name, userSub: me.department || me.email,
@@ -56,20 +56,11 @@ function shell(...content) {
 
 function authPage(title, ...content) {
   clear(app, h('div.login-page',
-    h('div.login-brand', h('span.brand-logo.hd', '?'), 'Заявки в ИТ-отдел'),
+    h('div.login-brand', h('span.brand-logo.hd', '?'), 'HelpDesk'),
     h('div.login-card', { style: title === 'Регистрация' ? { width: '560px' } : {} },
       h('h1', title), content),
-    cfg.portalUrl ? h('p.muted.small', { style: { marginTop: '24px' } }, 'Сотрудникам ИТ-отдела: ',
-      h('a', { href: portalLink() }, 'вход в ИТ-портал')) : null));
+  ));
   setTimeout(() => app.querySelector('input')?.focus(), 30);
-}
-// Ссылка на портал: если адрес в .env не задан, берём имя компьютера из адресной строки
-function portalLink() {
-  try {
-    const u = new URL(cfg.portalUrl);
-    if (u.hostname === 'localhost' && location.hostname !== 'localhost') u.hostname = location.hostname;
-    return u.toString();
-  } catch { return cfg.portalUrl; }
 }
 
 async function logout() {
