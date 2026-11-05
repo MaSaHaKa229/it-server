@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { addDays, fmtTime, isWeekend, sameDay, startOfDay, taskCoversDay, taskEndDay, WEEKDAYS } from '../dates.js';
-import { isOverdue, taskColor } from '../constants.js';
+import { isOverdue, taskColor, whoShort, whoFull } from '../constants.js';
 import TaskChip from './TaskChip.jsx';
 
 const HOUR = 48; // высота часа в пикселях
@@ -116,10 +116,10 @@ export default function WeekView({ from, tasks, canEdit, onOpen, onCreate, onMov
                     draggable={canEdit}
                     onDragStart={(e) => e.dataTransfer.setData('text/task', String(t.id))}
                     onClick={() => onOpen(t)}
-                    title={t.title}>
+                    title={`${t.title}\n${fmtTime(t.start_at)}–${fmtTime(t.end_at)}\nИсполнитель: ${whoFull(t.assignees)}`}>
                     <b>{t.title}</b>
-                    <span>{fmtTime(t.start_at)}–{fmtTime(t.end_at)}</span>
-                    {height > 60 && t.assignees.length > 0 && <span className="event-who">{t.assignees.map((a) => a.name.split(' ')[0]).join(', ')}</span>}
+                    <span className={`event-who ${t.assignees.length ? '' : 'none'}`}>{whoShort(t.assignees)}</span>
+                    {height >= HOUR * 1.4 && <span>{fmtTime(t.start_at)}–{fmtTime(t.end_at)}</span>}
                   </button>
                 ))}
               </div>

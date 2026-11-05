@@ -86,3 +86,8 @@ CREATE INDEX IF NOT EXISTS activity_log_created_idx ON activity_log (created_at 
 -- Задача, созданная автоматически из заявки helpdesk (номер заявки)
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS helpdesk_ticket_id INTEGER;
 CREATE UNIQUE INDEX IF NOT EXISTS tasks_helpdesk_ticket_idx ON tasks (helpdesk_ticket_id) WHERE helpdesk_ticket_id IS NOT NULL;
+
+-- Доступ сотрудника к разделу «Задачи и календарь».
+-- Исполнителем задачи можно назначить любого активного сотрудника портала (is_active),
+-- даже без доступа к календарю (has_access = FALSE) — он просто не видит раздел.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS has_access BOOLEAN NOT NULL DEFAULT TRUE;
