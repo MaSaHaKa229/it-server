@@ -413,3 +413,8 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 16
   .topbar .user-name, .topbar .brand .hide-sm { display: none; }
   .app-main { padding: calc(var(--topbar-h) + 12px) 12px 32px; }
 }
+
+/* Исполнитель без доступа к разделу «Задачи» */
+.assignee.no-access { border-style: dashed; }
+.no-access-mark { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .02em; margin-left: 2px; }
+.hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
