@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, logoutPortal } from './api.js';
 import { AppProvider, useApp } from './context.jsx';
 import { initials } from './constants.js';
@@ -8,7 +8,6 @@ import Dashboard from './pages/Dashboard.jsx';
 import CategoriesPage from './pages/CategoriesPage.jsx';
 import ActivityPage from './pages/ActivityPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
-import Icon from './components/Icon.jsx';
 
 // Простая навигация по hash (#/calendar, #/users, ...) — без внешнего роутера
 function useHashRoute() {
@@ -21,15 +20,6 @@ function useHashRoute() {
     return () => window.removeEventListener('hashchange', on);
   }, []);
   return route;
-}
-
-function useTheme() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem('theme', theme);
-  }, [theme]);
-  return [theme, () => setTheme((t) => (t === 'light' ? 'dark' : 'light'))];
 }
 
 export default function App() {
@@ -49,17 +39,42 @@ export default function App() {
   );
 }
 
+// Разделы портала для меню пользователя
+function portalSections(p) {
+  if (!p) return [];
+  const a = p.access || {};
+  return [
+    ['/', 'Главная'],
+    a.inventory !== 'none' && ['/inventory/', 'ИТ-инвентарь'],
+    a.docs !== 'none' && ['/docs/', 'Документы'],
+    a.calendar !== 'none' && ['/calendar/', 'Задачи'],
+    a.helpdesk !== 'none' && ['/helpdesk/', 'Заявки'],
+    p.user?.isAdmin && ['/admin', 'Администрирование'],
+  ].filter(Boolean);
+}
+const AV = ['#0052CC', '#00875A', '#FF5630', '#6554C0', '#00A3BF', '#FF8B00', '#36B37E', '#5243AA'];
+const avColor = (n) => { let s = 0; for (const ch of String(n)) s += ch.charCodeAt(0); return AV[s % AV.length]; };
+
 function Shell() {
   const route = useHashRoute();
   const { user, canEdit } = useApp();
-  const [theme, toggleTheme] = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [portal, setPortal] = useState(null);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me', { credentials: 'same-origin' }).then((r) => r.json()).then(setPortal).catch(() => {});
+    const close = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, []);
+  useEffect(() => setMenuOpen(false), [route]);
 
   const nav = [
-    { id: 'calendar', label: 'Календарь', icon: 'calendar' },
-    { id: 'dashboard', label: 'Обзор', icon: 'chart' },
-    canEdit && { id: 'categories', label: 'Категории', icon: 'tag' },
-    canEdit && { id: 'activity', label: 'Журнал', icon: 'clock' },
+    { id: 'calendar', label: 'Календарь' },
+    { id: 'dashboard', label: 'Обзор' },
+    canEdit && { id: 'categories', label: 'Категории' },
+    canEdit && { id: 'activity', label: 'Журнал' },
   ].filter(Boolean);
 
   const page = {
@@ -70,49 +85,33 @@ function Shell() {
     profile: <ProfilePage />,
   }[route] ?? <CalendarPage />;
 
-  const logout = logoutPortal;
-
-  useEffect(() => setMenuOpen(false), [route]);
-
   return (
-    <div className="shell">
-      <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
-        <div className="brand">
-          <div className="brand-mark"><Icon name="calendar" /></div>
-          <div>
-            <div className="brand-title">Календарь</div>
-            <div className="brand-sub">задач отдела</div>
-          </div>
-        </div>
-        <nav>
-          <a href="/" title="Главная страница портала"><Icon name="menu" /> Портал</a>
-          {nav.map((n) => (
-            <a key={n.id} href={`#/${n.id}`} className={route === n.id ? 'active' : ''}>
-              <Icon name={n.icon} /> {n.label}
-            </a>
-          ))}
+    <>
+      <header className="topbar">
+        <a href="/" className="brand" title="Главная страница портала"><span className="brand-logo">IT</span><span>Портал</span></a>
+        <a href="#/calendar" className="brand" style={{ marginLeft: -12 }}><span className="sep">/</span><span>Задачи</span></a>
+        <nav className="topnav">
+          {nav.map((n) => <a key={n.id} href={`#/${n.id}`} className={route === n.id ? 'active' : ''}>{n.label}</a>)}
         </nav>
-        <div className="sidebar-foot">
-          <a href="#/profile" className={`me ${route === 'profile' ? 'active' : ''}`}>
-            <span className="avatar" style={{ background: user.color }}>{initials(user.name)}</span>
-            <span className="me-text">
-              <b>{user.name}</b>
-              <small>{ROLES[user.role].label}</small>
-            </span>
-          </a>
-          <div className="sidebar-actions">
-            <button className="icon-btn" onClick={toggleTheme} title="Сменить тему">
-              <Icon name={theme === 'light' ? 'moon' : 'sun'} />
-            </button>
-            <button className="icon-btn" onClick={logout} title="Выйти"><Icon name="logout" /></button>
-          </div>
-        </div>
-      </aside>
-      {menuOpen && <div className="backdrop" onClick={() => setMenuOpen(false)} />}
-      <main className="main">
-        <button className="icon-btn burger" onClick={() => setMenuOpen(true)} aria-label="Меню"><Icon name="menu" /></button>
-        {page}
-      </main>
-    </div>
+        <span className="spacer" />
+        <span className="user-name">{user.name}</span>
+        <span className="user-wrap" ref={menuRef}>
+          <button className="avatar-btn" onClick={() => setMenuOpen((o) => !o)} aria-label="Меню пользователя">
+            <span className="avatar" style={{ background: avColor(user.name) }}>{initials(user.name)}</span>
+          </button>
+          {menuOpen && (
+            <div className="popover">
+              <div className="menu-head">{user.name} · {ROLES[user.role].label}</div>
+              <div className="menu-head">Разделы</div>
+              {portalSections(portal).map(([href, label]) => <a key={href} className="menu-item" href={href}>{label}</a>)}
+              <div className="menu-sep" />
+              <a className="menu-item" href="#/profile">Профиль, цвет и пароль</a>
+              <button className="menu-item" onClick={logoutPortal}>Выйти</button>
+            </div>
+          )}
+        </span>
+      </header>
+      <main className="app-main">{page}</main>
+    </>
   );
 }

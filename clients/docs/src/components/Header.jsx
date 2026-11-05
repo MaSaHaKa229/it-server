@@ -1,30 +1,68 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
 import { ROLES, canEdit } from '../constants.js';
 
-export default function Header() {
-  const { user, logout } = useAuth();
+const AV = ['#0052CC', '#00875A', '#FF5630', '#6554C0', '#00A3BF', '#FF8B00', '#36B37E', '#5243AA'];
+export function Avatar({ name, small }) {
+  const n = String(name || '?');
+  let sum = 0; for (const ch of n) sum += ch.charCodeAt(0);
+  const ini = n.split(/[\s.]+/).filter(Boolean).slice(0, 2).map((s) => s[0]).join('').toUpperCase();
+  return <span className={`avatar ${small ? 'sm' : ''}`} style={{ background: AV[sum % AV.length] }} title={n}>{ini || '?'}</span>;
+}
+
+// Разделы портала для меню пользователя
+function sections(p) {
+  if (!p) return [];
+  const a = p.access || {};
+  return [
+    ['/', 'Главная'],
+    a.inventory !== 'none' && ['/inventory/', 'ИТ-инвентарь'],
+    a.docs !== 'none' && ['/docs/', 'Документы'],
+    a.calendar !== 'none' && ['/calendar/', 'Задачи'],
+    a.helpdesk !== 'none' && ['/helpdesk/', 'Заявки'],
+    p.user?.isAdmin && ['/admin', 'Администрирование'],
+  ].filter(Boolean);
+}
+
+/** Шапка в стиле ИТ-инвентаря */
+export default function Header({ onBurger }) {
+  const { user, portal, logout } = useAuth();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, []);
   if (!user) return null;
+  const name = user.full_name || user.username;
 
   return (
-    <header className="header">
-      <div className="container header-inner">
-        <a href="/" className="brand portal-link" title="Главная страница портала">⌂ Портал</a>
-        <Link to="/" className="brand">
-          <span className="brand-mark">§</span> Реестр документов
-        </Link>
-        <nav className="nav">
-          <NavLink to="/" end>Поиск</NavLink>
-          {canEdit(user) && <NavLink to="/documents/new">Добавить</NavLink>}
-        </nav>
-        <div className="header-user">
-          <Link to="/profile" className="user-link" title="Профиль">
-            {user.full_name || user.username}
-            <span className={`badge role-${user.role}`}>{ROLES[user.role]}</span>
-          </Link>
-          <button className="btn btn-ghost btn-sm" onClick={logout}>Выйти</button>
-        </div>
-      </div>
+    <header className="topbar">
+      <button className="btn btn-ghost burger" onClick={onBurger} aria-label="Меню">☰</button>
+      <a href="/" className="brand" title="Главная страница портала"><span className="brand-logo">IT</span><span>Портал</span></a>
+      <Link to="/" className="brand" style={{ marginLeft: -12 }}><span className="sep">/</span><span>Документы</span></Link>
+      <nav className="topnav">
+        <NavLink to="/" end>Поиск</NavLink>
+        {canEdit(user) && <NavLink to="/types">Виды документов</NavLink>}
+      </nav>
+      {canEdit(user) && <Link to="/documents/new" className="btn btn-primary" style={{ marginLeft: 8 }}>+ Добавить</Link>}
+      <span className="spacer" />
+      <span className="user-name">{name}</span>
+      <span className="user-wrap" ref={ref}>
+        <button className="avatar-btn" onClick={() => setOpen((o) => !o)} aria-label="Меню пользователя"><Avatar name={name} /></button>
+        {open && (
+          <div className="popover">
+            <div className="menu-head">{name} · {ROLES[user.role]}</div>
+            <div className="menu-head">Разделы</div>
+            {sections(portal).map(([href, label]) => <a key={href} className="menu-item" href={href}>{label}</a>)}
+            <div className="menu-sep" />
+            <Link className="menu-item" to="/profile" onClick={() => setOpen(false)}>Профиль и пароль</Link>
+            <button className="menu-item" onClick={logout}>Выйти</button>
+          </div>
+        )}
+      </span>
     </header>
   );
 }
