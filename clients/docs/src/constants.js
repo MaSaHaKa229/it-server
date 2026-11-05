@@ -1,11 +1,3 @@
-export const DOC_TYPES = {
-  law: 'Закон',
-  gost: 'ГОСТ',
-  decree: 'Указ',
-  regulation: 'Регламент',
-  other: 'Прочее',
-};
-
 export const DOC_STATUSES = {
   active: 'Действует',
   inactive: 'Утратил силу',

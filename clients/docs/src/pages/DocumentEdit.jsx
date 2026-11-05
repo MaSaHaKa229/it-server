@@ -14,7 +14,7 @@ export default function DocumentEdit() {
   const navigate = useNavigate();
   const taRef = useRef(null);
 
-  const { docTypes } = useAuth();
+  const { docTypes, reloadTypes } = useAuth();
   const [form, setForm] = useState(() => ({ ...EMPTY, doc_type: docTypes.law ? 'law' : Object.keys(docTypes)[0] || 'other' }));
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState('');
   const [existingFile, setExistingFile] = useState(null);
@@ -109,6 +109,7 @@ export default function DocumentEdit() {
         method: isNew ? 'POST' : 'PUT',
         form: fd,
       });
+      reloadTypes();
       navigate(`/documents/${r.id}`);
     } catch (err) {
       setError(err.message);

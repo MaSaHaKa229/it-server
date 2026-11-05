@@ -1,6 +1,18 @@
 import { dayKey, fmtDate, fmtTime, sameDay, startOfDay } from '../dates.js';
 import { isOverdue, PRIORITIES, STATUSES, taskColor } from '../constants.js';
-import Avatars from './Avatars.jsx';
+import { initials } from '../constants.js';
+
+/** Исполнители полностью: аватар + ФИО */
+function People({ people }) {
+  if (!people?.length) return <span className="agenda-who none">Исполнитель не назначен</span>;
+  return (
+    <span className="agenda-who">
+      {people.map((p) => (
+        <span key={p.id} className="person"><span className="avatar sm" style={{ background: p.color }}>{initials(p.name)}</span>{p.name}</span>
+      ))}
+    </span>
+  );
+}
 
 export default function ListView({ tasks, onOpen }) {
   if (!tasks.length) return <div className="empty">Задач за этот период нет</div>;
@@ -35,7 +47,7 @@ export default function ListView({ tasks, onOpen }) {
               <span className="pill" style={{ '--p': isOverdue(t) ? '#dc2626' : STATUSES[t.status].color }}>
                 {isOverdue(t) ? 'Просрочено' : STATUSES[t.status].label}
               </span>
-              <Avatars people={t.assignees} />
+              <People people={t.assignees} />
             </button>
           ))}
         </section>
