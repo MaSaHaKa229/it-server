@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
-import { DOC_TYPES } from '../constants.js';
+import TypeBadge from './TypeBadge.jsx';
 import Modal from './Modal.jsx';
 
 /** Окно выбора документа из базы для вставки ссылки */
@@ -46,7 +46,7 @@ export default function DocLinkPicker({ onPick, onClose, excludeId }) {
         {items.map((d) => (
           <li key={d.id}>
             <button type="button" className="picker-item" onClick={() => onPick(d)}>
-              <span className="badge">{DOC_TYPES[d.doc_type]}</span>
+              <TypeBadge code={d.doc_type} />
               <span className="picker-title">{d.title}</span>
               {d.number && <span className="muted"> № {d.number}</span>}
             </button>

@@ -14,6 +14,7 @@ function apiRouter() {
   r.use(express.json({ limit: '50mb' }));
   r.use('/auth', require('./routes/auth'));
   r.use('/documents', require('./routes/documents'));
+  r.use('/doc-types', require('./routes/doc-types'));
   r.use((req, res) => res.status(404).json({ error: 'Не найдено' }));
   // eslint-disable-next-line no-unused-vars
   r.use((err, req, res, next) => {
