@@ -9,10 +9,12 @@
     "dev": "node --watch server/index.js",
     "init-db": "node server/setup.js",
     "demo": "node server/setup.js --demo",
-    "build": "npm --prefix clients/docs run build && npm --prefix clients/calendar run build",
-    "build:install": "npm --prefix clients/docs install && npm --prefix clients/calendar install"
+    "build": "npm --prefix clients/docs run build && npm --prefix clients/calendar run build && npm --prefix clients/helpdesk-legacy run build",
+    "build:install": "npm --prefix clients/docs install && npm --prefix clients/calendar install && npm --prefix clients/helpdesk-legacy install"
   },
-  "engines": { "node": ">=18.11" },
+  "engines": {
+    "node": ">=18.11"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "connect-pg-simple": "^10.0.0",
