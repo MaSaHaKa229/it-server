@@ -161,7 +161,13 @@ async function renderTicket(id) {
   if (admin) {
     const opts = meta.executors.slice();
     if (t.assignee_id && !opts.find((x) => x.id === t.assignee_id)) opts.push({ id: t.assignee_id, name: t.assignee_name });
-    assigneeCtl = h('select', { onchange: () => patch({ assignee_id: assigneeCtl.value ? Number(assigneeCtl.value) : null }, 'Исполнитель назначен') },
+    assigneeCtl = h('select', {
+      onchange: () => {
+        const to = assigneeCtl.value ? Number(assigneeCtl.value) : null;
+        if (to === null) { patch({ assignee_id: null }, 'Исполнитель снят'); return; }
+        assignDialog(t, opts.find((x) => x.id === to), () => { assigneeCtl.value = t.assignee_id || ''; });
+      },
+    },
       h('option', { value: '' }, '— не назначен —'), opts.map((x) => h('option', { value: x.id }, x.name)));
     assigneeCtl.value = t.assignee_id || '';
   } else {
@@ -273,6 +279,46 @@ async function renderTicket(id) {
         h('a.small', { href: '#/?view=all&requester=' + t.requester_id }, `Все заявки сотрудника (${t.requester_ticket_count})`)))));
 }
 
+// Назначение исполнителя: администратор сразу выставляет срок выполнения
+function assignDialog(t, ex, onCancel) {
+  let done = false;
+  const due = h('input', { type: 'datetime-local', value: toLocalInput(t.due_at) });
+  const setDue = (d) => { due.value = toLocalInput(d); err.classList.add('hidden'); };
+  const setIn = (hrs) => setDue(new Date(Date.now() + hrs * 3600e3));
+  const endOfDay = (days) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(18, 0, 0, 0); setDue(d); };
+  const err = h('div.error-box.hidden');
+  due.addEventListener('input', () => err.classList.add('hidden'));
+  const send = (withDue) => run(async () => {
+    if (withDue && !due.value) { err.textContent = 'Укажите срок выполнения или назначьте без срока'; err.classList.remove('hidden'); return; }
+    const body = { assignee_id: ex.id };
+    if (withDue) body.due_at = new Date(due.value).toISOString();
+    await api.patch('/tickets/' + t.id, body);
+    done = true; m.close();
+    toast(withDue ? 'Исполнитель назначен, срок установлен' : 'Исполнитель назначен');
+    await loadMeta(); renderTicket(t.id);
+  });
+  const m = modal({
+    title: `Назначить заявку #${t.id}`,
+    body: h('div.stack',
+      h('div.row', avatar(ex.name), h('div', h('strong', ex.name), h('div.muted.small', 'исполнитель'))),
+      err,
+      h('label.field', h('span', 'Срок выполнения'), due),
+      h('div.row.wrap', { style: { gap: '4px' } },
+        h('button.btn.sm', { onclick: () => setIn(4) }, 'через 4 ч'),
+        h('button.btn.sm', { onclick: () => endOfDay(0) }, 'сегодня 18:00'),
+        h('button.btn.sm', { onclick: () => endOfDay(1) }, 'завтра 18:00'),
+        h('button.btn.sm', { onclick: () => endOfDay(3) }, '+3 дня'),
+        h('button.btn.sm', { onclick: () => endOfDay(7) }, '+неделя')),
+      h('p.hint', 'Срок увидят исполнитель (в заявке и в своём календаре) и заявитель.')),
+    footer: [
+      h('button.btn.subtle', { style: { marginRight: 'auto' }, onclick: () => send(false) }, 'Назначить без срока'),
+      h('button.btn', { onclick: () => m.close() }, 'Отмена'),
+      h('button.btn.primary', { onclick: () => send(true) }, 'Назначить'),
+    ],
+    onClose: () => { if (!done) onCancel(); },
+  });
+}
+
 function editTitle(t, done) {
   const title = h('input', { type: 'text', value: t.title });
   const m = modal({
@@ -289,13 +335,12 @@ async function renderCategories() {
     h('div.page-head', h('div', h('h1', 'Виды проблем'), h('div.muted', 'Из этого списка сотрудник выбирает, что случилось')),
       h('span.spacer'), h('button.btn.primary', { onclick: () => categoryDialog(null) }, '+ Добавить вид')),
     h('div.table-wrap', h('table.list',
-      h('thead', h('tr', h('th', ''), h('th', 'Название'), h('th', 'Исполнитель по умолчанию'), h('th', 'Срок'), h('th', 'Заявок'), h('th', 'Порядок'), h('th', ''))),
+      h('thead', h('tr', h('th', ''), h('th', 'Название'), h('th', 'Исполнитель по умолчанию'), h('th', 'Заявок'), h('th', 'Порядок'), h('th', ''))),
       h('tbody', meta.categories.map((c) => h('tr.clickable', { onclick: (e) => { if (!e.target.closest('button')) categoryDialog(c); } },
         h('td', { style: { fontSize: '20px' } }, c.icon),
         h('td', h('strong', c.name), c.is_active ? null : h('span.lozenge', { style: { marginLeft: '6px' } }, 'скрыт'),
           h('div.muted.small', c.description || '')),
         h('td', c.default_assignee_name || h('span.muted', '—')),
-        h('td', c.sla_hours ? `${c.sla_hours} ч` : h('span.muted', '—')),
         h('td', c.ticket_count),
         h('td', c.sort),
         h('td', { style: { textAlign: 'right' } }, h('button.btn.subtle.sm', {
@@ -313,13 +358,12 @@ function categoryDialog(c) {
   const desc = h('input', { type: 'text', value: c?.description || '', placeholder: 'Подсказка для сотрудника: что относится к этому виду' });
   const assignee = h('select', h('option', { value: '' }, '— не назначать —'), meta.executors.map((x) => h('option', { value: x.id }, x.name)));
   assignee.value = c?.default_assignee_id || '';
-  const sla = h('input', { type: 'number', min: 1, value: c?.sla_hours || '', placeholder: 'не задан' });
   const sort = h('input', { type: 'number', value: c?.sort ?? (meta.categories.length + 1) });
   const active = h('input', { type: 'checkbox', checked: c ? c.is_active : true });
   const save = h('button.btn.primary', {
     onclick: () => run(async () => {
       const body = { name: name.value, icon: icon.value, description: desc.value, default_assignee_id: assignee.value || null,
-        sla_hours: sla.value, sort: sort.value, is_active: active.checked };
+        sort: sort.value, is_active: active.checked };
       if (c) await api.put('/categories/' + c.id, body); else await api.post('/categories', body);
       m.close(); toast('Сохранено'); renderCategories();
     }, save),
@@ -329,10 +373,8 @@ function categoryDialog(c) {
     body: h('div.stack',
       h('div.row', h('label.field', h('span', 'Значок'), icon), h('label.field', { style: { flex: 1 } }, h('span', 'Название'), name)),
       h('label.field', h('span', 'Описание'), desc),
-      h('div.grid2',
-        h('label.field', h('span', 'Исполнитель по умолчанию'), assignee),
-        h('label.field', h('span', 'Срок выполнения, часов'), sla)),
-      h('p.hint', 'Новой заявке этого вида сразу назначается исполнитель и срок (если заданы).'),
+      h('label.field', h('span', 'Исполнитель по умолчанию'), assignee),
+      h('p.hint', 'Новая заявка этого вида сразу попадает к этому исполнителю. Срок выполнения не ставится — его задаёт администратор в карточке заявки.'),
       h('div.grid2', h('label.field', h('span', 'Порядок в списке'), sort), h('label.check', { style: { alignSelf: 'end' } }, active, 'Показывать сотрудникам'))),
     footer: [h('button.btn', { onclick: () => m.close() }, 'Отмена'), save],
   });
