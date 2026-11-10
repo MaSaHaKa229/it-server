@@ -9,6 +9,7 @@ import { renderSettings } from './pages/settings.js';
 import { renderUsers } from './pages/users.js';
 import { openCreateDevice } from './pages/create.js';
 import { renderImport } from './pages/import.js';
+import { renderWorkplaces, renderWorkplace } from './pages/workplaces.js';
 
 const app = document.getElementById('app');
 let mainEl, sidebarEl, navEl;
@@ -36,6 +37,8 @@ async function route() {
     if (!section) await renderDashboard(mainEl);
     else if (section === 'devices' && sub) await renderDevice(mainEl, Number(sub));
     else if (section === 'devices') await renderDevices(mainEl, params);
+    else if (section === 'workplaces' && sub) await renderWorkplace(mainEl, Number(sub));
+    else if (section === 'workplaces') await renderWorkplaces(mainEl);
     else if (section === 'import' && isStaff()) await renderImport(mainEl);
     else if (section === 'catalog' && isStaff()) await renderCatalog(mainEl, sub);
     else if (section === 'settings' && isStaff()) await renderSettings(mainEl, sub);
@@ -61,6 +64,7 @@ function renderShell() {
   const links = [
     ['dashboard', '#/', 'Панель'],
     ['devices', '#/devices', 'Техника'],
+    ['workplaces', '#/workplaces', 'Рабочие места'],
     isStaff() && ['import', '#/import', 'Импорт'],
     isStaff() && ['catalog', '#/catalog', 'Справочники'],
     isStaff() && ['settings', '#/settings', 'Настройки'],
@@ -131,6 +135,7 @@ const refreshSidebar = debounce(async () => {
       h('div', h('div.name', 'ИТ-служба'), h('div.sub', 'База данных техники'))),
     link('#/', [icon('dashboard'), 'Панель']),
     link('#/devices', [icon('list'), 'Вся техника'], total),
+    link('#/workplaces', [icon('users'), 'Рабочие места']),
     h('div.side-section', h('h4', 'Типы техники'),
       state.meta.types.map((t) => link(`#/devices?f=${encodeURIComponent(JSON.stringify({ type: [t.id] }))}`,
         [h('span.type-dot', { style: { background: t.color } }, t.code.slice(0, 2)), t.name], counts[t.id] || 0))),

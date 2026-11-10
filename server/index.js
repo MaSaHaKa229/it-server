@@ -93,6 +93,7 @@ async function main() {
   inv.use('/devices', requireAuth, require('./inventory/routes/devices'));
   inv.use('/export', requireAuth, require('./inventory/routes/export'));
   inv.use('/import', requireStaff, require('./inventory/routes/import'));
+  inv.use('/workplaces', requireAuth, require('./inventory/routes/workplaces'));
   inv.use('/', requireAuth, require('./inventory/routes/catalog'));
   app.use('/inventory/api', inv);
 

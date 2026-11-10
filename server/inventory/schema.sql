@@ -237,3 +237,21 @@ INSERT INTO device_statuses (key, label, sort)
 SELECT DISTINCT d.status, d.status, 100 FROM devices d
 WHERE NOT EXISTS (SELECT 1 FROM device_statuses s WHERE s.key = d.status)
 ON CONFLICT DO NOTHING;
+
+-- ------------------------------------------------------------
+-- Рабочие места: к рабочему месту привязывается любая техника в любом количестве
+-- (одна единица техники стоит не более чем на одном рабочем месте)
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS workplaces (
+  id            SERIAL PRIMARY KEY,
+  name          TEXT NOT NULL UNIQUE,
+  employee_id   INT REFERENCES lookups(id) ON DELETE SET NULL,
+  department_id INT REFERENCES lookups(id) ON DELETE SET NULL,
+  location_id   INT REFERENCES lookups(id) ON DELETE SET NULL,
+  notes         TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by    INT REFERENCES users(id) ON DELETE SET NULL
+);
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS workplace_id INT REFERENCES workplaces(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS devices_workplace_idx ON devices(workplace_id);

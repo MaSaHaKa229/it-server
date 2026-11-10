@@ -15,7 +15,7 @@ const LEVEL = {
 };
 
 // Старые закладки ИТ-инвентаря (http://сервер:3000/#/devices/5) ведут теперь в /inventory/
-if (/^#\/(devices|catalog|settings|users|import)/.test(location.hash)) location.replace('/inventory/' + location.hash);
+if (/^#\/(devices|workplaces|catalog|settings|users|import)/.test(location.hash)) location.replace('/inventory/' + location.hash);
 
 async function main() {
   const app = document.getElementById('app');
