@@ -64,13 +64,16 @@ export function makeApi(base, { onUnauthorized, csrf = 'portal' } = {}) {
 }
 
 // ---------- уведомления ----------
-export function toast(text, type = 'ok') {
-  let box = document.getElementById('toasts');
-  if (!box) { box = h('div#toasts.toasts'); document.body.append(box); }
-  const el = h('div.toast.' + type, text);
+// Как в ИТ-инвентаре: «флажки» в левом нижнем углу
+export function toast(text, type = 'ok', title) {
+  let box = document.getElementById('flags');
+  if (!box) { box = h('div#flags.flags'); document.body.append(box); }
+  const el = h('div.flag.' + type,
+    h('div.ic', type === 'ok' ? '✓' : type === 'err' ? '!' : 'i'),
+    h('div', title || type === 'err' ? h('div.t', title || 'Ошибка') : null, h('div', text)));
   box.append(el);
   el.addEventListener('click', () => el.remove());
-  setTimeout(() => el.remove(), type === 'err' ? 7000 : 3500);
+  setTimeout(() => el.remove(), type === 'err' ? 7000 : 4000);
 }
 /** Выполнить действие, показать ошибку, заблокировать кнопку на время */
 export async function run(fn, btn) {
@@ -79,14 +82,14 @@ export async function run(fn, btn) {
 }
 
 // ---------- модальные окна ----------
-export function modal({ title, body, footer = [], wide = false, onClose }) {
+export function modal({ title, body, footer = [], wide = false, narrow = false, onClose }) {
   const close = () => { back.remove(); document.removeEventListener('keydown', esc); if (onClose) onClose(); };
   const esc = (e) => { if (e.key === 'Escape') close(); };
-  const box = h('div.modal' + (wide ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true' },
-    h('div.modal-head', h('h2', title), h('button.icon-btn', { type: 'button', title: 'Закрыть', onclick: close }, '✕')),
+  const box = h('div.modal' + (wide ? '.wide' : narrow ? '.narrow' : ''), { role: 'dialog', 'aria-modal': 'true' },
+    h('div.modal-head', h('h2', title), h('button.btn.subtle.icon', { type: 'button', title: 'Закрыть', onclick: close }, '✕')),
     h('div.modal-body', body),
     footer.length ? h('div.modal-foot', footer) : null);
-  const back = h('div.modal-back', { onmousedown: (e) => { if (e.target === back) close(); } }, box);
+  const back = h('div.modal-backdrop', { onmousedown: (e) => { if (e.target === back) close(); } }, box);
   document.body.append(back);
   document.addEventListener('keydown', esc);
   setTimeout(() => box.querySelector('input:not([type=checkbox]):not([disabled]),select,textarea')?.focus(), 30);
@@ -96,9 +99,9 @@ export function confirmDialog(title, text, okLabel = 'Удалить') {
   return new Promise((resolve) => {
     let done = false;
     const m = modal({
-      title, body: h('p', text),
+      title, narrow: true, body: h('p', text),
       footer: [
-        h('button.btn', { onclick: () => m.close() }, 'Отмена'),
+        h('button.btn.subtle', { onclick: () => m.close() }, 'Отмена'),
         h('button.btn.danger', { onclick: () => { done = true; m.close(); } }, okLabel),
       ],
       onClose: () => resolve(done),
@@ -133,16 +136,93 @@ export function toLocalInput(v) {
 export function initials(name) {
   return String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((s) => s[0].toUpperCase()).join('');
 }
-const COLORS = ['#0052CC', '#00A3BF', '#6554C0', '#FF8B00', '#36B37E', '#DE350B', '#5243AA', '#008DA6'];
+// Те же цвета и расчёт, что в ИТ-инвентаре: у человека одинаковый аватар во всех разделах
+const AV_COLORS = ['#0052CC', '#00875A', '#FF5630', '#6554C0', '#00A3BF', '#FF8B00', '#36B37E', '#5243AA'];
 export function avatar(name, size = '') {
-  let hsh = 0; for (const ch of String(name)) hsh = (hsh * 31 + ch.charCodeAt(0)) >>> 0;
-  return h('span.avatar' + (size ? '.' + size : ''), { style: { background: COLORS[hsh % COLORS.length] }, title: name }, initials(name));
+  const n = String(name || '?');
+  let sum = 0; for (const ch of n) sum += ch.charCodeAt(0);
+  const ini = n.split(/[\s.]+/).filter(Boolean).slice(0, 2).map((s) => s[0]).join('').toUpperCase();
+  return h('span.avatar' + (size ? '.' + size : ''), { style: { background: AV_COLORS[sum % AV_COLORS.length] }, title: n }, ini || '?');
 }
-export const statusPill = (name, color) => h('span.pill', { style: { background: color + '22', color, borderColor: color + '55' } }, name);
+export const statusPill = (name, color) => h('span.pill', { style: { background: color + '26', color: shade(color) } }, name);
+// Цвет текста на светлой плашке — немного темнее исходного
+function shade(hex) {
+  const n = parseInt(String(hex).slice(1), 16);
+  if (Number.isNaN(n)) return hex;
+  const f = (v) => Math.round(v * 0.75).toString(16).padStart(2, '0');
+  return '#' + f((n >> 16) & 255) + f((n >> 8) & 255) + f(n & 255);
+}
 
 /** Простой роутер по hash: #/path/1?x=y */
 export function parseHash() {
   const raw = location.hash.replace(/^#/, '') || '/';
   const [path, qs] = raw.split('?');
   return { path, parts: path.split('/').filter(Boolean), params: new URLSearchParams(qs || '') };
+}
+
+// ---------- шапка в стиле ИТ-инвентаря ----------
+/**
+ * topbar({ section, sectionHref, nav: [[key, href, label]], active, actions: [nodes],
+ *          userName, userSub, menu: [{label, href|onClick, danger} | '-' | {head}], logo, brandText, brandHref, onBurger })
+ */
+export function topbar(o) {
+  const menuEl = h('div.popover.hidden');
+  const closeMenu = () => menuEl.classList.add('hidden');
+  document.addEventListener('click', (e) => { if (!menuEl.contains(e.target)) closeMenu(); });
+  const fill = () => clear(menuEl,
+    h('div.menu-head', o.userName + (o.userSub ? ' · ' + o.userSub : '')),
+    (o.menu || []).map((it) => {
+      if (it === '-') return h('div.menu-sep');
+      if (it.head) return h('div.menu-head', it.head);
+      return it.href
+        ? h('a.menu-item' + (it.danger ? '.danger' : ''), { href: it.href, target: it.target }, it.label)
+        : h('button.menu-item' + (it.danger ? '.danger' : ''), { type: 'button', onclick: () => { closeMenu(); it.onClick(); } }, it.label);
+    }));
+  const av = avatar(o.userName);
+  av.addEventListener('click', (e) => { e.stopPropagation(); fill(); menuEl.classList.toggle('hidden'); });
+  return h('header.topbar',
+    o.onBurger ? h('button.btn.subtle.icon.burger', { onclick: o.onBurger, title: 'Меню' }, '☰') : null,
+    h('a.brand', { href: o.brandHref || '/', title: 'Главная страница портала' },
+      h('span.brand-logo' + (o.logo === 'hd' ? '.hd' : ''), o.logo === 'hd' ? '?' : 'IT'), h('span', o.brandText || 'Портал')),
+    o.section ? h('a.brand', { href: o.sectionHref || '#/', style: { marginLeft: '-12px' } }, h('span.sep', '/'), h('span', o.section)) : null,
+    h('nav.topnav.row', { style: { gap: '2px' } },
+      (o.nav || []).map(([k, href, label]) => h('a' + (k === o.active ? '.active' : ''), { href }, label))),
+    (o.actions || []).length ? h('span.row', { style: { marginLeft: '8px' } }, o.actions) : null,
+    h('span.spacer'),
+    h('span.user-name', o.userName),
+    h('span.user-wrap', av, menuEl));
+}
+
+// ---------- сортировка таблиц ----------
+/**
+ * Заголовок таблицы с сортировкой по клику.
+ * cols: [{ key, label, value?: (row) => any, sortable?: false }], state: { key, dir: 1 | -1 }, onSort()
+ */
+export function sortHead(cols, state, onSort) {
+  return h('thead', h('tr', cols.map((c) => {
+    if (c.sortable === false || !c.key) return h('th', c.label || '');
+    const on = state.key === c.key;
+    return h('th.sortable', {
+      title: 'Сортировать',
+      onclick: () => { state.dir = on ? -state.dir : 1; state.key = c.key; onSort(); },
+    }, c.label, on ? h('span.arrow', state.dir > 0 ? '↑' : '↓') : null);
+  })));
+}
+export function sortRows(rows, cols, state) {
+  const col = cols.find((c) => c.key === state.key);
+  if (!col) return rows;
+  const get = col.value || ((r) => r[col.key]);
+  return [...rows].sort((a, b) => {
+    const x = get(a), y = get(b);
+    const ex = x === null || x === undefined || x === '', ey = y === null || y === undefined || y === '';
+    if (ex || ey) return ex === ey ? 0 : ex ? 1 : -1; // пустые значения — всегда в конце
+    if (typeof x === 'number' && typeof y === 'number') return (x - y) * state.dir;
+    return String(x).localeCompare(String(y), 'ru', { numeric: true, sensitivity: 'base' }) * state.dir;
+  });
+}
+/** Запомнить сортировку таблицы в браузере */
+export function savedSort(key, def) {
+  let st = def;
+  try { st = { ...def, ...JSON.parse(localStorage.getItem('sort:' + key) || '{}') }; } catch { /* по умолчанию */ }
+  return new Proxy(st, { set(t, k, v) { t[k] = v; try { localStorage.setItem('sort:' + key, JSON.stringify(t)); } catch { /* не страшно */ } return true; } });
 }

@@ -1,4 +1,3 @@
-const TYPES = ['law', 'gost', 'decree', 'regulation', 'other'];
 const STATUSES = ['active', 'inactive', 'draft'];
 const ROLES = ['superadmin', 'editor', 'reader'];
 const EDITORS = ['superadmin', 'editor'];
@@ -19,4 +18,4 @@ function parseId(value) {
   return id;
 }
 
-module.exports = { TYPES, STATUSES, ROLES, EDITORS, httpError, ah, parseId };
+module.exports = { STATUSES, ROLES, EDITORS, httpError, ah, parseId };

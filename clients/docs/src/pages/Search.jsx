@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
-import { DOC_STATUSES, DOC_TYPES, canEdit, formatDate } from '../constants.js';
+import { DOC_STATUSES, canEdit, formatDate } from '../constants.js';
+import TypeBadge from '../components/TypeBadge.jsx';
 import Pagination from '../components/Pagination.jsx';
 
 const LIMIT = 20;
@@ -27,7 +28,7 @@ function Snippet({ text }) {
 }
 
 export default function Search() {
-  const { user, docTypes } = useAuth();
+  const { user, docTypes, typeMap } = useAuth();
   const [params, setParams] = useSearchParams();
   const q = params.get('q') || '';
   const mode = params.get('mode') || 'all';
@@ -66,8 +67,11 @@ export default function Search() {
     setParams(next);
   }
 
+  const title = type ? (typeMap[type]?.name || 'Документы') : 'Все документы';
   return (
     <div>
+      <div className="breadcrumbs"><a href="/">ИТ-портал</a><span className="sep">/</span><span>Документы</span></div>
+      <div className="page-head"><h1>{title}</h1>{data && <span className="count-badge">{data.total}</span>}</div>
       <form
         className="search-box card"
         onSubmit={(e) => { e.preventDefault(); update({ q: text.trim() }); }}
@@ -133,7 +137,7 @@ export default function Search() {
         {data?.items.map((d) => (
           <li key={d.id} className="card result">
             <div className="result-meta">
-              <span className={`badge type-${d.doc_type}`}>{DOC_TYPES[d.doc_type]}</span>
+              <TypeBadge code={d.doc_type} />
               {d.number && <span>№ {d.number}</span>}
               {d.adopted_at && <span>от {formatDate(d.adopted_at)}</span>}
               <span className={`status status-${d.status}`}>{DOC_STATUSES[d.status]}</span>

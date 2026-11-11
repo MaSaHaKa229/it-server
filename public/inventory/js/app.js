@@ -74,10 +74,13 @@ function renderShell() {
     if (e.key === 'Enter') { navigate('/devices?q=' + encodeURIComponent(gsearch.value.trim())); gsearch.value = ''; gsearch.blur(); }
   });
 
+  const userName = h('span', { style: { color: 'var(--n500)', fontWeight: 500, marginRight: '4px', whiteSpace: 'nowrap' } }, me.full_name || me.username);
   const avatarBtn = avatar(me.full_name || me.username);
   avatarBtn.addEventListener('click', () => menu(avatarBtn, [
     { head: (me.full_name || me.username) + ' · ' + ROLE_LABEL[me.role] },
-    { label: 'Главная страница портала', icon: 'dashboard', onClick: () => { location.href = '/'; } },
+    { head: 'Разделы' },
+    ...portalSections().map(([href, label]) => ({ label, onClick: () => { location.href = href; } })),
+    '-',
     { label: 'Сменить пароль', icon: 'lock', onClick: changePassword },
     '-',
     { label: 'Выйти', onClick: async () => { await api.post(location.origin + '/api/auth/logout'); location.href = '/login'; } },
@@ -91,6 +94,7 @@ function renderShell() {
     isStaff() ? h('button.btn.primary', { style: { marginLeft: '8px' }, onclick: () => openCreateDevice() }, icon('plus'), 'Создать') : null,
     h('div.search-global', icon('search'), gsearch),
     h('span', { style: { width: '8px' } }),
+    userName,
     avatarBtn);
 
   sidebarEl = h('aside.sidebar');
@@ -186,7 +190,22 @@ function changePassword() {
 }
 
 // ---------------- Запуск ----------------
+// Разделы портала для меню пользователя (как в остальных разделах)
+let portalMe = null;
+function portalSections() {
+  const a = portalMe?.access || {};
+  return [
+    ['/', 'Главная'],
+    a.inventory && a.inventory !== 'none' && ['/inventory/', 'ИТ-инвентарь'],
+    a.docs && a.docs !== 'none' && ['/docs/', 'Документы'],
+    a.calendar && a.calendar !== 'none' && ['/calendar/', 'Задачи'],
+    a.helpdesk && a.helpdesk !== 'none' && ['/helpdesk/', 'Заявки'],
+    portalMe?.user?.isAdmin && ['/admin', 'Администрирование'],
+  ].filter(Boolean);
+}
+
 async function boot() {
+  portalMe = await fetch('/api/auth/me', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   try {
     const me = await api.get('/api/auth/me');
     state.me = me.user; state.perms = me.perms;
