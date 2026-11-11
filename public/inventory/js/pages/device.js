@@ -9,6 +9,7 @@ import {
 } from '../store.js';
 import { navigate } from '../app.js';
 import { openFieldModal } from './settings.js';
+import { openNetInfo } from './netinfo.js';
 
 let activeTab = 'software';
 
@@ -127,7 +128,11 @@ export async function renderDevice(root, id) {
       h('div.issue-actions',
         staff && P.software ? h('button.btn', { onclick: () => softwareModal() }, icon('plus'), 'Добавить ПО') : null,
         staff ? h('button.btn', { onclick: () => credentialModal() }, icon('lock'), 'Добавить пароль') : null,
-        staff ? h('button.btn', { onclick: addField }, icon('plus'), 'Добавить поле') : null),
+        staff ? h('button.btn', { onclick: addField }, icon('plus'), 'Добавить поле') : null,
+        // Сведения из AD / WMI / SNMP — только редакторам и при известном сетевом имени или IP
+        staff && (d.hostname || d.ip_address)
+          ? h('button.btn', { onclick: () => openNetInfo(d, changed), title: 'Данные из Active Directory, WMI и SNMP' }, icon('eye'), 'Сведения из сети')
+          : null),
       notesDesc ? h('div.section', h('h3', 'Описание'), editable(notesDesc, { block: true, multiline: true })) : null,
       renderTabs());
 

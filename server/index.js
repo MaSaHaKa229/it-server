@@ -94,6 +94,7 @@ async function main() {
   inv.use('/export', requireAuth, require('./inventory/routes/export'));
   inv.use('/import', requireStaff, require('./inventory/routes/import'));
   inv.use('/workplaces', requireAuth, require('./inventory/routes/workplaces'));
+  inv.use('/netinfo', requireAuth, require('./inventory/netprobe')); // сведения из сети (AD, WMI, SNMP)
   inv.use('/', requireAuth, require('./inventory/routes/catalog'));
   app.use('/inventory/api', inv);
 

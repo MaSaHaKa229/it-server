@@ -255,3 +255,28 @@ CREATE TABLE IF NOT EXISTS workplaces (
 );
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS workplace_id INT REFERENCES workplaces(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS devices_workplace_idx ON devices(workplace_id);
+
+-- ------------------------------------------------------------
+-- Сведения из сети (Active Directory, WMI, SNMP, сетевые проверки)
+-- ------------------------------------------------------------
+-- Настройки опроса — одна строка; задаёт администратор портала. Пароль зашифрован APP_SECRET_KEY.
+CREATE TABLE IF NOT EXISTS netprobe_settings (
+  id               INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  ad_enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+  wmi_enabled      BOOLEAN NOT NULL DEFAULT TRUE,
+  snmp_enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+  ad_server        TEXT NOT NULL DEFAULT '',
+  ad_base_dn       TEXT NOT NULL DEFAULT '',
+  username         TEXT NOT NULL DEFAULT '',
+  password_enc     TEXT,
+  snmp_communities TEXT NOT NULL DEFAULT 'public',
+  updated_at       TIMESTAMPTZ,
+  updated_by       INT REFERENCES users(id) ON DELETE SET NULL
+);
+-- Последние полученные сведения об устройстве
+CREATE TABLE IF NOT EXISTS device_netinfo (
+  device_id    INT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+  data         JSONB NOT NULL,
+  collected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  collected_by INT REFERENCES users(id) ON DELETE SET NULL
+);

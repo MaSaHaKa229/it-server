@@ -1,6 +1,7 @@
 // Настройки: типы техники, состояния и дополнительные поля
 import { h, clear, icon, api, toast, run, modal, confirmDialog, typeDot, lozenge, setStatuses } from '../ui.js';
-import { state, loadMeta, FIELD_TYPE_LABELS } from '../store.js';
+import { state, loadMeta, FIELD_TYPE_LABELS, isSuper } from '../store.js';
+import { renderNetprobeSettings } from './netprobe-settings.js';
 
 const COLORS = ['#0052CC', '#00A3BF', '#6554C0', '#FF8B00', '#36B37E', '#DE350B', '#FFAB00', '#8993A4', '#172B4D', '#00875A'];
 
@@ -10,12 +11,14 @@ export async function renderSettings(root, tab = 'types') {
   const nav = h('div.vnav',
     h('a.side-link' + (tab === 'types' ? '.active' : ''), { href: '#/settings/types' }, 'Типы техники'),
     h('a.side-link' + (tab === 'statuses' ? '.active' : ''), { href: '#/settings/statuses' }, 'Состояния'),
-    h('a.side-link' + (tab === 'fields' ? '.active' : ''), { href: '#/settings/fields' }, 'Дополнительные поля'));
+    h('a.side-link' + (tab === 'fields' ? '.active' : ''), { href: '#/settings/fields' }, 'Дополнительные поля'),
+    isSuper() ? h('a.side-link' + (tab === 'netprobe' ? '.active' : ''), { href: '#/settings/netprobe' }, 'Сведения из сети') : null);
   clear(root,
     h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('span', 'Настройки')),
     h('div.page-head', h('h1', 'Настройки')),
     h('div.split', nav, body));
-  if (tab === 'fields') await renderFields(body);
+  if (tab === 'netprobe' && isSuper()) await renderNetprobeSettings(body);
+  else if (tab === 'fields') await renderFields(body);
   else if (tab === 'statuses') await renderStatuses(body);
   else await renderTypes(body);
 }
