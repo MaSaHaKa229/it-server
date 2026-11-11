@@ -1,0 +1,303 @@
+// Сканирование сети: поиск техники в подсетях, опознание и сравнение с базой инвентаря.
+//
+// 1. Поиск: TCP-порты (без процессов) и ping для остальных адресов; после — ARP-таблица сервера.
+// 2. Опознание отвечающих адресов: DNS, NetBIOS (имя, домен, пользователь, MAC), SNMP (принтеры), по желанию — WMI.
+// 3. Совпадения с базой считаются при каждом открытии страницы: MAC и серийный номер — надёжно,
+//    сетевое имя — вероятно, IP — слабо. Результат последнего сканирования хранится в netscan_last.
+const os = require('os');
+const express = require('express');
+const { query } = require('../db');
+const { HttpError, ah, str } = require('../util');
+const P = require('./probes');
+const { wmiCollect } = require('./powershell');
+const NP = require('./index');
+
+const router = express.Router();
+const MAX_HOSTS = 4096;
+
+// ---------------- Диапазоны адресов ----------------
+const ipToInt = (ip) => ip.split('.').reduce((a, b) => a * 256 + Number(b), 0);
+const intToIp = (n) => [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+
+/** «10.0.1.0/24, 10.0.2.10-10.0.2.50, 10.0.3.7» → [[начало, конец], …] */
+function parseNetworks(text) {
+  const ranges = [];
+  for (const part of String(text || '').split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean)) {
+    let m;
+    if ((m = part.match(/^(\d+\.\d+\.\d+\.\d+)\/(\d{1,2})$/)) && P.isIPv4(m[1])) {
+      const bits = Number(m[2]);
+      if (bits < 16 || bits > 32) throw new HttpError(400, `Сеть ${part}: маска от /16 до /32`);
+      const size = 2 ** (32 - bits);
+      const base = Math.floor(ipToInt(m[1]) / size) * size;
+      ranges.push(bits >= 31 ? [base, base + size - 1] : [base + 1, base + size - 2]); // без адреса сети и широковещательного
+    } else if ((m = part.match(/^(\d+\.\d+\.\d+\.\d+)-(\d+\.\d+\.\d+\.\d+|\d{1,3})$/)) && P.isIPv4(m[1])) {
+      const a = ipToInt(m[1]);
+      const b = m[2].includes('.') ? ipToInt(m[2]) : Math.floor(a / 256) * 256 + Number(m[2]);
+      if (!(b >= a)) throw new HttpError(400, `Диапазон ${part}: конец раньше начала`);
+      ranges.push([a, b]);
+    } else if (P.isIPv4(part)) {
+      ranges.push([ipToInt(part), ipToInt(part)]);
+    } else {
+      throw new HttpError(400, `Не понимаю «${part}». Примеры: 10.0.1.0/24, 10.0.1.10-10.0.1.50, 10.0.1.7`);
+    }
+  }
+  const total = ranges.reduce((a, [s, e]) => a + e - s + 1, 0);
+  if (!total) throw new HttpError(400, 'Укажите сети для сканирования');
+  if (total > MAX_HOSTS) throw new HttpError(400, `Слишком много адресов (${total}). За раз — не больше ${MAX_HOSTS} (например, 16 сетей /24)`);
+  return ranges;
+}
+
+/** Сети сервера (если в настройках не указаны): подсети его сетевых карт, но не шире /24 */
+function localNetworks() {
+  const out = [];
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const a of list || []) {
+      if (a.family !== 'IPv4' && a.family !== 4) continue;
+      if (a.internal || /^169\.254\./.test(a.address)) continue;
+      const bits = Math.max(24, (a.netmask || '255.255.255.0').split('.').reduce((n, o) => n + (Number(o).toString(2).match(/1/g) || []).length, 0));
+      const base = intToIp(Math.floor(ipToInt(a.address) / 2 ** (32 - bits)) * 2 ** (32 - bits));
+      out.push(`${base}/${bits}`);
+    }
+  }
+  return [...new Set(out)].join(', ');
+}
+
+// ---------------- Сканирование ----------------
+let job = null; // { started_at, phase, done, total, found, by, networks, error, finished_at }
+
+async function pool(items, limit, fn) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) { const k = i++; await fn(items[k], k); }
+  }));
+}
+
+/** ARP-таблица сервера: ip → MAC */
+async function arpTable() {
+  const r = P.IS_WIN ? await P.runFile('arp', ['-a'], { timeout: 8000 }) : await P.runFile('ip', ['neigh'], { timeout: 8000 });
+  const map = new Map();
+  for (const line of r.stdout.split(/\r?\n/)) {
+    const ip = line.match(/(\d+\.\d+\.\d+\.\d+)/);
+    const mac = line.match(/([0-9a-f]{2}[-:]){5}[0-9a-f]{2}/i);
+    if (!ip || !mac) continue;
+    const m = mac[0].replace(/[-:]/g, '').toUpperCase();
+    if (m === 'FFFFFFFFFFFF' || m === '000000000000' || /^01005E/.test(m)) continue; // широковещательные и групповые
+    map.set(ip[1], m.match(/../g).join(':'));
+  }
+  return map;
+}
+
+function guessKind(h) {
+  const ports = new Set(h.ports.map((p) => p.port));
+  const w = h.wmi;
+  if (w) {
+    if (/server/i.test(w.os || '')) return 'server';
+    if (String(w.chassis || '').split(',').some((c) => ['8', '9', '10', '14', '30', '31', '32'].includes(c.trim()))) return 'notebook';
+    return 'computer';
+  }
+  if (h.snmp && (h.snmp.page_count != null || h.snmp.supplies?.length || /print|laserjet|mfp|ecosys|i-sensys|kyocera|canon|xerox|ricoh|brother|epson|pantum/i.test(`${h.snmp.model} ${h.snmp.description}`))) return 'printer';
+  if (ports.has(9100) || ports.has(515) || ports.has(631)) return 'printer';
+  if (ports.has(135) || ports.has(445) || ports.has(3389) || ports.has(5985)) return 'computer';
+  if (h.snmp) return 'network';
+  return 'unknown';
+}
+
+async function runScan(networks, ranges, { wmi }, userId) {
+  const ips = [];
+  for (const [s, e] of ranges) for (let n = s; n <= e; n++) ips.push(intToIp(n));
+  const s = await NP.loadSettings({ withPassword: true });
+  const set = (phase, done, total) => Object.assign(job, { phase, done, total });
+
+  // 1. Поиск отвечающих адресов: сначала порты, у остальных — ping
+  const alive = new Map(); // ip → { ports, ping }
+  set('Поиск устройств: проверка портов', 0, ips.length);
+  await pool(ips, 96, async (ip) => {
+    const ports = await P.scanPorts(ip);
+    if (ports.length) alive.set(ip, { ports, ping: null });
+    job.done++; job.found = alive.size;
+  });
+  const rest = ips.filter((ip) => !alive.has(ip));
+  set('Поиск устройств: ping', 0, rest.length);
+  await pool(rest, 24, async (ip) => {
+    const pg = await P.ping(ip);
+    if (pg.alive) alive.set(ip, { ports: [], ping: pg.ms });
+    job.done++; job.found = alive.size;
+  });
+  // Адреса из ARP-таблицы (отвечают в сети, хотя не открыли порты и не ответили на ping)
+  const arp = await arpTable();
+  const inRange = (ip) => { const n = ipToInt(ip); return ranges.some(([a, b]) => n >= a && n <= b); };
+  for (const ip of arp.keys()) if (inRange(ip) && !alive.has(ip)) alive.set(ip, { ports: [], ping: null, arpOnly: true });
+
+  // 2. Опознание
+  const list = [...alive.keys()].sort((a, b) => ipToInt(a) - ipToInt(b));
+  const hosts = [];
+  set('Опознание устройств: имена, NetBIOS, SNMP', 0, list.length);
+  const dns = require('dns').promises;
+  await pool(list, 32, async (ip) => {
+    const a = alive.get(ip);
+    const [names, nb, sn] = await Promise.all([
+      Promise.race([dns.reverse(ip).catch(() => []), new Promise((r) => setTimeout(() => r([]), 3000))]),
+      P.netbios(ip),
+      s.snmp_enabled ? P.snmp(ip, NP.communities(s)) : null,
+    ]);
+    hosts.push({
+      ip, ports: a.ports, ping: a.ping, arp_only: !!a.arpOnly,
+      dns_name: names[0] || '', netbios: nb || null, mac: arp.get(ip) || nb?.mac || '', snmp: sn || null,
+    });
+    job.done++;
+  });
+  for (const h of hosts) h.kind = guessKind(h);
+
+  // 3. WMI — по желанию, только Windows-компьютеры с открытыми портами WMI/WinRM
+  if (wmi && s.wmi_enabled) {
+    const targets = hosts.filter((h) => h.ports.some((p) => p.port === 135 || p.port === 5985));
+    set('Характеристики компьютеров (WMI)', 0, targets.length);
+    await pool(targets, 4, async (h) => {
+      const name = h.netbios?.computer || (h.dns_name ? h.dns_name.split('.')[0] : '') || h.ip;
+      const r = await wmiCollect(s, name);
+      if (r.error) h.wmi_error = NP.wmiError(r.error);
+      else { h.wmi = NP.normalizeWmi(r); h.kind = guessKind(h); }
+      job.done++;
+    });
+  }
+
+  hosts.sort((a, b) => ipToInt(a.ip) - ipToInt(b.ip));
+  await query(
+    `INSERT INTO netscan_last (id, started_at, finished_at, networks, ranges, hosts, scanned_by)
+     VALUES (1, $1, now(), $2, $3, $4, $5)
+     ON CONFLICT (id) DO UPDATE SET started_at = EXCLUDED.started_at, finished_at = now(), networks = EXCLUDED.networks,
+       ranges = EXCLUDED.ranges, hosts = EXCLUDED.hosts, scanned_by = EXCLUDED.scanned_by`,
+    [job.started_at, networks, JSON.stringify(ranges), JSON.stringify(hosts), userId]);
+}
+
+// ---------------- Совпадения с базой ----------------
+const normMac = (m) => { const x = String(m || '').replace(/[^0-9a-f]/gi, '').toUpperCase(); return x.length === 12 ? x : ''; };
+const shortHost = (n) => String(n || '').trim().toLowerCase().split('.')[0];
+const BAD_SERIAL = /^(to be filled.*|default string|system serial number|none|n\/a|0+|1234567890|chassis serial number)$/i;
+const normSerial = (s) => { const x = String(s || '').trim().toLowerCase(); return x.length >= 4 && !BAD_SERIAL.test(x) ? x : ''; };
+const normText = (v) => String(v ?? '').toLowerCase().replace(/[\s()®™]+/g, ' ').trim();
+const FIELDS = ['hostname', 'model', 'serial_number', 'cpu', 'ram', 'storage', 'os', 'ip_address', 'mac_address'];
+
+/** Что известно об устройстве из сканирования — в виде полей карточки (как в «Сведениях из сети») */
+function hostSuggest(h) {
+  const sections = {
+    network: { state: 'done', data: { used_ip: h.ip, mac: h.mac } },
+    wmi: h.wmi ? { state: 'done', data: h.wmi } : { state: 'off' },
+    snmp: h.snmp ? { state: 'done', data: h.snmp } : { state: 'off' },
+  };
+  const out = NP.suggestions(sections);
+  if (!out.hostname) {
+    const name = h.netbios?.computer || (h.dns_name ? h.dns_name.split('.')[0].toUpperCase() : '') || h.snmp?.name || '';
+    if (name) out.hostname = name;
+  }
+  return out;
+}
+
+async function loadDevices() {
+  const { rows } = await query(
+    `SELECT d.id, t.id AS type_id, t.code AS type_code, t.name AS type_name, t.color AS type_color, d.status,
+            d.hostname, d.ip_address, d.mac_address, d.serial_number, d.inv_number,
+            lm.value AS model, lc.value AS cpu, lr.value AS ram, ls.value AS storage, lo.value AS os, le.value AS employee
+       FROM devices d JOIN device_types t ON t.id = d.type_id
+       LEFT JOIN lookups lm ON lm.id = d.model_id LEFT JOIN lookups lc ON lc.id = d.cpu_id
+       LEFT JOIN lookups lr ON lr.id = d.ram_id LEFT JOIN lookups ls ON ls.id = d.storage_id
+       LEFT JOIN lookups lo ON lo.id = d.os_id LEFT JOIN lookups le ON le.id = d.employee_id`);
+  return rows;
+}
+
+function matchAll(hosts, devices, ignored, ranges) {
+  const by = { mac: new Map(), serial: new Map(), host: new Map(), ip: new Map() };
+  const add = (m, k, d) => { if (!k) return; if (!m.has(k)) m.set(k, []); m.get(k).push(d); };
+  for (const d of devices) {
+    add(by.mac, normMac(d.mac_address), d);
+    add(by.serial, normSerial(d.serial_number), d);
+    add(by.host, shortHost(d.hostname), d);
+    add(by.ip, String(d.ip_address || '').trim(), d);
+  }
+  const used = new Set();
+  const out = hosts.map((h) => {
+    const sug = hostSuggest(h);
+    const tries = [
+      ['mac', 'MAC-адрес', by.mac.get(normMac(h.mac))],
+      ['serial', 'серийный номер', by.serial.get(normSerial(sug.serial_number))],
+      ['host', 'сетевое имя', by.host.get(shortHost(sug.hostname))],
+      ['ip', 'IP-адрес', by.ip.get(h.ip)],
+    ];
+    let match = null; let reason = []; let conflict = null;
+    for (const [k, label, list] of tries) {
+      if (!list?.length) continue;
+      if (!match) {
+        if (list.length > 1 && k !== 'ip') conflict = list.map((d) => ({ id: d.id, key: `${d.type_code}-${d.id}`, hostname: d.hostname }));
+        match = list[0];
+        reason.push(label);
+      } else if (list.some((d) => d.id === match.id)) reason.push(label);
+    }
+    const strength = !match ? null : reason.includes('MAC-адрес') || reason.includes('серийный номер') ? 'strong' : reason.includes('сетевое имя') ? 'name' : 'ip';
+    let diff = [];
+    if (match) {
+      used.add(match.id);
+      diff = FIELDS.filter((f) => sug[f] && normText(sug[f]) !== normText(f === 'mac_address' ? (normMac(match[f]) ? normMac(match[f]).match(/../g).join(':') : match[f]) : match[f]));
+    }
+    const key = h.mac ? `mac:${normMac(h.mac)}` : `ip:${h.ip}`;
+    const isIgnored = ignored.has(key) || ignored.has(`ip:${h.ip}`);
+    const status = isIgnored ? 'ignored' : !match ? 'new' : diff.length ? 'diff' : 'match';
+    return {
+      ...h, suggest: sug, ignore_key: key, status, strength, reason, conflict, diff,
+      device: match ? { id: match.id, key: `${match.type_code}-${match.id}`, type_id: match.type_id, type_name: match.type_name,
+        type_color: match.type_color, hostname: match.hostname, ip_address: match.ip_address, model: match.model, employee: match.employee } : null,
+    };
+  });
+  // Техника из базы с IP в просканированных сетях, которая не ответила
+  const inRange = (ip) => { if (!P.isIPv4(ip)) return false; const n = ipToInt(ip); return ranges.some(([a, b]) => n >= a && n <= b); };
+  const missing = devices.filter((d) => !used.has(d.id) && inRange(String(d.ip_address || '').trim()) && d.status !== 'written_off')
+    .map((d) => ({ id: d.id, key: `${d.type_code}-${d.id}`, type_name: d.type_name, type_color: d.type_color, hostname: d.hostname, ip_address: d.ip_address, model: d.model, employee: d.employee }));
+  return { hosts: out, missing };
+}
+
+// ---------------- API ----------------
+router.get('/', ah(async (req, res) => {
+  const s = await NP.loadSettings();
+  const [{ rows: [last] }, { rows: ign }] = await Promise.all([
+    query(`SELECT l.started_at, l.finished_at, l.networks, l.ranges, l.hosts,
+                  CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS scanned_by
+             FROM netscan_last l LEFT JOIN users u ON u.id = l.scanned_by WHERE l.id = 1`),
+    query('SELECT key FROM netscan_ignore'),
+  ]);
+  let result = null;
+  if (last) {
+    const m = matchAll(last.hosts, await loadDevices(), new Set(ign.map((r) => r.key)), last.ranges);
+    result = { started_at: last.started_at, finished_at: last.finished_at, networks: last.networks, scanned_by: last.scanned_by, ...m };
+  }
+  res.json({
+    defaults: { networks: s.scan_networks || localNetworks(), from_settings: !!s.scan_networks, wmi_enabled: s.wmi_enabled, has_account: !!s.username },
+    job: job ? { ...job } : null,
+    result,
+  });
+}));
+
+router.post('/', ah(async (req, res) => {
+  if (job && !job.finished_at) throw new HttpError(409, 'Сканирование уже идёт');
+  const networks = (str(req.body.networks, 1000) || '').trim();
+  const ranges = parseNetworks(networks);
+  job = { started_at: new Date().toISOString(), phase: 'Подготовка', done: 0, total: 0, found: 0, networks, error: null, finished_at: null };
+  const j = job;
+  runScan(networks, ranges, { wmi: !!req.body.wmi }, req.user.id)
+    .catch((e) => { j.error = e.message; console.error('Сканирование сети:', e); })
+    .finally(() => { j.finished_at = new Date().toISOString(); });
+  res.status(202).json({ job });
+}));
+
+// Скрыть / вернуть устройство в списке
+router.post('/ignore', ah(async (req, res) => {
+  const key = String(req.body.key || '');
+  if (!/^(mac:[0-9A-F]{12}|ip:\d+\.\d+\.\d+\.\d+)$/.test(key)) throw new HttpError(400, 'Неверный ключ');
+  if (req.body.ignore === false) await query('DELETE FROM netscan_ignore WHERE key = $1', [key]);
+  else {
+    await query(`INSERT INTO netscan_ignore (key, note, created_by) VALUES ($1, $2, $3)
+                 ON CONFLICT (key) DO UPDATE SET note = EXCLUDED.note`, [key, str(req.body.note, 300) || '', req.user.id]);
+  }
+  res.json({ ok: true });
+}));
+
+module.exports = router;
+module.exports.parseNetworks = parseNetworks;

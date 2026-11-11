@@ -59,7 +59,10 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
 NetBIOS, ARP, SNMP — на чистом Node.js (`probes.js`); AD и WMI — встроенный PowerShell Windows (`powershell.js`),
 имя/логин/пароль передаются через переменные окружения `NM_*`, не в тексте команды. Опрос — фоновое задание в памяти,
 браузер опрашивает статус; результат — `device_netinfo`, настройки (одна строка, пароль зашифрован) — `netprobe_settings`.
-Кнопка — только редакторам, настройки — только суперадмину. Поиск в AD: база из настроек → домен контроллера → GC:// леса
+Кнопка — только редакторам, настройки — только суперадмину.
+**Сканирование сети** — `server/inventory/netprobe/scan.js` (+ `public/inventory/js/pages/netscan.js`): поиск (порты → ping → ARP),
+опознание, по желанию WMI; результат — `netscan_last` (одна строка), скрытые — `netscan_ignore`; совпадения с базой
+считаются при каждом GET (MAC/серийный → имя → IP); «Дополнить» использует `renderCompare`/`applyToDevice` из netinfo.js. Поиск в AD: база из настроек → домен контроллера → GC:// леса
 (ReferralChasing=All; у пользователя была ошибка «A referral was returned from the server»). Без Windows AD/WMI не работают: для проверки
 `NETPROBE_FAKE_DIR=<папка>` подставляет ответы из `<ad|wmi>[-ИМЯ].json`. На реальной Windows/AD не проверялось.
 

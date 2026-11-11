@@ -152,7 +152,7 @@ export function renderSection(key, sec) {
 }
 
 // ---------- Сравнение с карточкой ----------
-function renderCompare(device, suggest, onApply) {
+export function renderCompare(device, suggest, onApply) {
   const fields = state.meta.coreFields.filter((f) => APPLY_FIELDS.includes(f.key) && suggest[f.key]);
   if (!fields.length) return h('div.ni-note', 'Пока нечего сравнивать: нет данных WMI или SNMP.');
   const checks = {};
@@ -186,7 +186,7 @@ function renderCompare(device, suggest, onApply) {
 }
 
 /** Записать выбранные значения в карточку: справочные поля — по значению справочника (создаётся при необходимости) */
-async function applyToDevice(device, suggest, keys) {
+export async function applyToDevice(device, suggest, keys) {
   const body = {};
   for (const k of keys) {
     const f = state.meta.coreFields.find((x) => x.key === k);

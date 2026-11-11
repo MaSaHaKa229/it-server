@@ -284,3 +284,24 @@ CREATE TABLE IF NOT EXISTS device_netinfo (
 -- Справочники: полное и короткое название (используются у «Отделов», поиск идёт по всем трём полям)
 ALTER TABLE lookups ADD COLUMN IF NOT EXISTS full_name TEXT;
 ALTER TABLE lookups ADD COLUMN IF NOT EXISTS short_name TEXT;
+
+-- ------------------------------------------------------------
+-- Сканирование сети: какие сети сканировать по умолчанию, результат последнего сканирования, скрытые устройства
+-- ------------------------------------------------------------
+ALTER TABLE netprobe_settings ADD COLUMN IF NOT EXISTS scan_networks TEXT NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS netscan_last (
+  id          INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  started_at  TIMESTAMPTZ NOT NULL,
+  finished_at TIMESTAMPTZ,
+  networks    TEXT NOT NULL DEFAULT '',
+  ranges      JSONB NOT NULL DEFAULT '[]'::jsonb,
+  hosts       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  scanned_by  INT REFERENCES users(id) ON DELETE SET NULL
+);
+-- Устройства, которые не нужно предлагать (телефоны, гостевые ноутбуки…): ключ «mac:…» или «ip:…»
+CREATE TABLE IF NOT EXISTS netscan_ignore (
+  key        TEXT PRIMARY KEY,
+  note       TEXT NOT NULL DEFAULT '',
+  created_by INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

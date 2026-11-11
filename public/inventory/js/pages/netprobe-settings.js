@@ -13,6 +13,7 @@ export async function renderNetprobeSettings(box) {
   const wmiEnabled = h('input', { type: 'checkbox', checked: s.wmi_enabled });
   const snmpEnabled = h('input', { type: 'checkbox', checked: s.snmp_enabled });
   const snmpComm = h('input', { type: 'text', value: s.snmp_communities, placeholder: 'public' });
+  const scanNets = h('input', { type: 'text', value: s.scan_networks || '', placeholder: 'Например: 10.0.1.0/24, 10.0.2.0/24' });
   let clearPassword = false;
 
   const save = h('button.btn.primary', 'Сохранить');
@@ -20,6 +21,7 @@ export async function renderNetprobeSettings(box) {
     const body = {
       username: username.value.trim(), ad_enabled: adEnabled.checked, ad_server: adServer.value.trim(), ad_base_dn: adBase.value.trim(),
       wmi_enabled: wmiEnabled.checked, snmp_enabled: snmpEnabled.checked, snmp_communities: snmpComm.value.trim() || 'public',
+      scan_networks: scanNets.value.trim(),
     };
     if (password.value) body.password = password.value;
     if (clearPassword) body.clear_password = true;
@@ -83,6 +85,12 @@ export async function renderNetprobeSettings(box) {
     h('div.np-box',
       h('h3', h('label.check', snmpEnabled, 'Принтеры и МФУ (SNMP)')),
       h('label.field', { style: { maxWidth: '360px' } }, h('span', 'Сообщества SNMP'), snmpComm, h('div.hint', 'Через запятую; обычно public.'))),
+
+    h('div.np-box',
+      h('h3', 'Сканирование сети'),
+      h('label.field', { style: { maxWidth: '520px' } }, h('span', 'Сети по умолчанию'), scanNets,
+        h('div.hint', 'Подставляются на вкладке «Сканирование сети». Через запятую: 10.0.1.0/24, диапазоны 10.0.2.10-10.0.2.50 или отдельные адреса. '
+          + 'Если не заполнено — сети самого сервера.'))),
 
     h('div.row', { style: { gap: '8px', alignItems: 'center' } }, save,
       s.updated_at ? h('span.muted.small', `Изменено ${fmtDate(s.updated_at)}`) : null),

@@ -10,6 +10,7 @@ import { renderUsers } from './pages/users.js';
 import { openCreateDevice } from './pages/create.js';
 import { renderImport } from './pages/import.js';
 import { renderWorkplaces, renderWorkplace } from './pages/workplaces.js';
+import { renderNetscan } from './pages/netscan.js';
 
 const app = document.getElementById('app');
 let mainEl, sidebarEl, navEl;
@@ -40,6 +41,7 @@ async function route() {
     else if (section === 'workplaces' && sub) await renderWorkplace(mainEl, Number(sub));
     else if (section === 'workplaces') await renderWorkplaces(mainEl);
     else if (section === 'import' && isStaff()) await renderImport(mainEl);
+    else if (section === 'netscan' && isStaff()) await renderNetscan(mainEl);
     else if (section === 'catalog' && isStaff()) await renderCatalog(mainEl, sub);
     else if (section === 'settings' && isStaff()) await renderSettings(mainEl, sub);
     else if (section === 'users' && isSuper()) await renderUsers(mainEl);
@@ -65,6 +67,7 @@ function renderShell() {
     ['dashboard', '#/', 'Панель'],
     ['devices', '#/devices', 'Техника'],
     ['workplaces', '#/workplaces', 'Рабочие места'],
+    isStaff() && ['netscan', '#/netscan', 'Сканирование сети'],
     isStaff() && ['import', '#/import', 'Импорт'],
     isStaff() && ['catalog', '#/catalog', 'Справочники'],
     isStaff() && ['settings', '#/settings', 'Настройки'],
