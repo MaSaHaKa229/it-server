@@ -111,7 +111,10 @@ export function confirmDialog(title, text, okLabel = 'Удалить') {
 
 // ---------- форматирование ----------
 export const fmtDate = (v) => (v ? new Date(v).toLocaleDateString('ru-RU') : '');
-export const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '');
+// Явные поля (не dateStyle/timeStyle) — одинаково во всех браузерах, включая Firefox 52
+export const fmtDateTime = (v) => (v ? new Date(v).toLocaleString('ru-RU', {
+  day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+}) : '');
 export function fmtSize(b) {
   if (b < 1024) return `${b} Б`;
   if (b < 1024 * 1024) return `${Math.round(b / 1024)} КБ`;

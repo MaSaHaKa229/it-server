@@ -1,0 +1,86 @@
+/* Запасные стили для старых браузеров (Firefox 52). Подключаются только сборкой app.legacy.js.
+   Не редактировать: генерируются из theme.css и portal.css — clients/helpdesk-legacy/build.mjs */
+select { -moz-appearance: none; }
+.legacy .row.wrap > * { margin-bottom: 4px; }
+/* theme.css */
+.legacy .row > * + * { margin-left: 8px; }
+.legacy .stack > * + * { margin-top: 8px; }
+.legacy .topbar > * + * { margin-left: 4px; }
+.legacy .brand > * + * { margin-left: 8px; }
+.legacy .sidebar-project > * + * { margin-left: 8px; }
+.legacy .side-link > * + * { margin-left: 10px; }
+.legacy .breadcrumbs > * + * { margin-left: 6px; }
+.legacy .breadcrumbs > * { margin-bottom: 6px; }
+.legacy .page-head > * + * { margin-left: 12px; }
+.legacy .page-head > * { margin-bottom: 12px; }
+.legacy .btn > * + * { margin-left: 6px; }
+.legacy .btn-group > * + * { margin-left: 4px; }
+.form-grid { grid-gap: 16px 20px; }
+.legacy .check > * + * { margin-left: 8px; }
+.legacy .type-cell > * + * { margin-left: 6px; }
+.legacy .toolbar > * + * { margin-left: 8px; }
+.legacy .toolbar > * { margin-bottom: 8px; }
+.legacy .bulkbar > * + * { margin-left: 8px; }
+.legacy .pager > * + * { margin-left: 12px; }
+.legacy .menu-item > * + * { margin-left: 8px; }
+.modal-backdrop { top: 0; right: 0; bottom: 0; left: 0; }
+.legacy .modal-head > * + * { margin-left: 8px; }
+.legacy .modal-foot > * + * { margin-left: 8px; }
+.legacy .flags > * + * { margin-top: 8px; }
+.legacy .flag > * + * { margin-left: 12px; }
+.issue { grid-gap: 32px; }
+.legacy .issue-actions > * + * { margin-left: 6px; }
+.legacy .issue-actions > * { margin-bottom: 6px; }
+.legacy .inline-editor .ie-actions > * + * { margin-left: 4px; }
+.legacy .details > .d-head > * + * { margin-left: 8px; }
+.drow { grid-gap: 8px; }
+.legacy .activity > * + * { margin-left: 12px; }
+.cards { grid-gap: 16px; }
+.legacy .legend > * + * { margin-left: 12px; }
+.legacy .legend > * { margin-bottom: 12px; }
+.grid2 { grid-gap: 32px; }
+.hbar { grid-gap: 8px; }
+.split { grid-gap: 24px; }
+.perm-list { grid-gap: 6px 16px; }
+.legacy .role-opt > * + * { margin-left: 10px; }
+.legacy .color-swatches > * + * { margin-left: 6px; }
+.legacy .color-swatches > * { margin-bottom: 6px; }
+.legacy .login-brand > * + * { margin-left: 10px; }
+.legacy .step > * + * { margin-left: 8px; }
+.legacy .dropzone > * + * { margin-top: 10px; }
+.legacy .file-card > * + * { margin-left: 12px; }
+.legacy .wizard-foot > * + * { margin-left: 12px; }
+.legacy .wizard-foot > * { margin-bottom: 12px; }
+.import-stats { grid-gap: 12px; }
+.legacy .chip-link > * + * { margin-left: 4px; }
+/* portal.css */
+.tiles { grid-gap: 16px; }
+.legacy .tile > * + * { margin-left: 16px; }
+.legacy .stats > * + * { margin-left: 16px; }
+.legacy .stats > * { margin-bottom: 6px; }
+.legacy .hd-banner > * + * { margin-left: 16px; }
+.legacy .hd-banner > * { margin-bottom: 16px; }
+.mod-grid { grid-gap: 12px 16px; }
+.legacy .levels > * + * { margin-left: 6px; }
+.legacy .levels > * { margin-bottom: 6px; }
+.legacy .level-opt > * + * { margin-left: 6px; }
+.legacy .prio > * + * { margin-left: 6px; }
+.legacy .side-panel > * + * { margin-top: 16px; }
+.legacy .thread > * + * { margin-top: 12px; }
+.legacy .msg > * + * { margin-left: 10px; }
+.legacy .msg-head > * + * { margin-left: 8px; }
+.legacy .msg-head > * { margin-bottom: 8px; }
+.legacy .files > * + * { margin-left: 8px; }
+.legacy .files > * { margin-bottom: 8px; }
+.legacy .file > * + * { margin-left: 6px; }
+.legacy .reply > * + * { margin-top: 8px; }
+.legacy .history > * + * { margin-top: 6px; }
+.legacy .file-input > * + * { margin-left: 8px; }
+.legacy .file-input > * { margin-bottom: 8px; }
+.cat-grid { grid-gap: 8px; }
+.legacy .cat-opt > * + * { margin-left: 10px; }
+.legacy .tcard-top > * + * { margin-left: 8px; }
+.legacy .tcard-top > * { margin-bottom: 8px; }
+.legacy .tcard-meta > * + * { margin-left: 16px; }
+.legacy .tcard-meta > * { margin-bottom: 4px; }
+dl.kv { grid-gap: 8px 12px; }
