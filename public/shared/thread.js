@@ -37,7 +37,7 @@ export function fileInput() {
 const ACTION = {
   created: () => 'создал(а) заявку',
   status: (d) => ['статус: ', h('b', d.from || '—'), ' → ', h('b', d.to || '—')],
-  assignee: (d) => (d.to ? ['исполнитель: ', h('b', d.to)] : ['снят исполнитель ', h('b', d.from || '')]),
+  assignee: (d) => (d.to ? ['исполнитель: ', h('b', d.to), d.auto ? ' (назначен автоматически)' : ''] : ['снят исполнитель ', h('b', d.from || '')]),
   due: (d) => (d.to ? ['срок: ', h('b', fmtDateTime(d.to))] : 'срок снят'),
   priority: (d) => ['приоритет: ', h('b', d.to)],
   category: (d) => ['вид проблемы: ', h('b', d.to || '—')],

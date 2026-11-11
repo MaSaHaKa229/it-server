@@ -135,3 +135,26 @@ a.tab:hover { text-decoration: none; }
 .dp-item:hover, .dp-item.active { background: #F4F5F7; border-left-color: #0052CC; }
 .dp-empty { padding: 8px 12px; color: var(--text-subtle); font-size: 13px; }
 .hint.dp-ok { color: #006644; }
+
+/* Блок настроек на страницах администрирования */
+.panel h2 { font-size: 18px; }
+
+
+/* Главная: сводка «моё» */
+.home-board { display: grid; gap: 16px; margin-bottom: 24px; align-items: start; }
+.home-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--n0); overflow: hidden; }
+.home-card-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--n10); }
+.home-card-head h3 { margin: 0; font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.home-card-body { max-height: 460px; overflow: auto; }
+.home-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 14px; border-bottom: 1px solid var(--n30); color: var(--text); text-decoration: none; border-left: 3px solid transparent; }
+.home-row:hover { background: var(--n20); text-decoration: none; }
+.home-row.over { border-left-color: var(--r400); }
+.home-row-main { flex: 1; min-width: 0; }
+.home-row-main b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-row-side { text-align: right; white-space: nowrap; }
+.over-text { color: var(--r400); font-weight: 600; }
+.home-empty { padding: 16px 14px; color: var(--text-subtle); }
+.home-more { display: block; padding: 8px 14px; font-size: 13px; color: var(--text-subtle); }
+.home-sec { font-size: 16px; margin: 8px 0 12px; }
+.home-card .nb-item { border-bottom: 1px solid var(--n30); }
+.home-card-head a, .home-card-head .lozenge { white-space: nowrap; }

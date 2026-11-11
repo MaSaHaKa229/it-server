@@ -2,6 +2,9 @@
 const L = require('./lib');
 
 const { query } = L;
+// Уведомления сотрудникам службы ИТ — через общий механизм портала (колокольчик и почта по настройкам каждого)
+const N = require('../portal/notify');
+const staffPath = (id) => `/helpdesk/#/tickets/${id}`;
 
 async function ticket(id) {
   return (await query(`${L.TICKET_SELECT} WHERE t.id = $1`, [id])).rows[0];
@@ -16,40 +19,24 @@ async function adminEmails() {
   return rows.map((r) => r.email);
 }
 
-async function userEmail(id) {
-  if (!id) return null;
-  const { rows } = await query('SELECT email FROM public.users WHERE id = $1 AND is_active', [id]);
-  return rows[0] && rows[0].email;
-}
-
-const staffLink = (id) => `${L.portalUrl()}/helpdesk/#/tickets/${id}`;
 const userLink = (id) => `${L.helpdeskUrl()}/#/tickets/${id}`;
 
 async function ticketCreated(id) {
-  if (!L.mailEnabled()) return;
   const t = await ticket(id);
-  const text = `Новая заявка #${t.id}: ${t.title}\n` +
-    `Вид: ${t.category_name || '—'}\nОт: ${t.requester_name} (${t.requester_email})` +
-    `${t.requester_department ? ', ' + t.requester_department : ''}\nМесто: ${t.location || '—'}\n\n` +
-    `${t.description || ''}\n\n${staffLink(t.id)}`;
-  const to = new Set(await adminEmails());
-  const assignee = await userEmail(t.assignee_id);
-  if (assignee) to.add(assignee);
-  for (const addr of to) await L.sendMail(addr, `Новая заявка #${t.id}: ${t.title}`, text);
+  const body = `Вид: ${t.category_name || '—'}\nОт: ${t.requester_name}${t.requester_department ? ', ' + t.requester_department : ''}`
+    + `\nМесто: ${t.location || '—'}${t.description ? '\n\n' + t.description.slice(0, 500) : ''}`;
+  await N.emit(await N.usersWhere(N.hd), 'hd_new', { title: `Новая заявка #${t.id}: ${t.title}`, body, link: staffPath(t.id) });
+  if (t.assignee_id) await assigned(id);
+  if (!L.mailEnabled()) return;
   await L.sendMail(t.requester_email, `Заявка #${t.id} принята`,
     `Здравствуйте, ${t.requester_name}!\n\nВаша заявка «${t.title}» зарегистрирована под номером #${t.id}.\n` +
     `Следить за ходом выполнения: ${userLink(t.id)}`);
 }
 
 async function requesterCommented(id, body) {
-  if (!L.mailEnabled()) return;
   const t = await ticket(id);
-  const to = (await userEmail(t.assignee_id)) || null;
-  const list = to ? [to] : await adminEmails();
-  for (const addr of list) {
-    await L.sendMail(addr, `Заявка #${t.id}: новый комментарий заявителя`,
-      `${t.requester_name} пишет:\n\n${body || '(приложен файл)'}\n\n${staffLink(t.id)}`);
-  }
+  const to = t.assignee_id ? [t.assignee_id] : await N.usersWhere(N.hdAdmin);
+  await N.emit(to, 'hd_reply', { title: `Заявка #${t.id}: ответ заявителя`, body: `${t.requester_name} пишет:\n${(body || '(приложен файл)').slice(0, 1000)}`, link: staffPath(t.id) });
 }
 
 async function staffCommented(id, body) {
@@ -66,16 +53,15 @@ async function statusChanged(id) {
     `Здравствуйте, ${t.requester_name}!\n\nСтатус заявки «${t.title}» изменён на «${t.status_name}».\n\n${userLink(t.id)}`);
 }
 
-async function assigned(id) {
-  if (!L.mailEnabled()) return;
+async function assigned(id, actorId = null) {
   const t = await ticket(id);
-  const to = await userEmail(t.assignee_id);
-  if (to) {
-    await L.sendMail(to, `Вам назначена заявка #${t.id}: ${t.title}`,
-      `Заявитель: ${t.requester_name}${t.requester_department ? ', ' + t.requester_department : ''}\n` +
-      `Место: ${t.location || '—'}\nСрок: ${t.due_at ? new Date(t.due_at).toLocaleString('ru-RU') : 'не задан'}\n\n` +
-      `${t.description || ''}\n\n${staffLink(t.id)}`);
-  }
+  if (!t.assignee_id) return;
+  await N.emit([t.assignee_id], 'hd_assigned', {
+    title: `Вам назначена заявка #${t.id}: ${t.title}`,
+    body: `Заявитель: ${t.requester_name}${t.requester_department ? ', ' + t.requester_department : ''}\n`
+      + `Место: ${t.location || '—'}\nСрок: ${t.due_at ? new Date(t.due_at).toLocaleString('ru-RU') : 'не задан'}`,
+    link: staffPath(t.id),
+  }, actorId);
 }
 
 async function newRequester(r) {

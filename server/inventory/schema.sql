@@ -344,3 +344,37 @@ CREATE TABLE IF NOT EXISTS printer_supplies (
   error      TEXT,
   checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Когда техника последний раз отвечала в сети (сканирование, «Сведения из сети», опрос принтеров) — для уведомления «давно не в сети»
+CREATE TABLE IF NOT EXISTS device_seen (
+  device_id INT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+  last_seen TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Сканирование сети по расписанию: {"mode":"off|daily|weekly","time":"02:00","weekday":1,"wmi":false}
+ALTER TABLE netprobe_settings ADD COLUMN IF NOT EXISTS scan_schedule JSONB NOT NULL DEFAULT '{"mode":"off"}'::jsonb;
+ALTER TABLE netprobe_settings ADD COLUMN IF NOT EXISTS scan_last_auto TIMESTAMPTZ;
+
+-- Инвентаризация: плановая проверка наличия техники на дату
+CREATE TABLE IF NOT EXISTS inventory_audits (
+  id           SERIAL PRIMARY KEY,
+  title        TEXT NOT NULL,
+  planned_date DATE NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'done')),
+  filters      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  note         TEXT NOT NULL DEFAULT '',
+  created_by   INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at  TIMESTAMPTZ,
+  finished_by  INT REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS inventory_audit_items (
+  audit_id   INT NOT NULL REFERENCES inventory_audits(id) ON DELETE CASCADE,
+  device_id  INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  state      TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'found', 'missing', 'moved')),
+  note       TEXT NOT NULL DEFAULT '',
+  snapshot   JSONB NOT NULL DEFAULT '{}'::jsonb,
+  checked_by INT REFERENCES users(id) ON DELETE SET NULL,
+  checked_at TIMESTAMPTZ,
+  PRIMARY KEY (audit_id, device_id)
+);

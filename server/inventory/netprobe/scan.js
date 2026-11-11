@@ -168,7 +168,7 @@ async function runScan(networks, ranges, { wmi }, userId) {
      ON CONFLICT (id) DO UPDATE SET started_at = EXCLUDED.started_at, finished_at = now(), networks = EXCLUDED.networks,
        ranges = EXCLUDED.ranges, hosts = EXCLUDED.hosts, scanned_by = EXCLUDED.scanned_by`,
     [job.started_at, networks, JSON.stringify(ranges), JSON.stringify(hosts), userId]);
-  await updatePending(hosts);
+  job.fresh = await updatePending(hosts);
 }
 
 // ---------------- «Ждут решения» ----------------
@@ -182,9 +182,14 @@ async function matchContext() {
 }
 
 /** После сканирования: новые и отличающиеся — в «Ждут решения»; ставшие совпадающими — снимаются */
+/** Возвращает новую технику, которая только что попала в «Ждут решения» */
 async function updatePending(hosts) {
   const ctx = await matchContext();
   const { hosts: matched } = matchAll(hosts, ctx.devices, ctx.ignored, [], ctx.fopts);
+  const was = new Set((await query(`SELECT key FROM netscan_hosts WHERE state = 'pending'`)).rows.map((r) => r.key));
+  const fresh = [];
+  // Найденная в сети техника из базы — отметка «была в сети» (уведомление «давно не в сети»)
+  await NP.markSeen(matched.filter((m) => m.device).map((m) => m.device.id));
   for (const m of matched) {
     const key = hostKey(m);
     const sig = sigOf(m);
@@ -195,6 +200,10 @@ async function updatePending(hosts) {
          ON CONFLICT (key) DO UPDATE SET host = EXCLUDED.host, last_seen = now(),
            state = CASE WHEN netscan_hosts.state = 'done' AND netscan_hosts.handled_sig = $3 THEN 'done' ELSE 'pending' END`,
         [key, JSON.stringify(raw), sig]);
+      if (m.status === 'new' && !was.has(key)) {
+        const { rows } = await query(`SELECT state FROM netscan_hosts WHERE key = $1`, [key]);
+        if (rows[0] && rows[0].state === 'pending') fresh.push(m);
+      }
     } else {
       await query(`UPDATE netscan_hosts SET host = $2, last_seen = now(),
                      state = CASE WHEN state = 'pending' THEN 'done' ELSE state END,
@@ -203,6 +212,7 @@ async function updatePending(hosts) {
                    WHERE key = $1`, [key, JSON.stringify(raw)]);
     }
   }
+  return fresh;
 }
 
 
@@ -295,7 +305,8 @@ router.get('/', ah(async (req, res) => {
   const s = await NP.loadSettings();
   const [{ rows: [last] }, { rows: ign }] = await Promise.all([
     query(`SELECT l.started_at, l.finished_at, l.networks, l.ranges, l.hosts,
-                  CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS scanned_by
+                  CASE WHEN l.scanned_by IS NULL THEN 'по расписанию' WHEN u.role = 'superadmin' THEN 'Служба ИТ'
+                       ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS scanned_by
              FROM netscan_last l LEFT JOIN users u ON u.id = l.scanned_by WHERE l.id = 1`),
     query('SELECT key FROM netscan_ignore'),
   ]);
@@ -319,23 +330,90 @@ router.get('/', ah(async (req, res) => {
   }
   res.json({
     defaults: { networks: s.scan_networks || localNetworks(), from_settings: !!s.scan_networks, wmi_enabled: s.wmi_enabled, has_account: !!s.username },
-    job: job ? { ...job } : null,
+    job: job ? { ...job, fresh: undefined } : null,
     result,
     pending,
+    schedule: { ...SCHEDULE_DEF, ...(s.scan_schedule || {}), last_auto: s.scan_last_auto || null },
   });
 }));
 
-router.post('/', ah(async (req, res) => {
+/** Запустить сканирование в фоне; userId = null — по расписанию */
+function startScan(networks, wmi, userId) {
   if (job && !job.finished_at) throw new HttpError(409, 'Сканирование уже идёт');
-  const networks = (str(req.body.networks, 1000) || '').trim();
   const ranges = parseNetworks(networks);
-  job = { started_at: new Date().toISOString(), phase: 'Подготовка', done: 0, total: 0, found: 0, networks, error: null, finished_at: null };
+  job = { started_at: new Date().toISOString(), phase: 'Подготовка', done: 0, total: 0, found: 0, networks, error: null, finished_at: null, auto: !userId };
   const j = job;
-  runScan(networks, ranges, { wmi: !!req.body.wmi }, req.user.id)
+  const p = runScan(networks, ranges, { wmi: !!wmi }, userId)
     .catch((e) => { j.error = e.message; console.error('Сканирование сети:', e); })
     .finally(() => { j.finished_at = new Date().toISOString(); });
-  res.status(202).json({ job });
+  return { job: j, done: p };
+}
+
+router.post('/', ah(async (req, res) => {
+  const networks = (str(req.body.networks, 1000) || '').trim();
+  const { job: j } = startScan(networks, !!req.body.wmi, req.user.id);
+  res.status(202).json({ job: { ...j, fresh: undefined } });
 }));
+
+// ---------------- Сканирование по расписанию ----------------
+// netprobe_settings.scan_schedule: { mode: off | daily | weekly, time: 'ЧЧ:ММ', weekday: 1–7 (пн–вс), wmi }
+const SCHEDULE_DEF = { mode: 'off', time: '01:00', weekday: 1, wmi: false };
+
+router.put('/schedule', ah(async (req, res) => {
+  const b = req.body || {};
+  const v = {
+    mode: ['off', 'daily', 'weekly'].includes(b.mode) ? b.mode : 'off',
+    time: /^\d{1,2}:\d{2}$/.test(String(b.time || '')) ? String(b.time).padStart(5, '0') : SCHEDULE_DEF.time,
+    weekday: Math.min(7, Math.max(1, Number(b.weekday) || 1)),
+    wmi: !!b.wmi,
+  };
+  await query(`INSERT INTO netprobe_settings (id) VALUES (1) ON CONFLICT DO NOTHING`);
+  await query('UPDATE netprobe_settings SET scan_schedule = $1 WHERE id = 1', [JSON.stringify(v)]);
+  await require('../../portal/audit').log(req, 'netscan_schedule', null, v);
+  res.json(v);
+}));
+
+let lastAutoDay = null;
+async function scheduleTick() {
+  const s = await NP.loadSettings();
+  const sch = { ...SCHEDULE_DEF, ...(s.scan_schedule || {}) };
+  if (sch.mode === 'off' || (job && !job.finished_at)) return;
+  const now = new Date();
+  const wd = now.getDay() || 7;
+  if (sch.mode === 'weekly' && wd !== sch.weekday) return;
+  const [hh, mm] = sch.time.split(':').map(Number);
+  const due = new Date(now); due.setHours(hh || 0, mm || 0, 0, 0);
+  if (now < due) return;
+  const today = now.toDateString();
+  const last = s.scan_last_auto ? new Date(s.scan_last_auto) : null;
+  if (lastAutoDay === today || (last && last.toDateString() === today && last >= due)) return;
+  lastAutoDay = today;
+  await query('UPDATE netprobe_settings SET scan_last_auto = now() WHERE id = 1');
+  const networks = (s.scan_networks || localNetworks()).trim();
+  if (!networks) return;
+  const { job: j, done } = startScan(networks, sch.wmi && s.wmi_enabled, null);
+  await done;
+  if (j.error) {
+    console.error('Сканирование по расписанию:', j.error);
+    return;
+  }
+  const fresh = j.fresh || [];
+  if (fresh.length) {
+    const N = require('../../portal/notify');
+    const names = fresh.slice(0, 10).map((m) => [m.ip, m.hostname || m.netbios_name || m.vendor || ''].filter(Boolean).join(' ')).join('\n');
+    await N.emit(await N.usersWhere((u) => u.role === 'superadmin' || (u.modules && u.modules.inventory === 'edit')), 'netscan_new', {
+      title: `Сканирование сети: найдено новой техники — ${fresh.length}`,
+      body: names + (fresh.length > 10 ? `\n… и ещё ${fresh.length - 10}` : ''),
+      link: '/inventory/#/netscan',
+    });
+  }
+}
+
+function startSchedule() {
+  const run = () => scheduleTick().catch((e) => console.error('Сканирование по расписанию:', e.message));
+  setTimeout(run, 2 * 60 * 1000).unref?.();
+  setInterval(run, 60 * 1000).unref?.();
+}
 
 // Отметить решённым: добавлено, дополнено или «оставить как есть». Вернётся, только если изменятся отличия
 router.post('/handled', ah(async (req, res) => {
@@ -364,3 +442,4 @@ router.post('/ignore', ah(async (req, res) => {
 
 module.exports = router;
 module.exports.parseNetworks = parseNetworks;
+module.exports.startSchedule = startSchedule;

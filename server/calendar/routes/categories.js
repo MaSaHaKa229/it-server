@@ -1,8 +1,11 @@
 import { Router } from 'express';
+import { createRequire } from 'node:module';
 import { z } from 'zod';
 import { query, logActivity } from '../db.js';
 import { requireRole } from '../auth.js';
 import { ah, validate, HttpError } from '../validate.js';
+
+const { trackChanges } = createRequire(import.meta.url)('../../portal/audit.js'); // журнал действий администраторов
 
 const r = Router();
 const schema = z.object({
@@ -35,7 +38,7 @@ r.patch('/:id', requireRole('editor'), ah(async (req, res) => {
   res.json({ category: rows[0] });
 }));
 
-r.delete('/:id', requireRole('admin'), ah(async (req, res) => {
+r.delete('/:id', requireRole('admin'), trackChanges([[/^\/\d+$/, 'calendar_category_deleted']]), ah(async (req, res) => {
   const { rows } = await query('DELETE FROM categories WHERE id=$1 RETURNING name', [req.params.id]);
   if (!rows[0]) throw new HttpError(404, 'Категория не найдена');
   await logActivity({ query }, req.user.id, 'delete', 'category', Number(req.params.id), rows[0]);

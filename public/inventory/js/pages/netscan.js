@@ -68,6 +68,23 @@ export async function renderNetscan(root) {
   const wmi = h('input', { type: 'checkbox' });
   const scanBtn = h('button.btn.primary', 'Сканировать');
   const progress = h('div');
+  // Сканирование по расписанию
+  const schMode = h('select', { style: { width: 'auto' } }, [['off', 'выключено'], ['daily', 'каждый день'], ['weekly', 'раз в неделю']].map(([v, l]) => h('option', { value: v }, l)));
+  const schDay = h('select', { style: { width: 'auto' } }, ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'].map((l, i) => h('option', { value: i + 1 }, 'в ' + l.replace(/а$/, 'у'))));
+  const schTime = h('input', { type: 'time', value: '01:00', style: { width: '110px' } });
+  const schWmi = h('input', { type: 'checkbox' });
+  const schInfo = h('div.muted.small', { style: { flexBasis: '100%' } });
+  const schBox = h('div.ns-schedule.row.wrap', { style: { gap: '8px', margin: '10px 0 4px', alignItems: 'center' } },
+    h('strong.small', 'По расписанию:'), schMode, schDay, h('span.small', 'в'), schTime,
+    h('label.check.small', { style: { whiteSpace: 'nowrap' } }, schWmi, 'собирать WMI'),
+    h('button.btn.sm', { onclick: (e) => run(async () => {
+      await api.put('/api/netscan/schedule', { mode: schMode.value, weekday: Number(schDay.value), time: schTime.value, wmi: schWmi.checked });
+      toast(schMode.value === 'off' ? 'Сканирование по расписанию выключено' : 'Расписание сохранено');
+    }, e.currentTarget) }, 'Сохранить'),
+    schInfo);
+  const syncSch = () => { schDay.hidden = schMode.value !== 'weekly'; };
+  schMode.addEventListener('change', syncSch);
+  let schLoaded = false;
 
   scanBtn.addEventListener('click', () => run(async () => {
     await api.post('/api/netscan', { networks: nets.value, wmi: wmi.checked });
@@ -84,11 +101,19 @@ export async function renderNetscan(root) {
       h('label.field.ns-nets', h('span', 'Какие сети сканировать'), nets),
       h('label.check.ns-wmi', wmi, 'Собрать характеристики компьютеров (WMI) — дольше'),
       scanBtn),
+    schBox,
     progress,
     body);
 
   async function load() {
     data = await api.get('/api/netscan');
+    if (!schLoaded && data.schedule) {
+      schLoaded = true;
+      schMode.value = data.schedule.mode; schDay.value = String(data.schedule.weekday); schTime.value = data.schedule.time; schWmi.checked = !!data.schedule.wmi;
+      syncSch();
+      clear(schInfo, 'Сети — из настроек «Сведения из сети» (или сеть сервера). Новая техника попадёт в «Ждут решения», редакторам придёт уведомление.',
+        data.schedule.last_auto ? ` Последний запуск: ${new Date(data.schedule.last_auto).toLocaleString('ru-RU')}.` : '');
+    }
     // Сети: последнего сканирования, иначе — из настроек или сети самого сервера
     if (!nets.value) nets.value = data.result?.networks || data.defaults.networks;
     wmi.disabled = !data.defaults.wmi_enabled || !data.defaults.has_account;

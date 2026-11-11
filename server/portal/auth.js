@@ -7,6 +7,7 @@ const { HttpError, ah, str } = require('../inventory/util');
 const { summary, MODULES } = require('./modules');
 const { syncUser } = require('./sync');
 
+const audit = require('./audit');
 const router = express.Router();
 
 // Защита от перебора паролей: 10 неудачных попыток за 15 минут с одного IP
@@ -52,17 +53,23 @@ router.post('/login', ah(async (req, res) => {
   const u = rows[0];
   if (!u || !(await bcrypt.compare(String(password), u.password_hash))) {
     fail(ip);
+    await audit.log({ ip: req.ip, id: u ? u.id : null }, 'login_failed', null, { username: String(username).trim().slice(0, 100) });
     throw new HttpError(401, 'Неверный логин или пароль');
   }
-  if (!u.is_active) throw new HttpError(403, 'Учётная запись отключена');
+  if (!u.is_active) {
+    await audit.log({ ip: req.ip, id: u.id }, 'login_failed', 'учётная запись отключена', { username: String(username).trim().slice(0, 100) });
+    throw new HttpError(403, 'Учётная запись отключена');
+  }
   attempts.delete(ip);
   await new Promise((ok, ko) => req.session.regenerate((e) => (e ? ko(e) : ok())));
   req.session.userId = u.id;
   await query('UPDATE users SET last_login = now() WHERE id = $1', [u.id]);
+  await audit.log({ ip: req.ip, id: u.id }, 'login', null, { username: u.username });
   res.json({ ok: true });
 }));
 
 router.post('/logout', (req, res) => {
+  if (req.user) audit.log(req, 'logout');
   req.session.destroy(() => {
     res.clearCookie('itdb.sid');
     res.json({ ok: true });
@@ -94,6 +101,7 @@ router.patch('/me', requireAuth, ah(async (req, res) => {
 router.post('/password', requireAuth, ah(async (req, res) => {
   const { current, next } = req.body || {};
   await changePassword(req.user.id, current, next);
+  await audit.log(req, 'password_changed');
   res.json({ ok: true });
 }));
 

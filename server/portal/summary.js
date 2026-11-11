@@ -53,4 +53,32 @@ router.get('/', requireAuth, ah(async (req, res) => {
   res.json(out);
 }));
 
+// Сводка «моё» для главной страницы: мои открытые заявки, мои задачи на сегодня (и просроченные)
+router.get('/my', requireAuth, ah(async (req, res) => {
+  const u = req.user;
+  const out = { tickets: null, tasks: null };
+  if (['executor', 'admin'].includes(level(u, 'helpdesk'))) {
+    out.tickets = await safe(async () => (await query(
+      `SELECT t.id, t.title, t.priority, t.due_at, t.created_at, s.name AS status, s.color AS status_color,
+              r.full_name AS requester, (t.due_at IS NOT NULL AND t.due_at < now()) AS overdue
+         FROM helpdesk.tickets t JOIN helpdesk.statuses s ON s.id = t.status_id JOIN helpdesk.requesters r ON r.id = t.requester_id
+        WHERE t.assignee_id = $1 AND NOT s.is_closed
+        ORDER BY (t.due_at IS NOT NULL AND t.due_at < now()) DESC, t.due_at NULLS LAST,
+                 array_position(ARRAY['critical','high','normal','low'], t.priority), t.created_at
+        LIMIT 50`, [u.id])).rows);
+  }
+  if (level(u, 'calendar') !== 'none') {
+    out.tasks = await safe(async () => (await query(
+      `SELECT t.id, t.title, t.start_at, t.end_at, t.all_day, t.status, t.priority, c.name AS category, c.color AS category_color,
+              ((CASE WHEN t.all_day THEN t.end_at + interval '1 day' ELSE t.end_at END) < now()) AS overdue
+         FROM calendar.tasks t JOIN calendar.task_assignees a ON a.task_id = t.id AND a.user_id = $1
+         LEFT JOIN calendar.categories c ON c.id = t.category_id
+        WHERE t.status IN ('todo', 'in_progress')
+          AND t.start_at < date_trunc('day', now()) + interval '1 day'
+        ORDER BY ((CASE WHEN t.all_day THEN t.end_at + interval '1 day' ELSE t.end_at END) < now()) DESC, t.start_at
+        LIMIT 50`, [u.id])).rows);
+  }
+  res.json(out);
+}));
+
 module.exports = router;

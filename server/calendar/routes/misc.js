@@ -1,8 +1,11 @@
 import { Router } from 'express';
+import { createRequire } from 'node:module';
 import { query, logActivity } from '../db.js';
 import { requireRole } from '../auth.js';
 import { ah } from '../validate.js';
 import { taskCond } from '../scope.js';
+
+const { trackChanges } = createRequire(import.meta.url)('../../portal/audit.js'); // журнал действий администраторов
 
 const r = Router();
 
@@ -51,7 +54,7 @@ r.get('/settings/colors', ah(async (req, res) => {
   const { rows } = await query("SELECT value FROM settings WHERE key = 'colors'");
   res.json({ colors: rows[0]?.value || {} });
 }));
-r.put('/settings/colors', requireRole('admin'), ah(async (req, res) => {
+r.put('/settings/colors', requireRole('admin'), trackChanges([[/colors$/, 'calendar_colors']]), ah(async (req, res) => {
   const src = req.body?.colors || {};
   const out = {};
   for (const [g, keys] of Object.entries(COLOR_GROUPS)) {

@@ -67,10 +67,26 @@ NetBIOS, ARP, SNMP — на чистом Node.js (`probes.js`); AD и WMI — в
 опознание, по желанию WMI; результат — `netscan_last` (одна строка), скрытые — `netscan_ignore`; совпадения с базой
 считаются при каждом GET (MAC/серийный → имя → IP); «Дополнить» использует `renderCompare`/`applyToDevice` из netinfo.js.
 «Ждут решения» — `netscan_hosts` (state pending/done, handled_sig — подпись отличий на момент решения).
-**Уведомления** (колокольчик в шапке всех разделов) — `public/shared/bell.js` (самостоятельный модуль; React-клиенты
-грузят его динамически), API `server/portal/notifications.js` (`/api/notifications`); сейчас один вид — расходники
-принтеров/МФУ: опрос SNMP раз в 2 ч `netprobe/supplies.js` → `printer_supplies`, порог `netprobe_settings.supply_threshold`,
-отключение — `public.users.notify_prefs` (JSONB, по умолчанию включено). Новые виды уведомлений добавлять туда же.
+**Уведомления** — `server/portal/notify.js`: список видов `KINDS` (кому доступен, событие или вычисляемое состояние),
+`emit(userIds, kind, {title, body, link}, except)` для событий (таблица `public.notifications` + письмо), вычисляемые
+(сроки заявок/задач, расходники `netprobe/supplies.js`, гарантия — доп. поля-даты со словами «гарантия/лиценз/срок…»,
+«не в сети» — `device_seen`, инвентаризация) считаются при запросе; на почту — раз в 15 мин, отправленные — `notify_sent`.
+Настройки пользователя — `users.notify_prefs` `{kind: {site, email}}`; пороги — `portal_settings.notify`.
+Почта — `server/portal/mail.js` (настройки в `portal_settings.smtp`, пароль зашифрован; иначе SMTP_* из .env), её же
+использует helpdesk. Клиент — `public/shared/bell.js` (колокольчик, окно настроек, `mountHeaderTools` = поиск + колокольчик;
+React-клиенты грузят его динамически по адресу-переменной, иначе Vite не соберёт), общий поиск — `public/shared/search.js`
++ `server/portal/search.js` (права: инвентарь `perms`, календарь `scope.js`, документы `access.js`).
+**Администрирование** (`/admin#users|notify|backup|audit`, `public/portal/admin-extra.js`): резервные копии —
+`server/portal/backup.js` (свой формат `*.itbak`: gzip JSON-строк `to_jsonb` всех таблиц 4 схем без сессий; восстановление
+в одной транзакции: FK → DEFERRABLE, `DISABLE TRIGGER USER`, TRUNCATE, `jsonb_populate_recordset`, setval; перед ним —
+копия текущего состояния; расписание и папка — `portal_settings.backup`); журнал — `server/portal/audit.js`
+(`log(req, action, object, details)`, `trackChanges([[путь, действие]])` для админских маршрутов), таблица `audit_log`.
+**Helpdesk**: отчёты `server/helpdesk/reports.js` (+ Excel), автоназначение `server/helpdesk/autoassign.js` (`assign_rules`,
+пропускает отсутствующих по `calendar.absences`), страницы — `public/helpdesk-staff/extra.js`.
+**Инвентаризация** — `server/inventory/routes/audits.js`, `public/inventory/js/pages/audits.js` (`inventory_audits`,
+`inventory_audit_items` со снимком устройства; завершение пишет `device_history` action `audit`).
+**Сканирование по расписанию** — `netprobe_settings.scan_schedule`, `scan.js` `startSchedule()`; новые — уведомление `netscan_new`.
+Главная — `public/portal/home.js` + `/api/summary/my` (мои заявки, мои задачи на сегодня, уведомления).
 Значения для карточки — `netprobe/format.js`: шаблоны (`netprobe_settings.formats`) и замены (`netprobe_replacements`). Поиск в AD: база из настроек → домен контроллера → GC:// леса
 (ReferralChasing=All; у пользователя была ошибка «A referral was returned from the server»). Без Windows AD/WMI не работают: для проверки
 `NETPROBE_FAKE_DIR=<папка>` подставляет ответы из `<ad|wmi>[-ИМЯ].json`. На реальной Windows/AD не проверялось.

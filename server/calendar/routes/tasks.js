@@ -5,6 +5,7 @@ import { requireRole } from '../auth.js';
 import { ah, validate, HttpError } from '../validate.js';
 import { ensureOccurrences, EVERY, validTz } from '../series.js';
 import { taskCond } from '../scope.js';
+import { taskAssigned, taskCommented } from '../notify.js';
 
 const r = Router();
 
@@ -227,6 +228,7 @@ r.post('/', requireRole('editor'), ah(async (req, res) => {
     }
     return Promise.all(ids.map((id) => fetchTask(db, id)));
   });
+  taskAssigned(created[0].id, d.assignees, req.user.id, created.length - 1);
   res.status(201).json({ task: created[0], tasks: created });
 }));
 
@@ -245,6 +247,7 @@ async function createSeries(d, user) {
   });
   await ensureOccurrences(null, null, seriesId);
   const { rows } = await query(`${TASK_SELECT} WHERE t.series_id = $1 ORDER BY t.series_idx LIMIT 1`, [seriesId]);
+  if (rows[0]) taskAssigned(rows[0].id, d.assignees, user.id);
   return { task: rows[0] || null, tasks: rows, series_id: seriesId };
 }
 
@@ -254,9 +257,14 @@ const LABELS = { title: 'название', description: 'описание', sta
 r.patch('/:id', requireRole('editor'), ah(async (req, res) => {
   const id = Number(req.params.id);
   const d = validate(taskBody.innerType().omit({ repeat: true }).partial(), req.body);
+  let added = [];
   const task = await withTransaction(async (db) => {
     const { rows: [old] } = await db.query('SELECT * FROM tasks WHERE id=$1 FOR UPDATE', [id]);
     if (!old) throw new HttpError(404, 'Задача не найдена');
+    if (d.assignees) {
+      const was = new Set((await db.query('SELECT user_id FROM task_assignees WHERE task_id = $1', [id])).rows.map((r) => r.user_id));
+      added = [...new Set(d.assignees)].filter((u) => !was.has(u));
+    }
     const start = d.start_at ?? old.start_at;
     const end = d.end_at ?? old.end_at;
     if (new Date(end) < new Date(start)) throw new HttpError(400, 'Окончание не может быть раньше начала');
@@ -281,6 +289,7 @@ r.patch('/:id', requireRole('editor'), ah(async (req, res) => {
     }
     return fetchTask(db, id);
   });
+  taskAssigned(id, added, req.user.id);
   res.json({ task });
 }));
 
@@ -356,6 +365,7 @@ r.post('/:id/comments', requireRole('editor'), ah(async (req, res) => {
     [id, req.user.id, body, req.user.name, req.user.color]
   );
   await logActivity({ query }, req.user.id, 'comment', 'task', id, {});
+  taskCommented(id, req.user, body);
   res.status(201).json({ comment: rows[0] });
 }));
 

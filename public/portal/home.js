@@ -1,5 +1,5 @@
-// Главная страница портала: плитки разделов, доступных пользователю
-import { h, clear } from '/shared/ui.js';
+// Главная страница портала: сводка «моё» (заявки, задачи на сегодня, уведомления) и плитки разделов
+import { h, clear, statusPill } from '/shared/ui.js';
 import { api, loadMe, portalTopbar, helpdeskUrl } from './shell.js';
 
 const ICONS = {
@@ -20,7 +20,7 @@ if (/^#\/(devices|workplaces|catalog|settings|users|import)/.test(location.hash)
 async function main() {
   const app = document.getElementById('app');
   const me = await loadMe();
-  const summary = await api.get('/api/summary').catch(() => ({}));
+  const [summary, my] = await Promise.all([api.get('/api/summary').catch(() => ({})), api.get('/api/summary/my').catch(() => ({}))]);
   const a = me.access;
   const s = summary;
   const params = new URLSearchParams(location.search);
@@ -67,7 +67,9 @@ async function main() {
       h('div.breadcrumbs', h('span', 'ИТ-портал')),
       h('div.page-head', h('div',
         h('h1', `${greet}, ${(me.user.full_name || me.user.username).split(' ').slice(-2).join(' ')}`),
-        h('div.muted', { style: { marginTop: '4px' } }, 'Выберите раздел'))),
+        h('div.muted', { style: { marginTop: '4px' } }, 'Сегодня ' + new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })))),
+      myBoard(my),
+      h('h2.home-sec', 'Разделы'),
       tiles.length
         ? h('div.tiles', tiles.map((t) => h('a.tile', { href: t.href, style: { '--tile': t.color } },
           h('div.tile-icon', { html: ICONS[t.key] }),
@@ -81,6 +83,64 @@ async function main() {
         h('div', h('strong', 'Сайт заявок для сотрудников предприятия'),
           h('div.muted.small', 'Сотрудники, не входящие в службу ИТ, регистрируются по рабочей почте и оставляют заявки здесь:')),
         h('a.btn', { href: helpdeskUrl(me), target: '_blank', rel: 'noopener' }, helpdeskUrl(me).replace(/^https?:\/\//, '')))))));
+}
+
+// ---------------- Сводка «моё» ----------------
+const PRIO = { critical: 'критический', high: 'высокий' };
+const fmtDue = (v) => new Date(v).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const fmtTime = (t) => (t.all_day ? 'весь день' : new Date(t.start_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }));
+
+function card(title, href, count, body, extra) {
+  return h('section.home-card',
+    h('div.home-card-head', h('h3', title, count != null ? h('span.badge', String(count)) : null), h('span.spacer'),
+      extra || null, href ? h('a.small', { href }, 'Открыть →') : null),
+    h('div.home-card-body', body));
+}
+
+function myBoard(my) {
+  const cards = [];
+  if (my.tickets) {
+    const list = my.tickets;
+    cards.push(card('Мои заявки', '/helpdesk/#/?view=mine', list.length, list.length
+      ? list.slice(0, 8).map((t) => h('a.home-row' + (t.overdue ? '.over' : ''), { href: `/helpdesk/#/tickets/${t.id}` },
+        h('div.home-row-main', h('b', `#${t.id} ${t.title}`),
+          h('div.small.muted', [t.requester, PRIO[t.priority] ? `приоритет ${PRIO[t.priority]}` : ''].filter(Boolean).join(' · '))),
+        h('div.home-row-side', statusPill(t.status, t.status_color),
+          t.due_at ? h('div.small' + (t.overdue ? '.over-text' : '.muted'), (t.overdue ? 'просрочена: ' : 'срок ') + fmtDue(t.due_at)) : null)))
+        .concat(list.length > 8 ? [h('a.home-more', { href: '/helpdesk/#/?view=mine' }, `и ещё ${list.length - 8}`)] : [])
+      : h('div.home-empty', 'Открытых заявок на вас нет.')));
+  }
+  if (my.tasks) {
+    const list = my.tasks;
+    const over = list.filter((t) => t.overdue).length;
+    cards.push(card('Мои задачи на сегодня', '/calendar/', list.length, list.length
+      ? list.slice(0, 8).map((t) => h('a.home-row' + (t.overdue ? '.over' : ''), { href: `/calendar/#/calendar?task=${t.id}` },
+        h('div.home-row-main', h('b', t.title),
+          h('div.small.muted', [t.category, t.status === 'in_progress' ? 'в работе' : ''].filter(Boolean).join(' · '))),
+        h('div.home-row-side.small' + (t.overdue ? '.over-text' : '.muted'),
+          t.overdue ? 'просрочена' : fmtTime(t))))
+        .concat(list.length > 8 ? [h('a.home-more', { href: '/calendar/' }, `и ещё ${list.length - 8}`)] : [])
+      : h('div.home-empty', 'На сегодня задач нет.'), over ? h('span.lozenge.red', `просрочено: ${over}`) : null));
+  }
+  const notes = h('div.home-card-body', h('div.home-empty', 'Загрузка…'));
+  const notesCard = h('section.home-card',
+    h('div.home-card-head', h('h3', 'Уведомления'), h('span.spacer'),
+      h('a.small', { href: '#', onclick: (e) => { e.preventDefault(); import('/shared/bell.js').then((m) => m.openNotifySettings()); } }, 'Настройки')),
+    notes);
+  cards.push(notesCard);
+  const loadNotes = async () => {
+    try {
+      const m = await import('/shared/bell.js');
+      const d = await m.getNotifications();
+      const items = [...d.events.filter((x) => !x.read), ...d.states];
+      clear(notes, items.length ? items.slice(0, 10).map((x) => m.itemEl(x)) : h('div.home-empty', 'Новых уведомлений нет.'),
+        items.length > 10 ? h('div.home-more', `и ещё ${items.length - 10} — в колокольчике вверху`) : null,
+        d.events.some((x) => !x.read) ? h('button.btn.sm.subtle', { style: { margin: '8px 12px' }, onclick: async () => { await m.markRead('all'); loadNotes(); document.dispatchEvent(new CustomEvent('nb-changed')); } }, 'Отметить все прочитанными') : null);
+    } catch (e) { clear(notes, h('div.home-empty', e.message)); }
+  };
+  loadNotes();
+  document.addEventListener('nb-changed', loadNotes);
+  return h('div.home-board', { style: { gridTemplateColumns: `repeat(${cards.length}, minmax(0, 1fr))` } }, cards);
 }
 
 main().catch((e) => {

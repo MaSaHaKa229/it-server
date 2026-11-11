@@ -22,6 +22,7 @@ async function loadSettings({ withPassword = false } = {}) {
     ad_enabled: s.ad_enabled, wmi_enabled: s.wmi_enabled, snmp_enabled: s.snmp_enabled,
     ad_server: s.ad_server, ad_base_dn: s.ad_base_dn, username: s.username, has_password: !!s.password_enc,
     snmp_communities: s.snmp_communities, scan_networks: s.scan_networks || '', updated_at: s.updated_at || null,
+    scan_schedule: s.scan_schedule || { mode: 'off' }, scan_last_auto: s.scan_last_auto || null,
     supply_threshold: s.supply_threshold ?? 15,
   };
   if (withPassword) {
@@ -35,7 +36,7 @@ router.get('/settings', requireSuperadmin, ah(async (req, res) => {
   res.json({ settings: await loadSettings(), platform: P.IS_WIN || process.env.NETPROBE_FAKE_DIR ? 'windows' : process.platform });
 }));
 
-router.put('/settings', requireSuperadmin, ah(async (req, res) => {
+router.put('/settings', requireSuperadmin, require('../../portal/audit').trackChanges([[/^\/settings$/, 'netprobe_settings']]), ah(async (req, res) => {
   const b = req.body || {};
   const username = str(b.username, 200) || '';
   if (username && !/^[^\s"]+$/.test(username)) throw new HttpError(400, 'Логин без пробелов и кавычек, например CORP\\ivanov или ivanov@corp.local');
@@ -281,6 +282,7 @@ router.post('/device/:id/refresh', requireStaff, ah(async (req, res) => {
       `INSERT INTO device_netinfo (device_id, data, collected_at, collected_by) VALUES ($1, $2, now(), $3)
        ON CONFLICT (device_id) DO UPDATE SET data = EXCLUDED.data, collected_at = now(), collected_by = EXCLUDED.collected_by`,
       [id, JSON.stringify(data), req.user.id]);
+    if (sections.network?.data?.alive) await markSeen([id]);
   });
   res.status(202).json({ job: publicJob(job) });
 }));
@@ -342,6 +344,14 @@ router.delete('/replacements/:id', requireStaff, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/** Техника ответила в сети — для уведомления «давно не в сети» */
+async function markSeen(ids) {
+  const list = [...new Set(ids.map(Number).filter((n) => n > 0))];
+  if (!list.length) return;
+  await query(`INSERT INTO device_seen (device_id, last_seen) SELECT unnest($1::int[]), now()
+               ON CONFLICT (device_id) DO UPDATE SET last_seen = now()`, [list]);
+}
+
 module.exports = router;
 module.exports.suggestions = suggestions;
 module.exports.loadFormatOpts = F.loadFormatOpts;
@@ -349,3 +359,4 @@ module.exports.loadSettings = loadSettings;
 module.exports.normalizeWmi = normalizeWmi;
 module.exports.communities = communities;
 module.exports.wmiError = wmiError;
+module.exports.markSeen = markSeen;

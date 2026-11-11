@@ -35,6 +35,8 @@ async function pollAll() {
            supplies = CASE WHEN EXCLUDED.error IS NULL THEN EXCLUDED.supplies ELSE printer_supplies.supplies END,
            model = COALESCE(EXCLUDED.model, printer_supplies.model), error = EXCLUDED.error, checked_at = now()`,
         [d.id, JSON.stringify(r?.supplies || []), r?.model || null, r ? null : 'Не ответил по SNMP']);
+      if (r) await query(`INSERT INTO device_seen (device_id, last_seen) VALUES ($1, now())
+                          ON CONFLICT (device_id) DO UPDATE SET last_seen = now()`, [d.id]);
     });
     return { polled: list.length };
   })().finally(() => { running = null; });
@@ -81,4 +83,9 @@ async function supplyAlerts(P) {
   return { threshold, items };
 }
 
-module.exports = { start, pollAll, supplyAlerts };
+async function threshold() {
+  const s = await NP.loadSettings();
+  return Number.isFinite(s.supply_threshold) ? s.supply_threshold : 15;
+}
+
+module.exports = { start, pollAll, supplyAlerts, threshold };

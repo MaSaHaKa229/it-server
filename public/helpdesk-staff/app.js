@@ -2,6 +2,7 @@
 import { h, clear, makeApi, modal, run, toast, confirmDialog, avatar, fmtDateTime, relTime, toLocalInput, statusPill, parseHash, sortHead, sortRows, savedSort } from '/shared/ui.js';
 import { thread, fileList, fileInput, historyList } from '/shared/thread.js';
 import { loadMe, portalTopbar, helpdeskUrl } from '/portal/shell.js';
+import { renderReports, renderRules } from './extra.js';
 
 const api = makeApi('/helpdesk/api', {
   onUnauthorized: () => { location.href = '/login?next=' + encodeURIComponent('/helpdesk/' + location.hash); },
@@ -36,11 +37,11 @@ async function loadMeta() { meta = await api.get('/meta'); }
 
 // Каркас как в ИТ-инвентаре: шапка с разделами, боковая панель с быстрыми фильтрами
 function layout(active, content) {
-  const settingsPages = ['categories', 'statuses', 'requesters', 'settings'];
+  const settingsPages = ['reports', 'rules', 'categories', 'statuses', 'requesters', 'settings'];
   clear(header, portalTopbar(me, settingsPages.includes(active) ? active : 'list', {
     section: 'Заявки', sectionHref: '#/',
-    nav: [['list', '#/', 'Заявки'],
-      ...(meta.me.isAdmin ? [['categories', '#/categories', 'Виды проблем'], ['statuses', '#/statuses', 'Статусы'],
+    nav: [['list', '#/', 'Заявки'], ['reports', '#/reports', 'Отчёты'],
+      ...(meta.me.isAdmin ? [['rules', '#/rules', 'Автоназначение'], ['categories', '#/categories', 'Виды проблем'], ['statuses', '#/statuses', 'Статусы'],
         ['requesters', '#/requesters', 'Сотрудники'], ['settings', '#/settings', 'Настройки']] : [])],
     onBurger: () => side.classList.toggle('open'),
   }));
@@ -54,7 +55,9 @@ function layout(active, content) {
       QUICK.map(([k, label]) => link(k, '#/?view=' + k, label,
         { open: counts.open, mine: counts.mine, unassigned: counts.unassigned, overdue: counts.overdue }[k],
         k === 'overdue' || k === 'unassigned'))),
+    h('div.side-section', h('h4', 'Анализ'), link('reports', '#/reports', 'Отчёты')),
     meta.me.isAdmin ? h('div.side-section', h('h4', 'Настройка'),
+      link('rules', '#/rules', 'Автоназначение'),
       link('categories', '#/categories', 'Виды проблем'),
       link('statuses', '#/statuses', 'Статусы'),
       link('requesters', '#/requesters', 'Сотрудники'),
@@ -70,6 +73,8 @@ async function route() {
   window.scrollTo(0, 0);
   try {
     if (parts[0] === 'tickets' && parts[1]) await renderTicket(Number(parts[1]));
+    else if (parts[0] === 'reports') await renderReports({ layout, api, meta });
+    else if (parts[0] === 'rules' && meta.me.isAdmin) { await loadMeta(); await renderRules({ layout, api, meta }); }
     else if (parts[0] === 'categories' && meta.me.isAdmin) await renderCategories();
     else if (parts[0] === 'statuses' && meta.me.isAdmin) await renderStatuses();
     else if (parts[0] === 'requesters' && meta.me.isAdmin) await renderRequesters();

@@ -50,41 +50,13 @@ async function setSetting(key, value) {
 }
 
 // ---------- почта (необязательно: если SMTP не настроен, письма не отправляются) ----------
-let transport = null;
-const mailEnabled = () => !!process.env.SMTP_HOST;
-function getTransport() {
-  if (!mailEnabled()) return null;
-  if (!transport) {
-    const nodemailer = require('nodemailer');
-    transport = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 25),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' } : undefined,
-      // Во внутренней сети часто самоподписанные сертификаты
-      tls: { rejectUnauthorized: process.env.SMTP_TLS_REJECT_UNAUTHORIZED === 'true' },
-    });
-  }
-  return transport;
-}
+// Настройки почты — общие для портала (server/portal/mail.js): из Администрирования или из .env
+const mail = require('../portal/mail');
+const mailEnabled = () => mail.enabled();
 /** Отправить письмо; ошибки только пишутся в журнал, чтобы не ломать работу с заявкой */
-async function sendMail(to, subject, text) {
-  const t = getTransport();
-  if (!t || !to) return false;
-  try {
-    await t.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER || 'helpdesk@localhost', to, subject, text });
-    return true;
-  } catch (e) {
-    console.error('Не удалось отправить письмо:', e.message);
-    return false;
-  }
-}
+const sendMail = (to, subject, text) => mail.send(to, subject, text);
 /** Письмо, которое обязательно должно уйти (код подтверждения) */
-async function sendMailStrict(to, subject, text) {
-  const t = getTransport();
-  if (!t) throw Object.assign(new Error('Почта не настроена'), { status: 500 });
-  await t.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER || 'helpdesk@localhost', to, subject, text });
-}
+const sendMailStrict = (to, subject, text) => mail.sendStrict(to, subject, text);
 
 const helpdeskUrl = () => (process.env.HELPDESK_URL || `http://localhost:${process.env.HELPDESK_PORT || 3100}`).replace(/\/$/, '');
 const portalUrl = () => (process.env.PORTAL_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');

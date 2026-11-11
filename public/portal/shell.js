@@ -41,12 +41,9 @@ export function userMenu(me) {
  * для остальных — свой раздел и его страницы.
  */
 export function portalTopbar(me, active, opts = {}) {
-  // Колокольчик уведомлений — тем, у кого есть доступ к инвентарю (расходники принтеров)
-  let right = null;
-  if (me.access.inventory !== 'none') {
-    right = h('span');
-    import('/shared/bell.js').then((m) => m.mountBell(right)).catch(() => {});
-  }
+  // Общий поиск по порталу и колокольчик уведомлений
+  const right = h('span', { style: { display: 'inline-flex', alignItems: 'center' } });
+  import('/shared/bell.js').then((m) => m.mountHeaderTools(right)).catch(() => {});
   return topbar({
     right,
     section: opts.section, sectionHref: opts.sectionHref,
@@ -64,19 +61,12 @@ export async function logout() {
   location.href = '/login';
 }
 
-/** Настройки уведомлений (в профиле): галочка сохраняется сразу */
+/** Настройки уведомлений (в профиле): кнопка открывает окно настроек */
 function notifySettingsBox() {
-  const cb = h('input', { type: 'checkbox', disabled: true });
-  const box = h('div', h('h3', { style: { marginTop: '8px' } }, 'Уведомления'),
-    h('label.check', cb, 'Уведомлять о заканчивающихся расходниках принтеров и МФУ (колокольчик в шапке)'));
-  import('/shared/bell.js').then(async (m) => {
-    const d = await m.getNotifications();
-    cb.checked = d.prefs.printer_supplies; cb.disabled = false;
-    cb.addEventListener('change', () => m.setNotifySetting('printer_supplies', cb.checked)
-      .then(() => toast(cb.checked ? 'Уведомления о расходниках включены' : 'Уведомления о расходниках выключены'))
-      .catch((e) => toast(e.message, 'err')));
-  }).catch(() => {});
-  return box;
+  return h('div', h('h3', { style: { marginTop: '8px' } }, 'Уведомления'),
+    h('button.btn', { type: 'button', onclick: () => import('/shared/bell.js').then((m) => m.openNotifySettings()).catch((e) => toast(e.message, 'err')) },
+      'Настройки уведомлений…'),
+    h('p.hint', 'Что показывать в колокольчике и что присылать на почту: заявки, задачи, расходники, гарантия и т. д.'));
 }
 
 export function profileDialog(me) {
@@ -110,7 +100,7 @@ export function profileDialog(me) {
       h('div.form-grid',
         h('label.field', h('span', 'Новый пароль (от 8 символов)'), next),
         h('label.field', h('span', 'Повторите новый пароль'), next2)),
-      me.access.inventory !== 'none' ? notifySettingsBox() : null),
+      notifySettingsBox()),
     footer: [h('button.btn.subtle', { onclick: () => m.close() }, 'Отмена'), save],
   });
 }

@@ -20,6 +20,11 @@ router.use((req, res, next) => {
   if (level(req.user, 'helpdesk') === 'none') return res.status(403).json({ error: 'Нет доступа к заявкам' });
   next();
 });
+// Журнал действий администратора helpdesk
+router.use(require('../portal/audit').trackChanges([
+  [/^\/categories(\/|$)/, 'hd_category'], [/^\/statuses(\/|$)/, 'hd_status'],
+  [/^\/requesters(\/|$)/, 'hd_requester'], [/^\/settings$/, 'hd_settings'],
+]));
 const isAdmin = (req) => level(req.user, 'helpdesk') === 'admin';
 const requireAdmin = (req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ error: 'Нужны права администратора helpdesk' }));
 const me = (req) => ({ userId: req.user.id });
@@ -220,7 +225,7 @@ router.patch('/tickets/:id', ah(async (req, res) => {
   });
   await calendarSync.syncTicket(id, req.user.id);
   if (events.includes('status')) notify.statusChanged(id).catch(() => {});
-  if (events.includes('assigned')) notify.assigned(id).catch(() => {});
+  if (events.includes('assigned')) notify.assigned(id, req.user.id).catch(() => {});
   res.json(await loadTicket(id));
 }));
 
@@ -460,5 +465,67 @@ router.use((err, req, res, next) => {
   }
   next(err);
 });
+
+// ---------- отчёты (все сотрудники helpdesk) ----------
+router.use('/reports', require('./reports'));
+
+// ---------- правила автоназначения (администратор helpdesk) ----------
+const audit = require('../portal/audit');
+const RULES_SQL = `
+  SELECT r.*, c.name AS category_name, l.value AS department_name,
+         CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS assignee_name
+    FROM assign_rules r
+    LEFT JOIN categories c ON c.id = r.category_id
+    LEFT JOIN public.lookups l ON l.id = r.department_id
+    LEFT JOIN public.users u ON u.id = r.assignee_id`;
+
+router.get('/rules', requireAdmin, ah(async (req, res) => {
+  const [rules, deps] = await Promise.all([
+    query(`${RULES_SQL} ORDER BY r.sort, r.id`),
+    query(`SELECT id, value FROM public.lookups WHERE kind = 'department' ORDER BY value`),
+  ]);
+  res.json({ rules: rules.rows, departments: deps.rows });
+}));
+
+function ruleBody(b) {
+  const mode = b.mode === 'least_loaded' ? 'least_loaded' : 'user';
+  const assignee = mode === 'user' ? intOrNull(b.assignee_id) : null;
+  if (mode === 'user' && !assignee) throw new HttpError(400, 'Выберите исполнителя');
+  const pool = Array.isArray(b.pool) ? [...new Set(b.pool.map(Number).filter((n) => n > 0))] : [];
+  return [intOrNull(b.category_id), intOrNull(b.department_id), mode, assignee, pool, Number(b.sort) || 0, b.is_active !== false];
+}
+
+router.post('/rules', requireAdmin, ah(async (req, res) => {
+  const v = ruleBody(req.body || {});
+  const { rows } = await query(
+    `INSERT INTO assign_rules (category_id, department_id, mode, assignee_id, pool, sort, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, v);
+  await audit.log(req, 'hd_rule', 'создано', { id: rows[0].id });
+  res.status(201).json({ id: rows[0].id });
+}));
+
+router.put('/rules/:id', requireAdmin, ah(async (req, res) => {
+  const v = ruleBody(req.body || {});
+  const { rowCount } = await query(
+    `UPDATE assign_rules SET category_id = $1, department_id = $2, mode = $3, assignee_id = $4, pool = $5, sort = $6, is_active = $7
+      WHERE id = $8`, [...v, intOrNull(req.params.id)]);
+  if (!rowCount) throw new HttpError(404, 'Правило не найдено');
+  await audit.log(req, 'hd_rule', 'изменено', { id: intOrNull(req.params.id) });
+  res.json({ ok: true });
+}));
+
+router.delete('/rules/:id', requireAdmin, ah(async (req, res) => {
+  await query('DELETE FROM assign_rules WHERE id = $1', [intOrNull(req.params.id)]);
+  await audit.log(req, 'hd_rule', 'удалено', { id: intOrNull(req.params.id) });
+  res.json({ ok: true });
+}));
+
+// Проверка: кому ушла бы заявка с таким видом и отделом
+router.post('/rules/test', requireAdmin, ah(async (req, res) => {
+  const cat = intOrNull(req.body.category_id)
+    ? (await query('SELECT * FROM categories WHERE id = $1', [intOrNull(req.body.category_id)])).rows[0] : null;
+  const r = await require('./autoassign').pick({ query }, { category: cat || null, departmentId: intOrNull(req.body.department_id) });
+  res.json(r || { assigneeId: null });
+}));
 
 module.exports = router;

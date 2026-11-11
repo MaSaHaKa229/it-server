@@ -34,7 +34,7 @@ router.post('/', (req, res) => {
   res.status(400).json({ error: 'Пользователи создаются на главной странице портала: «Администрирование»' });
 });
 
-router.put('/:id', ah(async (req, res) => {
+router.put('/:id', require('../../portal/audit').trackChanges([[/^\/\d+$/, 'inventory_user']]), ah(async (req, res) => {
   const id = intOrNull(req.params.id);
   const b = req.body;
   const cur = (await query('SELECT role FROM users WHERE id = $1', [id])).rows[0];

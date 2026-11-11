@@ -11,6 +11,7 @@ import { openCreateDevice } from './pages/create.js';
 import { renderImport } from './pages/import.js';
 import { renderWorkplaces, renderWorkplace } from './pages/workplaces.js';
 import { renderNetscan } from './pages/netscan.js';
+import { renderAudits, renderAudit } from './pages/audits.js';
 
 const app = document.getElementById('app');
 let mainEl, sidebarEl, navEl;
@@ -42,6 +43,8 @@ async function route() {
     else if (section === 'workplaces') await renderWorkplaces(mainEl);
     else if (section === 'import' && isStaff()) await renderImport(mainEl);
     else if (section === 'netscan' && isStaff()) await renderNetscan(mainEl);
+    else if (section === 'audits' && sub && isStaff()) await renderAudit(mainEl, Number(sub));
+    else if (section === 'audits' && isStaff()) await renderAudits(mainEl);
     else if (section === 'catalog' && isStaff()) await renderCatalog(mainEl, sub);
     else if (section === 'settings' && isStaff()) await renderSettings(mainEl, sub);
     else if (section === 'users' && isSuper()) await renderUsers(mainEl);
@@ -68,6 +71,7 @@ function renderShell() {
     ['devices', '#/devices', 'Техника'],
     ['workplaces', '#/workplaces', 'Рабочие места'],
     isStaff() && ['netscan', '#/netscan', 'Сканирование сети'],
+    isStaff() && ['audits', '#/audits', 'Инвентаризация'],
     isStaff() && ['import', '#/import', 'Импорт'],
     isStaff() && ['catalog', '#/catalog', 'Справочники'],
     isStaff() && ['settings', '#/settings', 'Настройки'],
@@ -76,15 +80,12 @@ function renderShell() {
   navEl = h('nav.topnav.row', { style: { gap: '2px' } },
     links.map(([k, href, label]) => h('a', { href, 'data-k': k }, label)));
 
-  const gsearch = h('input', { type: 'search', placeholder: 'Поиск техники' });
-  gsearch.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { navigate('/devices?q=' + encodeURIComponent(gsearch.value.trim())); gsearch.value = ''; gsearch.blur(); }
-  });
 
   const userName = h('span', { style: { color: 'var(--n500)', fontWeight: 500, marginRight: '4px', whiteSpace: 'nowrap' } }, me.full_name || me.username);
   const avatarBtn = avatar(me.full_name || me.username);
   const bellHost = h('span');
-  import('/shared/bell.js').then((m) => m.mountBell(bellHost)).catch(() => {});
+  bellHost.style.display = 'inline-flex'; bellHost.style.alignItems = 'center';
+  import('/shared/bell.js').then((m) => m.mountHeaderTools(bellHost)).catch(() => {});
   avatarBtn.addEventListener('click', () => menu(avatarBtn, [
     { head: (me.full_name || me.username) + ' · ' + ROLE_LABEL[me.role] },
     { head: 'Разделы' },
@@ -102,7 +103,7 @@ function renderShell() {
     h('a.brand', { href: '#/', style: { marginLeft: '-4px' } }, h('span.muted', '/'), h('span', 'ИТ Инвентарь')),
     navEl,
     isStaff() ? h('button.btn.primary', { style: { marginLeft: '8px' }, onclick: () => openCreateDevice() }, icon('plus'), 'Создать') : null,
-    h('div.search-global', icon('search'), gsearch),
+    // Поиск — общий поиск портала (техника, заявки, задачи, документы) в bellHost
     h('span', { style: { width: '8px' } }),
     bellHost,
     userName,
@@ -113,23 +114,10 @@ function renderShell() {
   clear(app, topbar, h('div.layout', sidebarEl, mainEl));
 }
 
-/** Настройки уведомлений: галочка сохраняется сразу */
+/** Настройки уведомлений — общее окно портала */
 async function notifySettings() {
-  const { getNotifications, setNotifySetting } = await import('/shared/bell.js');
-  const d = await getNotifications();
-  const cb = h('input', { type: 'checkbox', checked: d.prefs.printer_supplies });
-  cb.addEventListener('change', () => run(async () => {
-    await setNotifySetting('printer_supplies', cb.checked);
-    toast(cb.checked ? 'Уведомления о расходниках включены' : 'Уведомления о расходниках выключены');
-  }));
-  const m = modal({
-    title: 'Настройки уведомлений', size: 'narrow',
-    body: h('div.stack', { style: { gap: '10px' } },
-      h('label.check', cb, 'Уведомлять о заканчивающихся расходниках принтеров и МФУ'),
-      h('p.hint', `Колокольчик в шапке покажет принтеры и МФУ, где тонера или других расходников осталось не больше ${d.threshold ?? 15}%. `
-        + 'Принтеры проверяются по сети раз в 2 часа.')),
-    footer: [h('button.btn.primary', { onclick: () => m.close() }, 'Готово')],
-  });
+  const { openNotifySettings } = await import('/shared/bell.js');
+  await openNotifySettings();
 }
 
 export const ROLE_LABEL = { superadmin: 'Суперадмин', editor: 'Редактор', reader: 'Читатель' };

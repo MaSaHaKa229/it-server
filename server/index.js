@@ -25,6 +25,7 @@ if (!process.env.SESSION_SECRET || !process.env.APP_SECRET_KEY) {
 async function main() {
   console.log('Подготовка базы данных…');
   await initAll();
+  await require('./portal/mail').load(); // настройки почты (Администрирование → Почта или .env)
   const calendar = await import('./calendar/index.js');
 
   const app = express();
@@ -77,7 +78,8 @@ async function main() {
   portalApi.use('/auth', require('./portal/auth').router);
   portalApi.use('/admin', require('./portal/admin'));
   portalApi.use('/summary', require('./portal/summary'));
-  portalApi.use('/notifications', require('./portal/notifications')); // колокольчик: расходники принтеров
+  portalApi.use('/notifications', require('./portal/notifications')); // колокольчик уведомлений
+  portalApi.use('/search', require('./portal/search'));               // общий поиск в шапке
   app.use('/api', portalApi);
 
   // ---------- ИТ-инвентарь ----------
@@ -97,6 +99,7 @@ async function main() {
   inv.use('/workplaces', requireAuth, require('./inventory/routes/workplaces'));
   inv.use('/netinfo', requireAuth, require('./inventory/netprobe')); // сведения из сети (AD, WMI, SNMP)
   inv.use('/netscan', requireStaff, require('./inventory/netprobe/scan')); // сканирование сети — редакторы и администратор
+  inv.use('/audits', requireStaff, require('./inventory/routes/audits')); // инвентаризация — редакторы и администратор
   inv.use('/', requireAuth, require('./inventory/routes/catalog'));
   app.use('/inventory/api', inv);
 
@@ -163,6 +166,9 @@ async function main() {
   app.listen(PORT, () => console.log(`ИТ-портал запущен: http://localhost:${PORT}`));
   checkPublic();
   require('./inventory/netprobe/supplies').start(); // опрос расходников принтеров и МФУ по расписанию
+  require('./portal/notify').start();                // уведомления на почту (сроки, расходники, гарантия…)
+  require('./portal/backup').start();                // резервные копии по расписанию
+  require('./inventory/netprobe/scan').startSchedule(); // сканирование сети по расписанию
 
   if (HELPDESK_PORT) {
     const { createHelpdeskApp } = require('./helpdesk/public');

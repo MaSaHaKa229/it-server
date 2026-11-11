@@ -7,6 +7,7 @@ const { HttpError, ah, str, intOrNull } = require('../inventory/util');
 const { MODULES, normalizeModules } = require('./modules');
 const { syncUser, removeUser } = require('./sync');
 
+const audit = require('./audit');
 const router = express.Router();
 router.use(requireSuperadmin);
 
@@ -44,6 +45,25 @@ function validEmail(email) {
   return email;
 }
 
+/** Что изменилось у пользователя — для журнала */
+function diffUser(a, b, password) {
+  const out = { username: b.username };
+  if (!a) return out;
+  if (a.role !== b.role) out.role = [a.role, b.role];
+  if (a.is_active !== b.is_active) out.is_active = [a.is_active, b.is_active];
+  if ((a.full_name || '') !== (b.full_name || '')) out.full_name = [a.full_name, b.full_name];
+  if ((a.email || '') !== (b.email || '')) out.email = [a.email, b.email];
+  const am = a.modules || {};
+  const bm = b.modules || {};
+  const mods = {};
+  for (const k of new Set([...Object.keys(am), ...Object.keys(bm)])) {
+    if (JSON.stringify(am[k] ?? null) !== JSON.stringify(bm[k] ?? null)) mods[k] = [am[k] ?? null, bm[k] ?? null];
+  }
+  if (Object.keys(mods).length) out.modules = mods;
+  if (password) out.password = 'изменён';
+  return out;
+}
+
 router.post('/users', ah(async (req, res) => {
   const b = req.body || {};
   const username = str(b.username, 100);
@@ -58,6 +78,7 @@ router.post('/users', ah(async (req, res) => {
     [username, await bcrypt.hash(String(b.password), 10), str(b.full_name, 200), validEmail(str(b.email, 200)),
       roleFor(!!b.is_admin, modules), b.is_active !== false, JSON.stringify(DEFAULT_READER), JSON.stringify(modules)]);
   await syncUser(rows[0]);
+  await audit.log(req, 'user_created', rows[0].full_name || rows[0].username, { username: rows[0].username, role: rows[0].role, modules });
   res.status(201).json(rows[0]);
 }));
 
@@ -68,6 +89,7 @@ router.put('/users/:id', ah(async (req, res) => {
     throw new HttpError(400, 'Нельзя снять права администратора или отключить собственную учётную запись');
   }
   const modules = normalizeModules(b.modules);
+  const before = (await query(`SELECT ${FIELDS} FROM users WHERE id = $1`, [id])).rows[0];
   const params = [str(b.full_name, 200), validEmail(str(b.email, 200)), roleFor(!!b.is_admin, modules),
     b.is_active !== false, JSON.stringify(modules), id];
   let pw = '';
@@ -82,6 +104,7 @@ router.put('/users/:id', ah(async (req, res) => {
   if (!rows[0]) throw new HttpError(404, 'Пользователь не найден');
   if (b.is_active === false) await query(`DELETE FROM "session" WHERE (sess->>'userId')::int = $1`, [id]);
   await syncUser(rows[0]);
+  await audit.log(req, 'user_updated', rows[0].full_name || rows[0].username, diffUser(before, rows[0], !!b.password));
   res.json(rows[0]);
 }));
 
@@ -90,9 +113,81 @@ router.delete('/users/:id', ah(async (req, res) => {
   if (id === req.user.id) throw new HttpError(400, 'Нельзя удалить собственную учётную запись');
   await query(`DELETE FROM "session" WHERE (sess->>'userId')::int = $1`, [id]);
   await removeUser(id);
-  const { rowCount } = await query('DELETE FROM users WHERE id = $1', [id]);
-  if (!rowCount) throw new HttpError(404, 'Пользователь не найден');
+  const { rows: del } = await query('DELETE FROM users WHERE id = $1 RETURNING username, full_name', [id]);
+  if (!del[0]) throw new HttpError(404, 'Пользователь не найден');
+  await audit.log(req, 'user_deleted', del[0].full_name || del[0].username, { username: del[0].username });
   res.json({ ok: true });
+}));
+
+// ---------------- Резервные копии ----------------
+router.use('/backup', require('./backup').router);
+
+// ---------------- Почта ----------------
+const mail = require('./mail');
+router.get('/settings/mail', ah(async (req, res) => res.json(await mail.settingsView())));
+router.put('/settings/mail', ah(async (req, res) => {
+  const b = req.body || {};
+  if (!b.disabled && b.host && !/^[\w.-]+$/.test(String(b.host).trim())) throw new HttpError(400, 'Адрес SMTP-сервера: имя или IP без «http://»');
+  await mail.save(b);
+  await audit.log(req, 'mail_settings', null, { host: b.host || '', port: b.port, user: b.user || '', disabled: !!b.disabled, password: typeof b.pass === 'string' ? 'изменён' : undefined });
+  res.json(await mail.settingsView());
+}));
+router.post('/settings/mail/test', ah(async (req, res) => {
+  const to = str((req.body || {}).to, 200);
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new HttpError(400, 'Укажите e-mail для проверочного письма');
+  try {
+    await mail.test(to);
+  } catch (e) {
+    throw new HttpError(400, 'Письмо не отправлено: ' + e.message);
+  }
+  res.json({ ok: true });
+}));
+
+// ---------------- Пороги уведомлений ----------------
+const N = require('./notify');
+router.get('/settings/notify', ah(async (req, res) => res.json(await N.thresholds())));
+router.put('/settings/notify', ah(async (req, res) => {
+  const b = req.body || {};
+  const num = (v, min, max, def) => Math.min(max, Math.max(min, Math.round(Number(v)) || def));
+  const v = {
+    warranty_days: num(b.warranty_days, 1, 365, 30),
+    offline_days: num(b.offline_days, 1, 365, 30),
+    hd_due_hours: num(b.hd_due_hours, 1, 240, 24),
+    audit_days: Math.min(30, Math.max(0, Math.round(Number(b.audit_days)) || 0)),
+  };
+  await query(`INSERT INTO portal_settings (key, value) VALUES ('notify', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, [JSON.stringify(v)]);
+  await audit.log(req, 'notify_settings', null, v);
+  res.json(v);
+}));
+
+// ---------------- Журнал входов и действий ----------------
+router.get('/audit', ah(async (req, res) => {
+  const q = req.query;
+  const where = [];
+  const vals = [];
+  const p = (v) => { vals.push(v); return '$' + vals.length; };
+  if (q.action === 'logins') where.push(`a.action IN ('login', 'login_failed', 'logout')`);
+  else if (q.action === 'failed') where.push(`a.action = 'login_failed'`);
+  else if (q.action === 'admin') where.push(`a.action NOT IN ('login', 'login_failed', 'logout', 'password_changed')`);
+  else if (q.action) where.push(`a.action = ${p(String(q.action))}`);
+  if (q.user) where.push(`a.user_id = ${p(Number(q.user) || 0)}`);
+  if (q.from && /^\d{4}-\d{2}-\d{2}$/.test(q.from)) where.push(`a.at >= ${p(q.from)}::date`);
+  if (q.to && /^\d{4}-\d{2}-\d{2}$/.test(q.to)) where.push(`a.at < ${p(q.to)}::date + 1`);
+  if (q.q) {
+    const like = p(`%${String(q.q).slice(0, 100)}%`);
+    where.push(`(a.object ILIKE ${like} OR a.username ILIKE ${like} OR u.full_name ILIKE ${like} OR a.details::text ILIKE ${like} OR a.ip ILIKE ${like})`);
+  }
+  const limit = Math.min(500, Number(q.limit) || 200);
+  const offset = Math.max(0, Number(q.offset) || 0);
+  const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const [list, total] = await Promise.all([
+    query(`SELECT a.id, a.at, a.user_id, COALESCE(NULLIF(u.full_name, ''), u.username, a.username) AS user_name, a.username,
+                  a.action, a.object, a.details, a.ip
+             FROM audit_log a LEFT JOIN users u ON u.id = a.user_id ${w}
+            ORDER BY a.at DESC, a.id DESC LIMIT ${limit} OFFSET ${offset}`, vals),
+    query(`SELECT count(*)::int AS n FROM audit_log a LEFT JOIN users u ON u.id = a.user_id ${w}`, vals),
+  ]);
+  res.json({ items: list.rows, total: total.rows[0].n, actions: audit.ACTIONS });
 }));
 
 module.exports = router;

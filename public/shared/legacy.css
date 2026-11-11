@@ -84,3 +84,7 @@ select { -moz-appearance: none; }
 .legacy .tcard-meta > * + * { margin-left: 16px; }
 .legacy .tcard-meta > * { margin-bottom: 4px; }
 dl.kv { grid-gap: 8px 12px; }
+.home-board { grid-gap: 16px; }
+.legacy .home-card-head > * + * { margin-left: 8px; }
+.legacy .home-card-head h3 > * + * { margin-left: 6px; }
+.legacy .home-row > * + * { margin-left: 10px; }

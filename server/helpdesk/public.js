@@ -305,13 +305,16 @@ function createHelpdeskApp() {
       const cat = categoryId ? (await db.query('SELECT * FROM categories WHERE id = $1 AND is_active', [categoryId])).rows[0] : null;
       if (categoryId && !cat) throw new HttpError(400, 'Вид проблемы не найден');
       const st = (await db.query('SELECT id FROM statuses ORDER BY is_default DESC, sort, id LIMIT 1')).rows[0];
+      // Исполнитель — по правилам автоназначения (вид проблемы, отдел), иначе исполнитель вида проблемы
+      const auto = await require('./autoassign').pick(db, { category: cat, departmentId: req.requester.department_id || null });
       const { rows } = await db.query(
         // Срок выполнения заявитель не задаёт — его выставляет администратор helpdesk
         `INSERT INTO tickets (requester_id, category_id, status_id, priority, title, description, location, assignee_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
         [req.requester.id, cat ? cat.id : null, st.id, priority, title, description,
-          str(b.location, 200) || req.requester.room, cat ? cat.default_assignee_id : null]);
+          str(b.location, 200) || req.requester.room, auto ? auto.assigneeId : null]);
       await L.addHistory(db, rows[0].id, me(req), 'created');
+      if (auto) await L.addHistory(db, rows[0].id, {}, 'assignee', { from: null, to: auto.name, auto: true, how: auto.how });
       await L.saveAttachments(db, rows[0].id, null, req.files, me(req));
       return rows[0].id;
     });

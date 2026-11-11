@@ -65,10 +65,10 @@ function Bell() {
   const ref = useRef(null);
   useEffect(() => {
     let off = null;
-    import(/* @vite-ignore */ BELL_URL).then((m) => { if (ref.current) off = m.mountBell(ref.current); }).catch(() => {});
+    import(/* @vite-ignore */ BELL_URL).then((m) => { if (ref.current) off = m.mountHeaderTools(ref.current); }).catch(() => {});
     return () => off?.();
   }, []);
-  return <span ref={ref} />;
+  return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center' }} />;
 }
 
 function Shell() {
@@ -118,7 +118,7 @@ function Shell() {
           {nav.map((n) => <a key={n.id} href={`#/${n.id}`} className={route === n.id ? 'active' : ''}>{n.label}</a>)}
         </nav>
         <span className="spacer" />
-        {portal?.access?.inventory && portal.access.inventory !== 'none' && <Bell />}
+        <Bell />
         <span className="user-name">{user.name}</span>
         <span className="user-wrap" ref={menuRef}>
           <button className="avatar-btn" onClick={() => setMenuOpen((o) => !o)} aria-label="Меню пользователя">

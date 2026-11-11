@@ -169,3 +169,19 @@ CREATE TABLE IF NOT EXISTS ticket_devices (
 CREATE INDEX IF NOT EXISTS ticket_devices_device_idx ON ticket_devices (device_id);
 INSERT INTO ticket_devices (ticket_id, device_id)
 SELECT id, device_id FROM tickets WHERE device_id IS NOT NULL ON CONFLICT DO NOTHING;
+
+-- Правила автоназначения исполнителя новой заявки: по виду проблемы и/или отделу заявителя.
+-- Проверяются по порядку (sort), первое подходящее срабатывает. mode: user — конкретный исполнитель,
+-- least_loaded — исполнитель с наименьшим числом открытых заявок (из списка pool, пустой — все исполнители).
+-- Если исполнитель сегодня отсутствует (отпуск, больничный в календаре) — правило пропускается.
+CREATE TABLE IF NOT EXISTS assign_rules (
+  id            SERIAL PRIMARY KEY,
+  category_id   INT REFERENCES categories(id) ON DELETE CASCADE,
+  department_id INT REFERENCES public.lookups(id) ON DELETE CASCADE,
+  mode          TEXT NOT NULL DEFAULT 'user' CHECK (mode IN ('user', 'least_loaded')),
+  assignee_id   INT REFERENCES public.users(id) ON DELETE CASCADE,
+  pool          INT[] NOT NULL DEFAULT '{}',
+  sort          INT NOT NULL DEFAULT 0,
+  is_active     BOOLEAN NOT NULL DEFAULT true,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);

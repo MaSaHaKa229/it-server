@@ -287,6 +287,7 @@ export async function renderDevice(root, id) {
     software_updated: 'изменил(а) ПО', software_removed: 'удалил(а) ПО', password_added: 'добавил(а) пароль',
     password_updated: 'изменил(а) пароль', password_removed: 'удалил(а) пароль', password_viewed: 'просмотрел(а) пароль',
     ticket_linked: 'привязал(а) к заявке', ticket_unlinked: 'отвязал(а) от заявки',
+    audit: 'провёл(а) инвентаризацию',
   };
   // Заявки helpdesk, к которым привязана эта техника
   function renderTickets() {
