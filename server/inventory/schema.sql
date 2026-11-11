@@ -332,3 +332,15 @@ CREATE TABLE IF NOT EXISTS netscan_hosts (
   handled_at     TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS netscan_hosts_state_idx ON netscan_hosts (state);
+
+-- Уведомления: личные настройки пользователя ({"printer_supplies": false} — не показывать о расходниках)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_prefs JSONB NOT NULL DEFAULT '{}'::jsonb;
+-- Расходники принтеров и МФУ (опрос по SNMP по расписанию); порог предупреждения — в настройках
+ALTER TABLE netprobe_settings ADD COLUMN IF NOT EXISTS supply_threshold INT NOT NULL DEFAULT 15;
+CREATE TABLE IF NOT EXISTS printer_supplies (
+  device_id  INT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+  supplies   JSONB NOT NULL DEFAULT '[]'::jsonb,
+  model      TEXT,
+  error      TEXT,
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

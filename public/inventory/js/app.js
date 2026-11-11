@@ -83,12 +83,15 @@ function renderShell() {
 
   const userName = h('span', { style: { color: 'var(--n500)', fontWeight: 500, marginRight: '4px', whiteSpace: 'nowrap' } }, me.full_name || me.username);
   const avatarBtn = avatar(me.full_name || me.username);
+  const bellHost = h('span');
+  import('/shared/bell.js').then((m) => m.mountBell(bellHost)).catch(() => {});
   avatarBtn.addEventListener('click', () => menu(avatarBtn, [
     { head: (me.full_name || me.username) + ' · ' + ROLE_LABEL[me.role] },
     { head: 'Разделы' },
     ...portalSections().map(([href, label]) => ({ label, onClick: () => { location.href = href; } })),
     '-',
     { label: 'Сменить пароль', icon: 'lock', onClick: changePassword },
+    { label: 'Настройки уведомлений', onClick: notifySettings },
     '-',
     { label: 'Выйти', onClick: async () => { await api.post(location.origin + '/api/auth/logout'); location.href = '/login'; } },
   ], { align: 'right' }));
@@ -101,12 +104,32 @@ function renderShell() {
     isStaff() ? h('button.btn.primary', { style: { marginLeft: '8px' }, onclick: () => openCreateDevice() }, icon('plus'), 'Создать') : null,
     h('div.search-global', icon('search'), gsearch),
     h('span', { style: { width: '8px' } }),
+    bellHost,
     userName,
     avatarBtn);
 
   sidebarEl = h('aside.sidebar');
   mainEl = h('main.main');
   clear(app, topbar, h('div.layout', sidebarEl, mainEl));
+}
+
+/** Настройки уведомлений: галочка сохраняется сразу */
+async function notifySettings() {
+  const { getNotifications, setNotifySetting } = await import('/shared/bell.js');
+  const d = await getNotifications();
+  const cb = h('input', { type: 'checkbox', checked: d.prefs.printer_supplies });
+  cb.addEventListener('change', () => run(async () => {
+    await setNotifySetting('printer_supplies', cb.checked);
+    toast(cb.checked ? 'Уведомления о расходниках включены' : 'Уведомления о расходниках выключены');
+  }));
+  const m = modal({
+    title: 'Настройки уведомлений', size: 'narrow',
+    body: h('div.stack', { style: { gap: '10px' } },
+      h('label.check', cb, 'Уведомлять о заканчивающихся расходниках принтеров и МФУ'),
+      h('p.hint', `Колокольчик в шапке покажет принтеры и МФУ, где тонера или других расходников осталось не больше ${d.threshold ?? 15}%. `
+        + 'Принтеры проверяются по сети раз в 2 часа.')),
+    footer: [h('button.btn.primary', { onclick: () => m.close() }, 'Готово')],
+  });
 }
 
 export const ROLE_LABEL = { superadmin: 'Суперадмин', editor: 'Редактор', reader: 'Читатель' };

@@ -22,6 +22,7 @@ async function loadSettings({ withPassword = false } = {}) {
     ad_enabled: s.ad_enabled, wmi_enabled: s.wmi_enabled, snmp_enabled: s.snmp_enabled,
     ad_server: s.ad_server, ad_base_dn: s.ad_base_dn, username: s.username, has_password: !!s.password_enc,
     snmp_communities: s.snmp_communities, scan_networks: s.scan_networks || '', updated_at: s.updated_at || null,
+    supply_threshold: s.supply_threshold ?? 15,
   };
   if (withPassword) {
     try { out.password = s.password_enc ? decrypt(s.password_enc) : ''; } catch { out.password = ''; out.password_error = true; }
@@ -43,7 +44,8 @@ router.put('/settings', requireSuperadmin, ah(async (req, res) => {
   const base = str(b.ad_base_dn, 500) || '';
   const comm = (str(b.snmp_communities, 200) || 'public').trim();
   const nets = (str(b.scan_networks, 1000) || '').trim();
-  const vals = [!!b.ad_enabled, !!b.wmi_enabled, !!b.snmp_enabled, server, base, username, comm, req.user.id, nets];
+  const thr = Math.max(1, Math.min(90, Math.round(Number(b.supply_threshold) || 15)));
+  const vals = [!!b.ad_enabled, !!b.wmi_enabled, !!b.snmp_enabled, server, base, username, comm, req.user.id, nets, thr];
   // Пароль: не прислан — не меняется; пустая строка с clear_password — удалить
   let pw = '';
   if (typeof b.password === 'string' && b.password !== '') { vals.push(encrypt(b.password)); pw = `, password_enc = $${vals.length}`; }
@@ -51,7 +53,7 @@ router.put('/settings', requireSuperadmin, ah(async (req, res) => {
   await query(`INSERT INTO netprobe_settings (id) VALUES (1) ON CONFLICT DO NOTHING`);
   await query(
     `UPDATE netprobe_settings SET ad_enabled = $1, wmi_enabled = $2, snmp_enabled = $3, ad_server = $4, ad_base_dn = $5,
-            username = $6, snmp_communities = $7, updated_by = $8, updated_at = now(), scan_networks = $9${pw} WHERE id = 1`, vals);
+            username = $6, snmp_communities = $7, updated_by = $8, updated_at = now(), scan_networks = $9, supply_threshold = $10${pw} WHERE id = 1`, vals);
   res.json({ settings: await loadSettings() });
 }));
 

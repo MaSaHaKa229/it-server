@@ -77,6 +77,7 @@ async function main() {
   portalApi.use('/auth', require('./portal/auth').router);
   portalApi.use('/admin', require('./portal/admin'));
   portalApi.use('/summary', require('./portal/summary'));
+  portalApi.use('/notifications', require('./portal/notifications')); // колокольчик: расходники принтеров
   app.use('/api', portalApi);
 
   // ---------- ИТ-инвентарь ----------
@@ -161,6 +162,7 @@ async function main() {
 
   app.listen(PORT, () => console.log(`ИТ-портал запущен: http://localhost:${PORT}`));
   checkPublic();
+  require('./inventory/netprobe/supplies').start(); // опрос расходников принтеров и МФУ по расписанию
 
   if (HELPDESK_PORT) {
     const { createHelpdeskApp } = require('./helpdesk/public');

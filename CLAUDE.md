@@ -65,6 +65,10 @@ NetBIOS, ARP, SNMP — на чистом Node.js (`probes.js`); AD и WMI — в
 опознание, по желанию WMI; результат — `netscan_last` (одна строка), скрытые — `netscan_ignore`; совпадения с базой
 считаются при каждом GET (MAC/серийный → имя → IP); «Дополнить» использует `renderCompare`/`applyToDevice` из netinfo.js.
 «Ждут решения» — `netscan_hosts` (state pending/done, handled_sig — подпись отличий на момент решения).
+**Уведомления** (колокольчик в шапке всех разделов) — `public/shared/bell.js` (самостоятельный модуль; React-клиенты
+грузят его динамически), API `server/portal/notifications.js` (`/api/notifications`); сейчас один вид — расходники
+принтеров/МФУ: опрос SNMP раз в 2 ч `netprobe/supplies.js` → `printer_supplies`, порог `netprobe_settings.supply_threshold`,
+отключение — `public.users.notify_prefs` (JSONB, по умолчанию включено). Новые виды уведомлений добавлять туда же.
 Значения для карточки — `netprobe/format.js`: шаблоны (`netprobe_settings.formats`) и замены (`netprobe_replacements`). Поиск в AD: база из настроек → домен контроллера → GC:// леса
 (ReferralChasing=All; у пользователя была ошибка «A referral was returned from the server»). Без Windows AD/WMI не работают: для проверки
 `NETPROBE_FAKE_DIR=<папка>` подставляет ответы из `<ad|wmi>[-ИМЯ].json`. На реальной Windows/AD не проверялось.

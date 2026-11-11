@@ -13,6 +13,7 @@ export async function renderNetprobeSettings(box) {
   const wmiEnabled = h('input', { type: 'checkbox', checked: s.wmi_enabled });
   const snmpEnabled = h('input', { type: 'checkbox', checked: s.snmp_enabled });
   const snmpComm = h('input', { type: 'text', value: s.snmp_communities, placeholder: 'public' });
+  const threshold = h('input', { type: 'number', min: 1, max: 90, value: s.supply_threshold ?? 15, style: { width: '90px' } });
   const scanNets = h('input', { type: 'text', value: s.scan_networks || '', placeholder: 'Например: 10.0.1.0/24, 10.0.2.0/24' });
   let clearPassword = false;
 
@@ -21,7 +22,7 @@ export async function renderNetprobeSettings(box) {
     const body = {
       username: username.value.trim(), ad_enabled: adEnabled.checked, ad_server: adServer.value.trim(), ad_base_dn: adBase.value.trim(),
       wmi_enabled: wmiEnabled.checked, snmp_enabled: snmpEnabled.checked, snmp_communities: snmpComm.value.trim() || 'public',
-      scan_networks: scanNets.value.trim(),
+      scan_networks: scanNets.value.trim(), supply_threshold: Number(threshold.value) || 15,
     };
     if (password.value) body.password = password.value;
     if (clearPassword) body.clear_password = true;
@@ -84,7 +85,10 @@ export async function renderNetprobeSettings(box) {
 
     h('div.np-box',
       h('h3', h('label.check', snmpEnabled, 'Принтеры и МФУ (SNMP)')),
-      h('label.field', { style: { maxWidth: '360px' } }, h('span', 'Сообщества SNMP'), snmpComm, h('div.hint', 'Через запятую; обычно public.'))),
+      h('label.field', { style: { maxWidth: '360px' } }, h('span', 'Сообщества SNMP'), snmpComm, h('div.hint', 'Через запятую; обычно public.')),
+      h('label.field', { style: { marginTop: '12px' } }, h('span', 'Предупреждать о расходниках, когда осталось не больше, %'), threshold,
+        h('div.hint', 'Принтеры и МФУ из инвентаря (с IP-адресом) проверяются раз в 2 часа; уведомление — колокольчик в шапке. '
+          + 'Каждый пользователь может отключить его у себя в настройках уведомлений.'))),
 
     h('div.np-box',
       h('h3', 'Сканирование сети'),

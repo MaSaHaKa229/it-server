@@ -228,6 +228,7 @@
       ),
       (o.actions || []).length ? h("span.row", { style: { marginLeft: "8px" } }, o.actions) : null,
       h("span.spacer"),
+      o.right || null,
       h("span.user-name", o.userName),
       h("span.user-wrap", av, menuEl)
     );

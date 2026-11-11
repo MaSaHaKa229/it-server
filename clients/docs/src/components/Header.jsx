@@ -25,6 +25,18 @@ function sections(p) {
   ].filter(Boolean);
 }
 
+const BELL_URL = ['', 'shared', 'bell.js'].join('/');
+// Колокольчик уведомлений портала (общий модуль /shared/bell.js)
+function Bell() {
+  const ref = useRef(null);
+  useEffect(() => {
+    let off = null;
+    import(/* @vite-ignore */ BELL_URL).then((m) => { if (ref.current) off = m.mountBell(ref.current); }).catch(() => {});
+    return () => off?.();
+  }, []);
+  return <span ref={ref} />;
+}
+
 /** Шапка в стиле ИТ-инвентаря */
 export default function Header({ onBurger }) {
   const { user, portal, logout } = useAuth();
@@ -51,6 +63,7 @@ export default function Header({ onBurger }) {
       </nav>
       {canEdit(user) && <Link to={`/documents/new${folder && folder !== '0' ? `?folder=${folder}` : ''}`} className="btn btn-primary" style={{ marginLeft: 8 }}>+ Добавить</Link>}
       <span className="spacer" />
+      {portal?.access?.inventory && portal.access.inventory !== 'none' && <Bell />}
       <span className="user-name">{name}</span>
       <span className="user-wrap" ref={ref}>
         <button className="avatar-btn" onClick={() => setOpen((o) => !o)} aria-label="Меню пользователя"><Avatar name={name} /></button>

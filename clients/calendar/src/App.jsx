@@ -59,6 +59,18 @@ function portalSections(p) {
 const AV = ['#0052CC', '#00875A', '#FF5630', '#6554C0', '#00A3BF', '#FF8B00', '#36B37E', '#5243AA'];
 const avColor = (n) => { let s = 0; for (const ch of String(n)) s += ch.charCodeAt(0); return AV[s % AV.length]; };
 
+const BELL_URL = ['', 'shared', 'bell.js'].join('/');
+// Колокольчик уведомлений портала (общий модуль /shared/bell.js)
+function Bell() {
+  const ref = useRef(null);
+  useEffect(() => {
+    let off = null;
+    import(/* @vite-ignore */ BELL_URL).then((m) => { if (ref.current) off = m.mountBell(ref.current); }).catch(() => {});
+    return () => off?.();
+  }, []);
+  return <span ref={ref} />;
+}
+
 function Shell() {
   const route = useHashRoute();
   const { user, canEdit, isAdmin } = useApp();
@@ -106,6 +118,7 @@ function Shell() {
           {nav.map((n) => <a key={n.id} href={`#/${n.id}`} className={route === n.id ? 'active' : ''}>{n.label}</a>)}
         </nav>
         <span className="spacer" />
+        {portal?.access?.inventory && portal.access.inventory !== 'none' && <Bell />}
         <span className="user-name">{user.name}</span>
         <span className="user-wrap" ref={menuRef}>
           <button className="avatar-btn" onClick={() => setMenuOpen((o) => !o)} aria-label="Меню пользователя">
