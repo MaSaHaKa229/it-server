@@ -14,7 +14,7 @@ export async function renderUsers(root) {
   const users = await api.get('/api/users');
   const reload = () => renderUsers(root);
   clear(root,
-    h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('span', 'Пользователи')),
+    h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('span', 'Пользователи')),
     h('div.page-head', h('h1', 'Пользователи'), h('span.badge', users.length), h('span.spacer'),
       h('a.btn', { href: '/admin' }, icon('cog'), 'Учётные записи — в администрировании портала')),
     h('p.hint', { style: { marginBottom: '12px' } },

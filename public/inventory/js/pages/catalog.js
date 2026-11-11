@@ -15,7 +15,7 @@ export async function renderCatalog(root, kind) {
     h('div.menu-sep'),
     h('a.side-link', { href: '#', onclick: (e) => { e.preventDefault(); newKind(); } }, icon('plus'), 'Новый справочник'));
   clear(root,
-    h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('span', 'Справочники')),
+    h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('span', 'Справочники')),
     h('div.page-head', h('h1', 'Справочники')),
     h('div.split', nav, body));
   if (kind === 'software') await renderSoftware(body);

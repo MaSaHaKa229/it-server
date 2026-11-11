@@ -163,3 +163,16 @@ a.tab:hover { text-decoration: none; }
 .saved-link { display: flex; align-items: center; }
 .saved-link .side-link { flex: 1; min-width: 0; }
 .saved-link .btn { padding: 0 6px; height: 24px; }
+
+/* Администрирование: все настройки */
+.settings-map { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; align-items: start; }
+.settings-map .panel + .panel { margin-top: 0; }
+
+/* Справка */
+.help-page { max-width: 980px; }
+.help-toc { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 16px; }
+.help-list { display: grid; grid-template-columns: 200px 1fr; gap: 8px 20px; margin: 12px 0 0; }
+.help-list dt { font-weight: 600; }
+.help-list dd { margin: 0; color: var(--n800); }
+.first-tip { display: flex; gap: 16px; align-items: center; margin-bottom: 20px; }
+.first-tip .grow { flex: 1; }

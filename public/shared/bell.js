@@ -234,5 +234,6 @@ export function mountHeaderTools(host) {
   const r = document.createElement('span');
   host.append(r);
   import('./recent.js').then((m) => m.mountRecent(r)).catch(() => {});
+  import('./peek.js').then((m) => m.initPeek()).catch(() => {});
   return mountBell(host);
 }

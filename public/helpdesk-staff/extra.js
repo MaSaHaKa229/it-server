@@ -47,7 +47,7 @@ export async function renderReports({ layout, api }) {
     ['Этот год', () => [new Date(now.getFullYear(), 0, 1), now]],
     ['30 дней', () => [new Date(now.getTime() - 29 * 864e5), now]],
   ];
-  const excel = h('a.btn', { href: '#' }, 'Выгрузить в Excel');
+  const excel = h('a.btn', { href: '#', title: 'Выгрузить отчёт в Excel' }, 'Excel');
   const load = async () => {
     range.from = from.value; range.to = to.value;
     excel.href = `/helpdesk/api/reports/export.xlsx?from=${range.from}&to=${range.to}`;

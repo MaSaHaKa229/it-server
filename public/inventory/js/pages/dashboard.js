@@ -31,7 +31,7 @@ export async function renderDashboard(root) {
   const maxDept = Math.max(1, ...stats.byDept.map((d) => d.n));
 
   clear(root,
-    h('div.breadcrumbs', h('span', 'ИТ-служба')),
+    h('div.breadcrumbs', h('span', 'Служба ИТ')),
     h('div.page-head', h('h1', 'Панель'), h('span.spacer'),
       isStaff() ? h('button.btn.primary', { onclick: () => openCreateDevice() }, 'Добавить технику') : null),
     total === 0 && isStaff()

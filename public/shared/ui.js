@@ -65,16 +65,27 @@ export function makeApi(base, { onUnauthorized, csrf = 'portal' } = {}) {
 
 // ---------- уведомления ----------
 // Как в ИТ-инвентаре: «флажки» в левом нижнем углу
-export function toast(text, type = 'ok', title) {
+/** Сообщение в углу. opts.undo — функция «Отменить» (кнопка в сообщении, 7 секунд) */
+export function toast(text, type = 'ok', title, opts = {}) {
   let box = document.getElementById('flags');
   if (!box) { box = h('div#flags.flags'); document.body.append(box); }
+  const undoBtn = opts.undo ? h('button.flag-undo', {
+    type: 'button',
+    onclick: (e) => { e.stopPropagation(); el.remove(); Promise.resolve().then(opts.undo).catch((err) => toast(err.message, 'err')); },
+  }, 'Отменить') : null;
   const el = h('div.flag.' + type,
     h('div.ic', type === 'ok' ? '✓' : type === 'err' ? '!' : 'i'),
-    h('div', title || type === 'err' ? h('div.t', title || 'Ошибка') : null, h('div', text)));
+    h('div', title || type === 'err' ? h('div.t', title || 'Ошибка') : null, h('div', text)), undoBtn);
   box.append(el);
   el.addEventListener('click', () => el.remove());
-  setTimeout(() => el.remove(), type === 'err' ? 7000 : 4000);
+  setTimeout(() => el.remove(), type === 'err' ? 7000 : opts.undo ? 7000 : 4000);
 }
+/** Пустой список: заголовок, пояснение и кнопка следующего шага */
+export function emptyState(title, text, action) {
+  return h('div.empty-state', h('h3', title), text ? h('p', text) : null,
+    action ? h('button.btn.primary', { onclick: action.onClick }, action.label) : null);
+}
+
 /** Выполнить действие, показать ошибку, заблокировать кнопку на время */
 export async function run(fn, btn) {
   if (btn) btn.disabled = true;
@@ -168,6 +179,18 @@ export function parseHash() {
  * topbar({ section, sectionHref, nav: [[key, href, label]], active, actions: [nodes],
  *          userName, userSub, menu: [{label, href|onClick, danger} | '-' | {head}], logo, brandText, brandHref, onBurger })
  */
+/** Пункты меню, которые нужны реже, — под «Ещё ▾» (элемент nav с 4-м значением true) */
+function moreMenu(items, active) {
+  if (!items.length) return null;
+  const cur = items.find(([k]) => k === active);
+  const pop = h('div.popover.hidden.more-pop');
+  const btn = h('a' + (cur ? '.active' : ''), { href: '#', onclick: (e) => { e.preventDefault(); e.stopPropagation(); pop.classList.toggle('hidden'); } },
+    cur ? cur[2] : 'Ещё', ' ▾');
+  clear(pop, items.map(([k, href, label]) => h('a.menu-item' + (k === active ? '.active' : ''), { href, onclick: () => pop.classList.add('hidden') }, label)));
+  document.addEventListener('click', (e) => { if (!pop.contains(e.target) && e.target !== btn) pop.classList.add('hidden'); });
+  return h('span.more-wrap', btn, pop);
+}
+
 export function topbar(o) {
   const menuEl = h('div.popover.hidden');
   const closeMenu = () => menuEl.classList.add('hidden');
@@ -189,7 +212,8 @@ export function topbar(o) {
       h('span.brand-logo' + (o.logo === 'hd' ? '.hd' : ''), o.logo === 'hd' ? '?' : 'IT'), h('span', o.brandText || 'Портал')),
     o.section ? h('a.brand', { href: o.sectionHref || '#/', style: { marginLeft: '-12px' } }, h('span.sep', '/'), h('span', o.section)) : null,
     h('nav.topnav.row', { style: { gap: '2px' } },
-      (o.nav || []).map(([k, href, label]) => h('a' + (k === o.active ? '.active' : ''), { href }, label))),
+      (o.nav || []).filter((x) => !x[3]).map(([k, href, label]) => h('a' + (k === o.active ? '.active' : ''), { href }, label)),
+      moreMenu((o.nav || []).filter((x) => x[3]), o.active)),
     (o.actions || []).length ? h('span.row', { style: { marginLeft: '8px' } }, o.actions) : null,
     h('span.spacer'),
     o.right || null,

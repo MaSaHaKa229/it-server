@@ -127,16 +127,22 @@ export async function renderDevice(root, id) {
     const left = h('div',
       h('div.row', { style: { alignItems: 'flex-start' } }, h('div.grow', title), starHost(
         { kind: 'device', ref: String(d.id), title: `${key} ${d.hostname || d.model || type.name}`, link: `/inventory/#/devices/${d.id}` }), statusBtn, moreBtn),
-      h('div.issue-actions',
-        staff && P.software ? h('button.btn', { onclick: () => softwareModal() }, icon('plus'), 'Добавить ПО') : null,
-        staff ? h('button.btn', { onclick: () => credentialModal() }, icon('lock'), 'Добавить пароль') : null,
-        staff ? h('button.btn', { onclick: addField }, icon('plus'), 'Добавить поле') : null,
-        staff ? h('button.btn', { onclick: () => { moveStyles(); moveDialog([d], changed); } }, icon('box'), 'Переместить') : null,
-        // Сведения из AD / WMI / SNMP — только редакторам и при известном сетевом имени или IP
-        staff && (d.hostname || d.ip_address)
+      // Частые действия — кнопками, «добавить что-то в карточку» — одним меню
+      staff ? h('div.issue-actions',
+        (d.hostname || d.ip_address) ? remoteButton(d, true) : null,
+        (d.hostname || d.ip_address)
           ? h('button.btn', { onclick: () => openNetInfo(d, changed), title: 'Данные из Active Directory, WMI и SNMP' }, icon('eye'), 'Сведения из сети')
           : null,
-        staff && (d.hostname || d.ip_address) ? remoteButton(d) : null),
+        h('button.btn', { onclick: () => { moveStyles(); moveDialog([d], changed); } }, icon('box'), 'Переместить'),
+        (() => {
+          const b = h('button.btn', icon('plus'), 'Добавить ▾');
+          b.addEventListener('click', () => menu(b, [
+            P.software ? { label: 'Программу (ПО)', icon: 'plus', onClick: () => softwareModal() } : null,
+            { label: 'Пароль', icon: 'lock', onClick: () => credentialModal() },
+            { label: 'Поле в карточку', icon: 'plus', onClick: addField },
+          ].filter(Boolean)));
+          return b;
+        })()) : null,
       notesDesc ? h('div.section', h('h3', 'Описание'), editable(notesDesc, { block: true, multiline: true })) : null,
       renderTabs());
 
@@ -182,7 +188,7 @@ export async function renderDevice(root, id) {
 
     clear(root,
       h('div.breadcrumbs',
-        h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'),
+        h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'),
         h('a', { href: '#/devices' }, 'Техника'), h('span.sep', '/'),
         h('a', { href: `#/devices?f=${encodeURIComponent(JSON.stringify({ type: [d.type_id] }))}` }, type.name), h('span.sep', '/'),
         h('span.row', { style: { gap: '4px' } }, typeDot(type), h('a', { href: `#/devices/${d.id}` }, key))),
@@ -498,8 +504,8 @@ function genPassword(len = 14) {
 
 // Кнопка «Подключиться к сеансу» (теневое подключение RDP) — если не отключена администратором
 let remoteCfg = null;
-function remoteButton(d) {
-  const btn = h('a.btn', {
+function remoteButton(d, primary = false) {
+  const btn = h('a.btn' + (primary ? '.primary' : ''), {
     href: `/inventory/api/netinfo/device/${d.id}/connect.cmd`, download: '',
     title: 'Подключиться к экрану сотрудника, не выкидывая его из системы. Скачается файл connect-….cmd — откройте его.',
   }, icon('screen'), 'Подключиться к сеансу');

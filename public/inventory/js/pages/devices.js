@@ -70,10 +70,10 @@ export async function renderDevices(root, params) {
   const countEl = h('span.muted');
 
   const colsBtn = h('button.btn', { onclick: () => columnsPopover(colsBtn) }, icon('columns'), 'Колонки');
-  const exportBtn = P.export ? h('button.btn', { onclick: doExport, title: 'Скачать текущую выборку в Excel' }, icon('download'), 'Экспорт в Excel') : null;
+  const exportBtn = P.export ? h('button.btn', { onclick: doExport, title: 'Скачать текущую выборку в Excel' }, icon('download'), 'Excel') : null;
 
   clear(root,
-    h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('span', 'Техника')),
+    h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('span', 'Техника')),
     h('div.page-head', h('h1', 'Техника'), countEl, h('span.spacer'),
       isStaff() ? h('a.btn', { href: '#/import' }, icon('download'), 'Импорт из Excel') : null,
       isStaff() ? h('button.btn.primary', { onclick: () => openCreateDevice(st.filters.type?.length === 1 ? st.filters.type[0] : null) }, icon('plus'), 'Добавить') : null),

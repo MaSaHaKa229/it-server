@@ -366,3 +366,25 @@ table.difftable .old { text-decoration: line-through; color: var(--text-subtle);
 /* Карточка рабочего места: таблице техники нужно больше ширины */
 .issue.wp-issue { grid-template-columns: minmax(0, 1fr) 320px; }
 @media (max-width: 1100px) { .issue.wp-issue { grid-template-columns: 1fr; } }
+
+/* Шапка: меню «Ещё ▾» и сокращение длинного имени */
+.topnav .more-wrap { position: relative; display: inline-flex; }
+.topnav .more-pop { position: absolute; top: 40px; left: 0; min-width: 200px; z-index: 300; padding: 4px 0; }
+.topnav .more-pop .menu-item { display: flex; height: auto; padding: 6px 14px; border-radius: 0; color: var(--n800); font-weight: 400; }
+.topnav .more-pop .menu-item.active { color: var(--b400); font-weight: 500; }
+.topnav .more-pop .menu-item.active::after { display: none; }
+.topbar .user-name { max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+
+/* Сообщение с кнопкой «Отменить» */
+.flag .flag-undo { margin-left: 12px; border: 0; background: none; color: var(--b400); font: inherit; font-weight: 600; cursor: pointer; padding: 0; align-self: center; white-space: nowrap; }
+.flag .flag-undo:hover { text-decoration: underline; }
+/* Быстрые действия в строке списка — видны при наведении */
+tr .row-actions { visibility: hidden; white-space: nowrap; }
+tr:hover .row-actions, tr .row-actions:focus-within { visibility: visible; }
+.row-actions .btn { height: 26px; padding: 0 8px; font-size: 12px; }
+.row-actions select { height: 26px; padding: 0 4px; font-size: 12px; width: auto; }
+/* Быстрые действия поверх ячейки (правый край), видны при наведении на строку */
+td.has-actions { position: relative; }
+td.has-actions > .row-actions { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
+td.has-actions > .row-actions > span { display: inline-flex; gap: 4px; align-items: center; background: var(--n0); padding: 4px 6px; border-radius: 3px; box-shadow: var(--shadow-raised); }
+td.has-actions > .row-actions > span:empty { display: none; }

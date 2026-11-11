@@ -16,7 +16,7 @@ export async function renderSettings(root, tab = 'types') {
     isSuper() ? h('a.side-link' + (tab === 'netprobe' ? '.active' : ''), { href: '#/settings/netprobe' }, 'Сведения из сети') : null,
     h('a.side-link' + (tab === 'netformat' ? '.active' : ''), { href: '#/settings/netformat' }, 'Формат данных из сети'));
   clear(root,
-    h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('span', 'Настройки')),
+    h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('span', 'Настройки')),
     h('div.page-head', h('h1', 'Настройки')),
     h('div.split', nav, body));
   if (tab === 'netprobe' && isSuper()) await renderNetprobeSettings(body);

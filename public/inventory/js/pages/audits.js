@@ -54,7 +54,7 @@ export async function renderAudits(root) {
       h('div.small.muted', `${a.total - a.pending} из ${a.total} проверено`, a.missing ? ` · не найдено: ${a.missing}` : '')),
     h('td.small.muted', a.created_by_name || '')));
   clear(root,
-    h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('span', 'Инвентаризация')),
+    h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('span', 'Инвентаризация')),
     h('div.page-head', h('h1', 'Инвентаризация'), h('span.spacer'),
       h('button.btn.primary', { onclick: () => createDialog() }, '+ Новая инвентаризация')),
     h('p.muted', { style: { marginTop: '-8px' } },
@@ -134,12 +134,12 @@ export async function renderAudit(root, id) {
     const open = a.status === 'open';
     document.title = `${a.title} — Инвентаризация`;
     clear(head,
-      h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('a', { href: '#/audits' }, 'Инвентаризация'), h('span.sep', '/'), h('span', a.title)),
+      h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('a', { href: '#/audits' }, 'Инвентаризация'), h('span.sep', '/'), h('span', a.title)),
       h('div.page-head',
         h('h1', a.title),
         h('span.lozenge' + (open ? '.blue' : '.green'), open ? 'идёт' : 'завершена'),
         h('span.spacer'),
-        h('a.btn', { href: `/inventory/api/audits/${a.id}/export.xlsx` }, 'Отчёт в Excel'),
+        h('a.btn', { href: `/inventory/api/audits/${a.id}/export.xlsx`, title: 'Отчёт в Excel' }, 'Excel'),
         open ? h('button.btn', { onclick: () => editDialog(a, reload) }, 'Изменить') : null,
         open ? h('button.btn.primary', { onclick: (e) => run(async () => {
           if (a.pending && !(await confirmDialog({ title: 'Завершить инвентаризацию?', text: `Не проверено устройств: ${a.pending}. Они останутся с отметкой «не проверено».`, okText: 'Завершить', danger: false }))) return;

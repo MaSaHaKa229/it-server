@@ -92,7 +92,7 @@ function ticketFilters(req) {
 
 router.get('/tickets', ah(async (req, res) => {
   const { where, vals, sort } = ticketFilters(req);
-  const limit = Math.min(Number(req.query.limit) || 300, 1000);
+  const limit = Math.min(Number(req.query.limit) || 300, 5000);
   const { rows } = await query(`${L.TICKET_SELECT} ${where} ORDER BY ${sort} LIMIT ${limit}`, vals);
   const counts = (await query(
     `SELECT count(*) FILTER (WHERE NOT s.is_closed)::int AS open,

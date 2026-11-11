@@ -119,20 +119,29 @@
       del: (u) => call("DELETE", u)
     };
   }
-  function toast(text, type = "ok", title) {
+  function toast(text, type = "ok", title, opts = {}) {
     let box = document.getElementById("flags");
     if (!box) {
       box = h("div#flags.flags");
       document.body.append(box);
     }
+    const undoBtn = opts.undo ? h("button.flag-undo", {
+      type: "button",
+      onclick: (e) => {
+        e.stopPropagation();
+        el.remove();
+        Promise.resolve().then(opts.undo).catch((err) => toast(err.message, "err"));
+      }
+    }, "\u041E\u0442\u043C\u0435\u043D\u0438\u0442\u044C") : null;
     const el = h(
       "div.flag." + type,
       h("div.ic", type === "ok" ? "\u2713" : type === "err" ? "!" : "i"),
-      h("div", title || type === "err" ? h("div.t", title || "\u041E\u0448\u0438\u0431\u043A\u0430") : null, h("div", text))
+      h("div", title || type === "err" ? h("div.t", title || "\u041E\u0448\u0438\u0431\u043A\u0430") : null, h("div", text)),
+      undoBtn
     );
     box.append(el);
     el.addEventListener("click", () => el.remove());
-    setTimeout(() => el.remove(), type === "err" ? 7e3 : 4e3);
+    setTimeout(() => el.remove(), type === "err" ? 7e3 : opts.undo ? 7e3 : 4e3);
   }
   async function run(fn, btn) {
     if (btn) btn.disabled = true;
@@ -187,6 +196,26 @@
     const [path, qs] = raw.split("?");
     return { path, parts: path.split("/").filter(Boolean), params: new URLSearchParams(qs || "") };
   }
+  function moreMenu(items, active) {
+    if (!items.length) return null;
+    const cur = items.find(([k]) => k === active);
+    const pop = h("div.popover.hidden.more-pop");
+    const btn = h(
+      "a" + (cur ? ".active" : ""),
+      { href: "#", onclick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        pop.classList.toggle("hidden");
+      } },
+      cur ? cur[2] : "\u0415\u0449\u0451",
+      " \u25BE"
+    );
+    clear(pop, items.map(([k, href, label]) => h("a.menu-item" + (k === active ? ".active" : ""), { href, onclick: () => pop.classList.add("hidden") }, label)));
+    document.addEventListener("click", (e) => {
+      if (!pop.contains(e.target) && e.target !== btn) pop.classList.add("hidden");
+    });
+    return h("span.more-wrap", btn, pop);
+  }
   function topbar(o) {
     const menuEl = h("div.popover.hidden");
     const closeMenu = () => menuEl.classList.add("hidden");
@@ -224,7 +253,8 @@
       h(
         "nav.topnav.row",
         { style: { gap: "2px" } },
-        (o.nav || []).map(([k, href, label]) => h("a" + (k === o.active ? ".active" : ""), { href }, label))
+        (o.nav || []).filter((x) => !x[3]).map(([k, href, label]) => h("a" + (k === o.active ? ".active" : ""), { href }, label)),
+        moreMenu((o.nav || []).filter((x) => x[3]), o.active)
       ),
       (o.actions || []).length ? h("span.row", { style: { marginLeft: "8px" } }, o.actions) : null,
       h("span.spacer"),

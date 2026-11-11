@@ -10,7 +10,7 @@ const devWord = (n) => `${n} ${plural(n, 'единица', 'единицы', 'е
 const sort = { key: 'name', dir: 1 };
 const COLS = [
   { key: 'name', label: 'Рабочее место' },
-  { key: 'employee', label: 'Сотрудник' },
+  { key: 'employee', label: 'Пользователь' },
   { key: 'department', label: 'Отдел' },
   { key: 'location', label: 'Расположение' },
   { key: 'device_count', label: 'Техника' },
@@ -21,7 +21,9 @@ export async function renderWorkplaces(root) {
   const list = await api.get('/api/workplaces');
   const reload = () => renderWorkplaces(root);
   const table = h('table.list');
-  const search = h('input', { type: 'search', placeholder: 'Поиск: название, сотрудник, отдел, кабинет' });
+  const search = h('input', { type: 'search', placeholder: 'Поиск: название, пользователь, отдел, кабинет' });
+  const moreBox = h('div', { style: { marginTop: '10px' } });
+  let shown = 200;
 
   function fill() {
     const q = search.value.trim().toLowerCase();
@@ -36,7 +38,7 @@ export async function renderWorkplaces(root) {
       h('thead', h('tr', COLS.map((c) => h('th.sortable', {
         onclick: () => { sort.dir = sort.key === c.key ? -sort.dir : 1; sort.key = c.key; fill(); },
       }, c.label, sort.key === c.key ? h('span.arrow', sort.dir > 0 ? '↑' : '↓') : null)))),
-      h('tbody', rows.length ? rows.map((w) => h('tr.clickable', { onclick: () => navigate('/workplaces/' + w.id) },
+      h('tbody', rows.length ? rows.slice(0, shown).map((w) => h('tr.clickable', { onclick: () => navigate('/workplaces/' + w.id) },
         h('td', h('a.key-link', { href: '#/workplaces/' + w.id }, w.name)),
         h('td', w.employee || h('span.muted', '—')),
         h('td', w.department || h('span.muted', '—')),
@@ -44,19 +46,23 @@ export async function renderWorkplaces(root) {
         h('td', w.device_count
           ? [h('span.badge', String(w.device_count)), h('span.muted.small', { style: { marginLeft: '8px' } }, w.device_types || '')]
           : h('span.muted', 'нет техники'))))
-        : h('tr.empty', h('td', { colspan: COLS.length }, list.length ? 'Ничего не найдено' : 'Рабочих мест пока нет'))));
+        : h('tr', h('td', { colspan: COLS.length }, list.length ? h('div.empty-state', h('h3', 'Ничего не найдено'), h('p', 'Измените условия поиска.'))
+          : h('div.empty-state', h('h3', 'Рабочих мест пока нет'),
+            h('p', 'Рабочее место объединяет технику одного сотрудника или точки — компьютер, монитор, принтер, телефон.'),
+            isStaff() ? h('button.btn.primary', { onclick: () => workplaceModal(null, (id) => navigate('/workplaces/' + id)) }, 'Создать рабочее место') : null)))));
+    clear(moreBox, rows.length > shown ? h('button.btn', { onclick: () => { shown += 200; fill(); } }, `Показать ещё (показано ${shown} из ${rows.length})`) : null);
   }
   search.addEventListener('input', fill);
 
   clear(root,
-    h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('span', 'Рабочие места')),
+    h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('span', 'Рабочие места')),
     h('div.page-head', h('h1', 'Рабочие места'), h('span.badge', list.length), h('span.spacer'),
       h('a.btn', { href: '/inventory/api/workplaces/export.xlsx', title: 'Выгрузить список рабочих мест в Excel' }, 'Excel'),
       isStaff() ? h('button.btn.primary', { onclick: () => workplaceModal(null, (id) => navigate('/workplaces/' + id)) }, icon('plus'), 'Создать рабочее место') : null),
     h('p.muted', { style: { margin: '-8px 0 16px' } },
       'Рабочее место объединяет технику одного сотрудника или точки: компьютер, монитор, принтер, телефон и т.д.'),
     h('div.toolbar', h('div.search-box', icon('search'), search)),
-    h('div.table-wrap', table));
+    h('div.table-wrap', table), moreBox);
   fill();
   void reload;
 }
@@ -89,7 +95,7 @@ function workplaceModal(w, done) {
     body: h('div.stack', { style: { gap: '16px' } },
       h('label.field', h('span', 'Название'), name),
       h('div.form-grid',
-        h('div.field', h('span.field-label', 'Сотрудник'), employee.el),
+        h('div.field', h('span.field-label', 'Пользователь'), employee.el),
         h('div.field', h('span.field-label', 'Отдел'), department.el),
         h('div.field.wide', h('span.field-label', 'Расположение'), location.el)),
       h('label.field', h('span', 'Примечание'), notes)),
@@ -114,7 +120,7 @@ export async function renderWorkplace(root, id) {
   const row = (label, value) => h('div.drow', h('div.dl', label), h('div.dv', h('div.editable.readonly', value || h('span.ph', '—'))));
 
   clear(root,
-    h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'),
+    h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'),
       h('a', { href: '#/workplaces' }, 'Рабочие места'), h('span.sep', '/'), h('span', w.name)),
     h('div.issue.wp-issue',
       h('div',
@@ -157,7 +163,7 @@ export async function renderWorkplace(root, id) {
         h('div.details',
           h('div.d-head', 'Сведения'),
           h('div.d-body',
-            row('Сотрудник', w.employee),
+            row('Пользователь', w.employee),
             row('Отдел', w.department),
             row('Расположение', w.location),
             row('Техника', w.device_count ? `${devWord(w.device_count)}: ${w.device_types}` : null))),

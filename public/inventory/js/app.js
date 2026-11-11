@@ -72,15 +72,23 @@ function renderShell() {
     ['dashboard', '#/', 'Панель'],
     ['devices', '#/devices', 'Техника'],
     ['workplaces', '#/workplaces', 'Рабочие места'],
-    isStaff() && ['netscan', '#/netscan', 'Сканирование сети'],
-    isStaff() && ['audits', '#/audits', 'Инвентаризация'],
-    isStaff() && ['import', '#/import', 'Импорт'],
-    isStaff() && ['catalog', '#/catalog', 'Справочники'],
-    isStaff() && ['settings', '#/settings', 'Настройки'],
-    isSuper() && ['users', '#/users', 'Пользователи'],
+    isStaff() && ['netscan', '#/netscan', 'Сканирование сети', true],
+    isStaff() && ['audits', '#/audits', 'Инвентаризация', true],
+    isStaff() && ['moves', '#/moves', 'Перемещения', true],
+    isStaff() && ['import', '#/import', 'Импорт', true],
+    isStaff() && ['catalog', '#/catalog', 'Справочники', true],
+    isStaff() && ['settings', '#/settings', 'Настройки', true],
+    isSuper() && ['users', '#/users', 'Пользователи', true],
   ].filter(Boolean);
+  // Редко нужные разделы — под «Ещё ▾»
+  const more = links.filter((x) => x[3]);
+  const morePop = h('div.popover.hidden.more-pop', more.map(([k, href, label]) =>
+    h('a.menu-item', { href, 'data-mk': k, onclick: () => morePop.classList.add('hidden') }, label)));
+  moreBtn = h('a', { href: '#', 'data-more': '1', onclick: (e) => { e.preventDefault(); e.stopPropagation(); morePop.classList.toggle('hidden'); } }, 'Ещё ▾');
+  document.addEventListener('click', (e) => { if (!morePop.contains(e.target) && e.target !== moreBtn) morePop.classList.add('hidden'); });
   navEl = h('nav.topnav.row', { style: { gap: '2px' } },
-    links.map(([k, href, label]) => h('a', { href, 'data-k': k }, label)));
+    links.filter((x) => !x[3]).map(([k, href, label]) => h('a', { href, 'data-k': k }, label)),
+    more.length ? h('span.more-wrap', moreBtn, morePop) : null);
 
 
   const userName = h('span', { style: { color: 'var(--n500)', fontWeight: 500, marginRight: '4px', whiteSpace: 'nowrap' } }, me.full_name || me.username);
@@ -95,6 +103,8 @@ function renderShell() {
     '-',
     { label: 'Сменить пароль', icon: 'lock', onClick: changePassword },
     { label: 'Настройки уведомлений', onClick: notifySettings },
+    { label: 'Вид: тема и плотность', onClick: () => window.portalPrefs && window.portalPrefs.open() },
+    { label: 'Справка', onClick: () => { location.href = '/help#inventory'; } },
     '-',
     { label: 'Выйти', onClick: async () => { await api.post(location.origin + '/api/auth/logout'); location.href = '/login'; } },
   ], { align: 'right' }));
@@ -124,8 +134,13 @@ async function notifySettings() {
 
 export const ROLE_LABEL = { superadmin: 'Суперадмин', editor: 'Редактор', reader: 'Читатель' };
 
+let moreBtn = null;
 function highlightNav(section) {
-  navEl.querySelectorAll('a').forEach((a) => a.classList.toggle('active', a.dataset.k === section));
+  navEl.querySelectorAll('a[data-k]').forEach((a) => a.classList.toggle('active', a.dataset.k === section));
+  // Раздел из «Ещё» — показываем его название на кнопке
+  const cur = navEl.querySelector(`a[data-mk="${section}"]`);
+  navEl.querySelectorAll('a[data-mk]').forEach((a) => a.classList.toggle('active', a === cur));
+  if (moreBtn) { moreBtn.textContent = (cur ? cur.textContent : 'Ещё') + ' ▾'; moreBtn.classList.toggle('active', !!cur); }
 }
 
 // ---------------- Боковая панель ----------------
@@ -148,7 +163,7 @@ const refreshSidebar = debounce(async () => {
   clear(sidebarEl,
     h('div.sidebar-project',
       h('div.icon', icon('box', 18)),
-      h('div', h('div.name', 'ИТ-служба'), h('div.sub', 'База данных техники'))),
+      h('div', h('div.name', 'Служба ИТ'), h('div.sub', 'База данных техники'))),
     link('#/', [icon('dashboard'), 'Панель']),
     link('#/devices', [icon('list'), 'Вся техника'], total),
     link('#/workplaces', [icon('users'), 'Рабочие места']),
@@ -159,7 +174,7 @@ const refreshSidebar = debounce(async () => {
     h('div.side-section', h('h4', 'По состоянию'),
       state.meta.statuses.map((st) => link(`#/devices?f=${encodeURIComponent(JSON.stringify({ status: [st.key] }))}`,
         [h('span.type-dot', { style: { background: st.color } }), st.label], statusCounts[st.key] || 0))),
-    h('div.side-section', h('h4', 'Сохранённые фильтры'),
+    h('div.side-section', h('h4', 'Мои фильтры'),
       filters.length ? filters.map((f) => {
         const href = savedFilterHref(f.query);
         const x = (f.user_id === state.me.id || isSuper())

@@ -20,10 +20,11 @@ export function AppProvider({ user, setUser, children }) {
     try { localStorage.setItem('cal.colorModes', JSON.stringify(m)); } catch { /* нет места */ }
   }, []);
 
-  const toast = useCallback((text, kind = 'ok') => {
+  // undo — функция «Отменить» (кнопка в сообщении, 7 секунд)
+  const toast = useCallback((text, kind = 'ok', undo = null) => {
     const id = Math.random();
-    setToasts((t) => [...t, { id, text, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500);
+    setToasts((t) => [...t, { id, text, kind, undo }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), undo ? 7000 : 3500);
   }, []);
 
   const reloadUsers = useCallback(() => api.get('/users').then((d) => setUsers(d.users)), []);
@@ -44,7 +45,13 @@ export function AppProvider({ user, setUser, children }) {
     <AppCtx.Provider value={value}>
       {children}
       <div className="toasts">
-        {toasts.map((t) => <div key={t.id} className={`toast toast-${t.kind}`}>{t.text}</div>)}
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast toast-${t.kind}`}>{t.text}
+            {t.undo && (
+              <button className="toast-undo" onClick={() => { setToasts((x) => x.filter((y) => y.id !== t.id)); t.undo(); }}>Отменить</button>
+            )}
+          </div>
+        ))}
       </div>
     </AppCtx.Provider>
   );

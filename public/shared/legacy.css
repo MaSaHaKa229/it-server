@@ -53,6 +53,7 @@ select { -moz-appearance: none; }
 .legacy .wizard-foot > * { margin-bottom: 12px; }
 .import-stats { grid-gap: 12px; }
 .legacy .chip-link > * + * { margin-left: 4px; }
+.legacy td.has-actions > .row-actions > span > * + * { margin-left: 4px; }
 /* portal.css */
 .tiles { grid-gap: 16px; }
 .legacy .tile > * + * { margin-left: 16px; }
@@ -88,3 +89,8 @@ dl.kv { grid-gap: 8px 12px; }
 .legacy .home-card-head > * + * { margin-left: 8px; }
 .legacy .home-card-head h3 > * + * { margin-left: 6px; }
 .legacy .home-row > * + * { margin-left: 10px; }
+.settings-map { grid-gap: 16px; }
+.legacy .help-toc > * + * { margin-left: 16px; }
+.legacy .help-toc > * { margin-bottom: 6px; }
+.help-list { grid-gap: 8px 20px; }
+.legacy .first-tip > * + * { margin-left: 16px; }

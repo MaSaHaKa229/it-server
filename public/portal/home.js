@@ -15,7 +15,10 @@ const LEVEL = {
 };
 
 // Старые закладки ИТ-инвентаря (http://сервер:3000/#/devices/5) ведут теперь в /inventory/
-if (/^#\/(devices|workplaces|catalog|settings|users|import)/.test(location.hash)) location.replace('/inventory/' + location.hash);
+// (кроме случая «нет доступа к инвентарю» — иначе страница перезагружалась бы по кругу)
+if (/^#\/(devices|workplaces|catalog|settings|users|import)/.test(location.hash) && !/[?&]denied=/.test(location.search)) {
+  location.replace('/inventory/' + location.hash);
+}
 
 async function main() {
   const app = document.getElementById('app');
@@ -68,6 +71,7 @@ async function main() {
       h('div.page-head', h('div',
         h('h1', `${greet}, ${(me.user.full_name || me.user.username).split(' ').slice(-2).join(' ')}`),
         h('div.muted', { style: { marginTop: '4px' } }, 'Сегодня ' + new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })))),
+      firstTip(),
       myBoard(my),
       h('h2.home-sec', 'Разделы'),
       tiles.length
@@ -83,6 +87,21 @@ async function main() {
         h('div', h('strong', 'Сайт заявок для сотрудников предприятия'),
           h('div.muted.small', 'Сотрудники, не входящие в службу ИТ, регистрируются по рабочей почте и оставляют заявки здесь:')),
         h('a.btn', { href: helpdeskUrl(me), target: '_blank', rel: 'noopener' }, helpdeskUrl(me).replace(/^https?:\/\//, '')))))));
+}
+
+// Подсказка при первом входе (запоминается в браузере)
+function firstTip() {
+  let seen = false;
+  try { seen = localStorage.getItem('portal.tipSeen') === '1'; } catch { /* нет хранилища */ }
+  if (seen) return null;
+  const box = h('div.panel.first-tip',
+    h('div', { style: { fontSize: '28px' } }, '👋'),
+    h('div.grow', h('b', 'Коротко о портале. '),
+      'Справа в шапке: 🔍 поиск по всему порталу (Ctrl+K), ☆ избранное и недавнее, 🔔 уведомления. ',
+      'Наведите мышь на номер заявки или ключ техники — появится краткая карточка. Тёмная тема и компактный вид — в меню с вашим именем.'),
+    h('a.btn', { href: '/help' }, 'Справка'),
+    h('button.btn.primary', { onclick: () => { try { localStorage.setItem('portal.tipSeen', '1'); } catch { /* */ } box.remove(); } }, 'Понятно'));
+  return box;
 }
 
 // ---------------- Сводка «моё» ----------------

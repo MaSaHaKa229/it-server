@@ -48,7 +48,7 @@ export async function renderImport(root) {
 
   const body = h('div');
   clear(root,
-    h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('a', { href: '#/devices' }, 'Техника'), h('span.sep', '/'), h('span', 'Импорт')),
+    h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('a', { href: '#/devices' }, 'Техника'), h('span.sep', '/'), h('span', 'Импорт')),
     h('div.page-head', h('h1', 'Импорт техники из Excel')),
     body);
 

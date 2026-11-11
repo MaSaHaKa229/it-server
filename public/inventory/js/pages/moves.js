@@ -119,12 +119,14 @@ export async function renderMoves(root) {
   const to = h('input', { type: 'date', value: filt.to, style: { width: '160px' } });
   const q = h('input', { type: 'search', placeholder: 'Устройство, кабинет, сотрудник, основание', value: filt.q });
   const box = h('div');
-  const excel = h('a.btn', 'Выгрузить в Excel');
+  const excel = h('a.btn', { title: 'Выгрузить в Excel' }, 'Excel');
+  let shown = 200;
   const load = async () => {
     Object.assign(filt, { from: from.value, to: to.value, q: q.value.trim() });
     const p = new URLSearchParams(filt);
     excel.href = '/inventory/api/moves/export.xlsx?' + p;
-    const rows = await api.get('/api/moves?' + p);
+    const all = await api.get('/api/moves?' + p);
+    const rows = all.slice(0, shown);
     clear(box, h('div.table-wrap', h('table.list',
       h('thead', h('tr', h('th', 'Дата'), h('th', 'Техника'), h('th', 'Что изменилось'), h('th', 'Основание'), h('th', 'Кто'))),
       h('tbody', rows.length ? rows.map((r) => h('tr',
@@ -135,12 +137,13 @@ export async function renderMoves(root) {
           a ? h('span.old', a) : null, a ? ' → ' : '', h('b', b || '—')))),
         h('td.small', r.note || ''),
         h('td.small.muted', r.user_name || '', h('div', fmtDate(r.created_at))))) : h('tr.empty', h('td', { colspan: 5 }, 'Перемещений за этот период нет'))))),
-      h('p.muted.small', `Записей: ${rows.length}`));
+      all.length > shown ? h('button.btn', { style: { marginTop: '10px' }, onclick: () => { shown += 200; run(load); } }, `Показать ещё (показано ${rows.length} из ${all.length})`) : null,
+      h('p.muted.small', `Записей: ${all.length}`));
   };
   [from, to].forEach((x) => x.addEventListener('change', () => run(load)));
   q.addEventListener('input', debounce(() => run(load), 300));
   clear(root,
-    h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('span', 'Перемещения')),
+    h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('span', 'Перемещения')),
     h('div.page-head', h('h1', 'Перемещения техники'), h('span.spacer'), excel),
     h('p.muted', { style: { marginTop: '-8px' } }, 'Кто, куда и когда переместил технику. Переместить — кнопка «Переместить» в карточке техники ',
       'или в списке техники для отмеченных устройств.'),

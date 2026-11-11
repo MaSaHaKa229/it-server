@@ -93,7 +93,7 @@ export async function renderNetscan(root) {
   }, scanBtn));
 
   clear(root,
-    h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('span', 'Сканирование сети')),
+    h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('span', 'Сканирование сети')),
     h('div.page-head', h('h1', 'Сканирование сети')),
     h('p.muted', { style: { marginTop: '-8px' } },
       'Поиск техники в сети: найденные устройства сравниваются с базой — новые можно добавить, у известных дополнить карточку.'),

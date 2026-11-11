@@ -2,11 +2,15 @@
 // Самостоятельный модуль без зависимостей (подключается из bell.js во всех разделах).
 
 const STYLE = `
-.gs-wrap { position: relative; display: inline-flex; margin-right: 8px; }
-.gs-wrap input.gs-input { width: 190px; height: 32px; padding: 0 10px 0 30px !important; border: 2px solid #DFE1E6; border-radius: 3px; background: #FAFBFC; font: 14px -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; color: #172B4D; outline: none; transition: width .15s; }
-.gs-wrap input.gs-input:hover { background: #EBECF0; }
-.gs-wrap input.gs-input:focus { width: 320px; border-color: #4C9AFF; background: #fff; }
-.gs-ico { position: absolute; left: 10px; top: 9px; z-index: 1; color: #6B778C; pointer-events: none; }
+.gs-wrap { position: relative; display: inline-block; width: 34px; height: 34px; margin-right: 2px; }
+.gs-wrap input.gs-input { position: absolute; right: 0; top: 1px; z-index: 2; width: 34px !important; height: 32px !important; min-width: 0 !important; padding: 0 30px 0 10px !important; border: 2px solid transparent !important;
+  border-radius: 16px !important; background: transparent !important; box-shadow: none !important; font: 14px -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; color: #172B4D; outline: none;
+  cursor: pointer; transition: width .15s, background .15s; }
+.gs-wrap input.gs-input::placeholder { color: transparent; }
+.gs-wrap input.gs-input:hover { background: #F4F5F7 !important; }
+.gs-wrap.open input.gs-input { width: 340px !important; border-radius: 3px !important; border-color: #4C9AFF !important; background: #fff !important; cursor: text; box-shadow: 0 4px 8px -2px rgba(9,30,66,.25) !important; }
+.gs-wrap.open input.gs-input::placeholder { color: #7A869A; }
+.gs-ico { position: absolute; right: 10px; top: 10px; z-index: 3; color: #42526E; pointer-events: none; }
 .gs-pop { position: absolute; right: 0; top: 38px; z-index: 510; width: 460px; max-height: 75vh; overflow: auto; background: #fff; border-radius: 3px;
   box-shadow: 0 8px 16px -4px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31); font: 14px/20px -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; color: #172B4D; text-align: left; }
 .gs-pop[hidden] { display: none; }
@@ -37,7 +41,7 @@ export function mountSearch(host) {
   const ico = el('span', 'gs-ico'); ico.innerHTML = ICON;
   const input = el('input', 'gs-input');
   input.type = 'search'; input.placeholder = 'Поиск по порталу'; input.autocomplete = 'off';
-  input.title = 'Техника, заявки, задачи и документы. Быстрый переход: Ctrl+K';
+  input.title = 'Поиск по порталу: техника, заявки, задачи, документы (Ctrl+K)';
   const pop = el('div', 'gs-pop'); pop.hidden = true;
   wrap.append(ico, input, pop);
   host.append(wrap);
@@ -82,6 +86,10 @@ export function mountSearch(host) {
     pop.hidden = false;
   }
 
+  const openBox = () => wrap.classList.add('open');
+  const closeBox = () => { if (!input.value.trim()) wrap.classList.remove('open'); };
+  input.addEventListener('focus', openBox);
+  input.addEventListener('blur', () => setTimeout(() => { if (pop.hidden) closeBox(); }, 150));
   input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 250); });
   input.addEventListener('focus', () => { if (input.value.trim().length >= 2 && pop.childNodes.length) pop.hidden = false; });
   input.addEventListener('keydown', (e) => {
@@ -90,9 +98,9 @@ export function mountSearch(host) {
     else if (e.key === 'Enter') {
       const a = links[sel >= 0 ? sel : 0];
       if (a) { e.preventDefault(); pop.hidden = true; input.blur(); location.href = a.href; }
-    } else if (e.key === 'Escape') { pop.hidden = true; input.blur(); }
+    } else if (e.key === 'Escape') { pop.hidden = true; input.value = ''; input.blur(); wrap.classList.remove('open'); }
   });
-  document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) pop.hidden = true; });
+  document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) { pop.hidden = true; closeBox(); } });
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'л' || e.code === 'KeyK')) { e.preventDefault(); input.focus(); input.select(); }
   });

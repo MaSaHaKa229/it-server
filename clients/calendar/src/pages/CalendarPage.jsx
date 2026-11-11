@@ -134,6 +134,17 @@ export default function CalendarPage() {
   };
   const goDay = (d) => { setCursor(startOfDay(d)); setView('day'); };
 
+  // Быстрая смена статуса из списка (с «Отменить»)
+  const setStatus = async (task, status) => {
+    try {
+      const r = await api.patch(`/tasks/${task.id}`, { status });
+      load();
+      toast(`«${task.title}»: ${STATUSES[status].label.toLowerCase()}${r.ticket ? ' · ' + r.ticket : ''}`, 'ok', async () => {
+        await api.patch(`/tasks/${task.id}`, { status: task.status }); load();
+      });
+    } catch (e) { toast(e.message, 'err'); }
+  };
+
   // Перетаскивание задачи: сдвигаем начало и конец на одинаковую величину
   const moveTask = async (task, newStart) => {
     const oldStart = new Date(task.start_at);
@@ -143,7 +154,9 @@ export default function CalendarPage() {
     setTasks((ts) => ts.map((t) => (t.id === task.id ? optimistic : t)));
     try {
       await api.patch(`/tasks/${task.id}`, { start_at: optimistic.start_at, end_at: optimistic.end_at });
-      toast(`«${task.title}» перенесена на ${fmtDate(newStart)}`);
+      toast(`«${task.title}» перенесена на ${fmtDate(newStart)}`, 'ok', async () => {
+        await api.patch(`/tasks/${task.id}`, { start_at: task.start_at, end_at: task.end_at }); load();
+      });
     } catch (e) {
       toast(e.message, 'err');
     }
@@ -250,7 +263,7 @@ export default function CalendarPage() {
           <YearView year={cursor.getFullYear()} tasks={tasks} absences={absences}
             onDayClick={goDay} onMonthClick={(d) => { setCursor(d); setView('month'); }} />
         )}
-        {view === 'list' && <ListView tasks={tasks} onOpen={(t) => setModal({ id: t.id })} />}
+        {view === 'list' && <ListView tasks={tasks} onOpen={(t) => setModal({ id: t.id })} onStatus={canEdit ? setStatus : null} />}
       </div>
 
       {!canEdit && <div className="readonly-note"><Icon name="eye" size={14} /> Режим просмотра: изменения недоступны</div>}

@@ -1,5 +1,5 @@
 // Заявки: рабочее место службы ИТ
-import { h, clear, makeApi, modal, run, toast, confirmDialog, avatar, fmtDateTime, relTime, toLocalInput, statusPill, parseHash, sortHead, sortRows, savedSort } from '/shared/ui.js';
+import { h, clear, makeApi, modal, run, toast, confirmDialog, avatar, fmtDateTime, relTime, toLocalInput, statusPill, parseHash, sortHead, sortRows, savedSort, emptyState } from '/shared/ui.js';
 import { thread, fileList, fileInput, historyList } from '/shared/thread.js';
 import { loadMe, portalTopbar, helpdeskUrl } from '/portal/shell.js';
 import { renderReports, renderRules, newTicketDialog } from './extra.js';
@@ -86,8 +86,8 @@ function layout(active, content) {
   clear(header, portalTopbar(me, settingsPages.includes(active) ? active : 'list', {
     section: 'Заявки', sectionHref: '#/',
     nav: [['list', '#/', 'Заявки'], ['reports', '#/reports', 'Отчёты'],
-      ...(meta.me.isAdmin ? [['rules', '#/rules', 'Автоназначение'], ['categories', '#/categories', 'Виды проблем'], ['statuses', '#/statuses', 'Статусы'],
-        ['requesters', '#/requesters', 'Сотрудники'], ['settings', '#/settings', 'Настройки']] : [])],
+      ...(meta.me.isAdmin ? [['rules', '#/rules', 'Автоназначение', true], ['categories', '#/categories', 'Виды проблем', true], ['statuses', '#/statuses', 'Статусы', true],
+        ['requesters', '#/requesters', 'Заявители', true], ['settings', '#/settings', 'Настройки', true]] : [])],
     onBurger: () => side.classList.toggle('open'),
   }));
   const link = (k, href, label, count, red) => h('a.side-link' + (active === k ? '.active' : ''), { href }, label,
@@ -106,7 +106,7 @@ function layout(active, content) {
       link('rules', '#/rules', 'Автоназначение'),
       link('categories', '#/categories', 'Виды проблем'),
       link('statuses', '#/statuses', 'Статусы'),
-      link('requesters', '#/requesters', 'Сотрудники'),
+      link('requesters', '#/requesters', 'Заявители'),
       link('settings', '#/settings', 'Регистрация и почта')) : null,
     h('div.side-section', h('h4', 'Сайт заявок'),
       h('a.side-link', { href: helpdeskUrl(me), target: '_blank', rel: 'noopener' }, '↗ ' + helpdeskUrl(me).replace(/^https?:\/\//, ''))));
@@ -180,8 +180,11 @@ async function renderList(params) {
     if (requester) q.set('requester', requester);
     return q;
   }
+  let limit = 300;
+  const moreBox = h('div', { style: { margin: '12px 0' } });
   async function load() {
     const q = query();
+    q.set('limit', limit);
     excel.href = '/helpdesk/api/tickets/export.xlsx?' + q;
     const res = await api.get('/tickets?' + q);
     counts = res.counts;
@@ -195,7 +198,12 @@ async function renderList(params) {
   function fill() {
     const list = ticketSort.key ? sortRows(rows, TICKET_COLS, ticketSort) : rows;
     clear(table, sortHead(TICKET_COLS, ticketSort, fill),
-      h('tbody', list.length ? list.map(ticketRow) : h('tr.empty', h('td', { colspan: TICKET_COLS.length }, 'Заявок нет'))));
+      h('tbody', list.length ? list.map((t) => ticketRow(t, load)) : h('tr', h('td', { colspan: TICKET_COLS.length },
+        emptyState('Заявок нет', listState.q || listState.status || listState.category || listState.assignee || listState.priority
+          ? 'По этому отбору ничего не найдено — измените условия поиска.'
+          : 'Сотрудник позвонил или пришёл лично? Заявку можно записать за него.',
+        { label: '+ Новая заявка', onClick: () => newTicketDialog({ api, meta }) })))));
+    clear(moreBox, rows.length >= limit ? h('button.btn', { onclick: () => { limit += 300; load(); } }, `Показать ещё (сейчас ${rows.length})`) : null);
   }
   function sideCounts() {
     document.querySelectorAll('.sidebar a.side-link').forEach((a) => {
@@ -222,14 +230,43 @@ async function renderList(params) {
       h('button.btn', { title: 'Запомнить текущий отбор — он появится слева в «Моих фильтрах»', onclick: () => saveViewDialog(view) }, 'Сохранить фильтр'),
       excel),
     h('div.table-wrap', table),
+    moreBox,
   ]);
   await load();
 }
 
-function ticketRow(t) {
+/** Быстрые действия в строке: «Взять себе», смена статуса — с «Отменить» */
+function quickActions(t, reload) {
+  const admin = meta.me.isAdmin;
+  const mineOrFree = !t.assignee_id || t.assignee_id === me.user.id;
+  const stop = (e) => e.stopPropagation();
+  const box = h('span', { onclick: stop });
+  const act = (body, msg, undoBody) => run(async () => {
+    await api.patch('/tickets/' + t.id, body);
+    await reload();
+    toast(msg, 'ok', null, { undo: async () => { await api.patch('/tickets/' + t.id, undoBody); await reload(); toast('Отменено'); } });
+  });
+  const st = meta.statuses.find((s) => s.id === t.status_id);
+  if (!t.assignee_id && !(st && st.is_closed)) {
+    box.append(h('button.btn.sm', { title: 'Взять заявку в работу', onclick: () => act({ assignee_id: me.user.id }, `#${t.id}: взята в работу`, { assignee_id: null }) }, 'Взять'));
+  }
+  if (admin || mineOrFree) {
+    const sel = h('select', { title: 'Сменить статус' }, meta.statuses.map((s) => h('option', { value: s.id }, s.name)));
+    sel.value = t.status_id;
+    sel.addEventListener('change', () => {
+      const to = meta.statuses.find((s) => s.id === Number(sel.value));
+      act({ status_id: to.id }, `#${t.id}: ${to.name}`, { status_id: t.status_id });
+    });
+    box.append(' ', sel);
+  }
+  return box;
+}
+
+function ticketRow(t, reload) {
   return h('tr.clickable', { onclick: () => { location.hash = '#/tickets/' + t.id; } },
-    h('td.ticket-key', '#' + t.id),
-    h('td', h('div.ticket-title', t.title), h('div.muted.small', (t.category_icon || '') + ' ' + (t.category_name || 'Без вида'))),
+    h('td.ticket-key', { 'data-peek': `ticket:${t.id}` }, '#' + t.id),
+    h('td.has-actions', h('div.ticket-title', t.title), h('div.muted.small', (t.category_icon || '') + ' ' + (t.category_name || 'Без вида')),
+      reload ? h('span.row-actions', quickActions(t, reload)) : null),
     h('td', h('div', t.requester_name), h('div.muted.small', [t.requester_department, t.location].filter(Boolean).join(' · '))),
     h('td', statusPill(t.status_name, t.status_color)),
     h('td', h('span.prio.' + t.priority, meta.priorities[t.priority])),
@@ -247,7 +284,12 @@ async function renderTicket(id) {
   const patch = (body, msg = 'Сохранено') => run(async () => { await api.patch('/tickets/' + id, body); toast(msg); await loadMeta(); reload(); });
 
   // --- свойства ---
-  const status = h('select', { disabled: !admin && !mineOrFree, onchange: () => patch({ status_id: Number(status.value) }, 'Статус изменён') },
+  const status = h('select', { disabled: !admin && !mineOrFree, onchange: () => run(async () => {
+    const was = t.status_id;
+    await api.patch('/tickets/' + id, { status_id: Number(status.value) });
+    await loadMeta(); await reload();
+    toast('Статус изменён', 'ok', null, { undo: async () => { await api.patch('/tickets/' + id, { status_id: was }); await reload(); toast('Отменено'); } });
+  }) },
     meta.statuses.map((s) => h('option', { value: s.id }, s.name + (s.is_closed ? ' (закрыта)' : ''))));
   status.value = t.status_id;
 
@@ -587,8 +629,8 @@ async function renderRequesters() {
   search.addEventListener('input', fill);
   const pending = list.filter((r) => !r.is_approved).length;
   layout('requesters', [
-    h('div.breadcrumbs', h('a', { href: '/' }, 'ИТ-портал'), h('span.sep', '/'), h('a', { href: '#/' }, 'Заявки'), h('span.sep', '/'), h('span', 'Сотрудники')),
-    h('div.page-head', h('h1', 'Зарегистрированные сотрудники'), h('span.badge', String(list.length)),
+    h('div.breadcrumbs', h('a', { href: '/' }, 'ИТ-портал'), h('span.sep', '/'), h('a', { href: '#/' }, 'Заявки'), h('span.sep', '/'), h('span', 'Заявители')),
+    h('div.page-head', h('h1', 'Заявители'), h('span.badge', String(list.length)),
       pending ? h('span.lozenge.yellow', `ждут подтверждения: ${pending}`) : null),
     h('div.toolbar', h('div.search-box', search)),
     h('div.table-wrap', table),

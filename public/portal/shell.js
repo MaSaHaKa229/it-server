@@ -32,6 +32,8 @@ export function userMenu(me) {
     ...sections(me).map(([, href, label]) => ({ label, href })),
     '-',
     { label: 'Профиль и пароль', onClick: () => profileDialog(me) },
+    { label: 'Вид: тема и плотность', onClick: () => window.portalPrefs && window.portalPrefs.open() },
+    { label: 'Справка', href: '/help' },
     { label: 'Выйти', onClick: logout },
   ];
 }

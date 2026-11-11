@@ -627,3 +627,19 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 16
 .saved-form input[type=text], .saved-form input:not([type]) { width: 100%; }
 .saved-buttons { display: flex; justify-content: flex-end; gap: 6px; }
 .saved-error { color: #DE350B; font-size: 12px; }
+
+/* Шапка: «Ещё ▾» */
+.topnav .more-wrap { position: relative; display: inline-flex; }
+.topnav .more-pop { position: absolute; top: 40px; left: 0; right: auto; min-width: 200px; z-index: 300; padding: 4px 0; }
+.topnav .more-pop .menu-item { display: flex; height: auto; padding: 6px 14px; border-radius: 0; font-weight: 400; }
+.topnav .more-pop .menu-item.active { color: var(--b400, #0052CC); font-weight: 500; }
+.topnav .more-pop .menu-item.active::after { display: none; }
+.topbar .user-name { max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+
+/* «Отменить» в сообщении и быстрые действия в списке задач */
+.toast { display: flex; align-items: center; gap: 12px; }
+.toast-undo { border: 0; background: none; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; }
+.agenda-quick { visibility: hidden; }
+.agenda-row:hover .agenda-quick { visibility: visible; }
+.quick-btn { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border-radius: 3px; background: #F4F5F7; color: #172B4D; font-size: 12px; white-space: nowrap; }
+.quick-btn:hover { background: #E3FCEF; color: #006644; }

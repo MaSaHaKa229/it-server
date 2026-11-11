@@ -1,7 +1,7 @@
 // Администрирование портала: пользователи и доступ к разделам
 import { h, clear, modal, run, toast, confirmDialog, avatar, fmtDateTime, sortHead, sortRows, savedSort } from '/shared/ui.js';
 import { api, loadMe, portalTopbar } from './shell.js';
-import { renderMailNotify, renderBackup, renderAudit } from './admin-extra.js';
+import { renderMailNotify, renderBackup, renderAudit, renderSettingsMap } from './admin-extra.js';
 
 let me, meta, users = [];
 const filter = { q: '', inactive: false };
@@ -43,7 +43,7 @@ function columns() {
 }
 
 // Вкладки администрирования (адрес: /admin#backup и т. п.)
-const TABS = [['users', 'Пользователи и доступ'], ['notify', 'Уведомления и почта'], ['backup', 'Резервные копии'], ['audit', 'Журнал входов и действий']];
+const TABS = [['users', 'Пользователи и доступ'], ['settings', 'Все настройки'], ['notify', 'Уведомления и почта'], ['backup', 'Резервные копии'], ['audit', 'Журнал входов и действий']];
 const currentTab = () => (TABS.find(([k]) => location.hash === '#' + k) || TABS[0])[0];
 const tabsEl = () => h('div.tabs', { style: { marginBottom: '16px' } }, TABS.map(([k, l]) =>
   h('a.tab' + (currentTab() === k ? '.active' : ''), { href: '#' + k }, l)));
@@ -60,7 +60,7 @@ async function render() {
         h('div.breadcrumbs', h('a', { href: '/' }, 'ИТ-портал'), h('span.sep', '/'), h('span', 'Администрирование')),
         h('div.page-head', h('h1', TABS.find(([k]) => k === tab)[1])),
         tabsEl(), body))));
-    await ({ notify: renderMailNotify, backup: renderBackup, audit: renderAudit })[tab](body);
+    await ({ settings: renderSettingsMap, notify: renderMailNotify, backup: renderBackup, audit: renderAudit })[tab](body);
     return;
   }
   users = await api.get('/api/admin/users');
@@ -95,7 +95,7 @@ async function render() {
       h('div.table-wrap', table),
       h('p.hint', { style: { marginTop: '12px' } },
         'Сотрудники предприятия, которые подают заявки в службу ИТ, регистрируются сами на сайте заявок — ',
-        'их список в разделе «Заявки» → «Сотрудники».')))));
+        'их список в разделе «Заявки» → «Заявители».')))));
   fill();
 }
 

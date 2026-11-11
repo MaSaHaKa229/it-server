@@ -99,6 +99,11 @@ React-клиенты грузят его динамически по адрес�
 **Сохранённые фильтры, избранное, недавние** — `server/portal/views.js` (`/api/my/views`, `/api/my/items`; таблицы
 `saved_views`, `user_items`), клиент — `public/shared/recent.js` (`starButton`, `mountRecent` в `mountHeaderTools`).
 **Excel** — `server/portal/xlsx.js` `sendXlsx()`; маршруты `…/export.xlsx` используют те же отборы, что списки.
+**UI-общее:** `/shared/prefs.js` — обычный скрипт в `<head>` всех страниц портала (тема `data-theme=dark` — инверсия
+через `filter`, плотность `data-density=compact`, окно `window.portalPrefs.open()`; в календаре больше не ставить
+`data-theme` в main.jsx); `/shared/peek.js` — карточка по наведению (`/api/peek`, ссылки или `data-peek="kind:id"`);
+меню «Ещё ▾» — 4-й элемент `true` в nav (`topbar` в ui.js, инвентарь, календарь); `toast(text, type, title, { undo })`;
+справка — `public/portal/help.js` (`/help`); «Все настройки» — `admin-extra.js` `SETTINGS_MAP` (новые настройки добавлять туда).
 **Сканирование по расписанию** — `netprobe_settings.scan_schedule`, `scan.js` `startSchedule()`; новые — уведомление `netscan_new`.
 Главная — `public/portal/home.js` + `/api/summary/my` (мои заявки, мои задачи на сегодня, уведомления).
 Значения для карточки — `netprobe/format.js`: шаблоны (`netprobe_settings.formats`) и замены (`netprobe_replacements`). Поиск в AD: база из настроек → домен контроллера → GC:// леса

@@ -81,6 +81,7 @@ async function main() {
   portalApi.use('/notifications', require('./portal/notifications')); // колокольчик уведомлений
   portalApi.use('/search', require('./portal/search'));               // общий поиск в шапке
   portalApi.use('/my', require('./portal/views'));                    // сохранённые фильтры, избранное, недавние
+  portalApi.use('/peek', require('./portal/peek'));                   // предпросмотр по наведению
   app.use('/api', portalApi);
 
   // ---------- ИТ-инвентарь ----------
@@ -141,6 +142,7 @@ async function main() {
   app.get('/login', (req, res, next) => (req.user ? res.redirect(safeNext(req.query.next)) : next()),
     sendPage(path.join(PUB, 'portal', 'login.html')));
   app.get('/', guard(), sendPage(path.join(PUB, 'portal', 'index.html')));
+  app.get('/help', guard(), sendPage(path.join(PUB, 'portal', 'help.html')));
   app.get('/admin', guard(), (req, res, next) => (req.user.role === 'superadmin' ? next() : res.redirect('/?denied=admin')),
     sendPage(path.join(PUB, 'portal', 'admin.html')));
   app.use('/portal', express.static(path.join(PUB, 'portal'), staticOpts));

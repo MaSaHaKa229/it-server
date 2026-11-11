@@ -60,6 +60,30 @@ const AV = ['#0052CC', '#00875A', '#FF5630', '#6554C0', '#00A3BF', '#FF8B00', '#
 const avColor = (n) => { let s = 0; for (const ch of String(n)) s += ch.charCodeAt(0); return AV[s % AV.length]; };
 
 const BELL_URL = ['', 'shared', 'bell.js'].join('/');
+// Редко нужные разделы — под «Ещё ▾»
+function MoreNav({ items, route }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const out = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', out);
+    return () => document.removeEventListener('mousedown', out);
+  }, []);
+  useEffect(() => setOpen(false), [route]);
+  if (!items.length) return null;
+  const cur = items.find((n) => n.id === route);
+  return (
+    <span className="more-wrap" ref={ref}>
+      <a href="#" className={cur ? 'active' : ''} onClick={(e) => { e.preventDefault(); setOpen((o) => !o); }}>{cur ? cur.label : 'Ещё'} ▾</a>
+      {open && (
+        <div className="popover more-pop">
+          {items.map((n) => <a key={n.id} className={'menu-item' + (route === n.id ? ' active' : '')} href={`#/${n.id}`}>{n.label}</a>)}
+        </div>
+      )}
+    </span>
+  );
+}
+
 // Колокольчик уведомлений портала (общий модуль /shared/bell.js)
 function Bell() {
   const ref = useRef(null);
@@ -91,10 +115,10 @@ function Shell() {
     { id: 'dashboard', label: 'Обзор' },
     { id: 'absences', label: 'Отпуска' },
     { id: 'series', label: 'Регулярные' },
-    canEdit && { id: 'categories', label: 'Категории' },
-    canEdit && { id: 'activity', label: 'Журнал' },
-    { id: 'colors', label: 'Цвета' },
     isAdmin && { id: 'stats', label: 'Статистика' },
+    canEdit && { id: 'categories', label: 'Категории', more: true },
+    canEdit && { id: 'activity', label: 'Журнал', more: true },
+    { id: 'colors', label: 'Цвета', more: true },
   ].filter(Boolean);
 
   const page = {
@@ -115,7 +139,8 @@ function Shell() {
         <a href="/" className="brand" title="Главная страница портала"><span className="brand-logo">IT</span><span>Портал</span></a>
         <a href="#/calendar" className="brand" style={{ marginLeft: -12 }}><span className="sep">/</span><span>Задачи</span></a>
         <nav className="topnav">
-          {nav.map((n) => <a key={n.id} href={`#/${n.id}`} className={route === n.id ? 'active' : ''}>{n.label}</a>)}
+          {nav.filter((n) => !n.more).map((n) => <a key={n.id} href={`#/${n.id}`} className={route === n.id ? 'active' : ''}>{n.label}</a>)}
+          <MoreNav items={nav.filter((n) => n.more)} route={route} />
         </nav>
         <span className="spacer" />
         <Bell />
@@ -131,6 +156,8 @@ function Shell() {
               {portalSections(portal).map(([href, label]) => <a key={href} className="menu-item" href={href}>{label}</a>)}
               <div className="menu-sep" />
               <a className="menu-item" href="#/profile">Профиль, цвет и пароль</a>
+              <button className="menu-item" onClick={() => { setMenuOpen(false); window.portalPrefs?.open(); }}>Вид: тема и плотность</button>
+              <a className="menu-item" href="/help#calendar">Справка</a>
               <button className="menu-item" onClick={logoutPortal}>Выйти</button>
             </div>
           )}

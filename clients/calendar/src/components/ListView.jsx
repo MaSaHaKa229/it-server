@@ -14,8 +14,8 @@ function People({ people }) {
   );
 }
 
-export default function ListView({ tasks, onOpen }) {
-  if (!tasks.length) return <div className="empty">Задач за этот период нет</div>;
+export default function ListView({ tasks, onOpen, onStatus }) {
+  if (!tasks.length) return <div className="empty"><b>Задач за этот период нет</b><div className="muted">Перейдите к другому периоду стрелками вверху, сбросьте фильтры или создайте задачу кнопкой «+ Задача».</div></div>;
   const groups = new Map();
   for (const t of tasks) {
     const k = dayKey(startOfDay(t.start_at));
@@ -48,6 +48,13 @@ export default function ListView({ tasks, onOpen }) {
                 {isOverdue(t) ? 'Просрочено' : STATUSES[t.status].label}
               </span>
               <People people={t.assignees} />
+              {onStatus && (
+                <span className="agenda-quick" onClick={(e) => e.stopPropagation()}>
+                  {t.status === 'done' || t.status === 'cancelled'
+                    ? <span className="quick-btn" role="button" title="Вернуть в работу" onClick={() => onStatus(t, 'todo')}>↺</span>
+                    : <span className="quick-btn" role="button" title="Отметить выполненной" onClick={() => onStatus(t, 'done')}>✓ Выполнено</span>}
+                </span>
+              )}
             </button>
           ))}
         </section>
