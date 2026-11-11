@@ -405,7 +405,7 @@ function categoryDialog(c) {
       h('label.field', h('span', 'Описание'), desc),
       h('label.field', h('span', 'Исполнитель по умолчанию'), assignee),
       h('p.hint', 'Новая заявка этого вида сразу попадает к этому исполнителю. Срок выполнения не ставится — его задаёт администратор в карточке заявки.'),
-      h('div.form-grid', h('label.field', h('span', 'Порядок в списке'), sort), h('label.check', { style: { alignSelf: 'end' } }, active, 'Показывать сотрудникам'))),
+      h('div.grid2', h('label.field', h('span', 'Порядок в списке'), sort), h('label.check', { style: { alignSelf: 'end' } }, active, 'Показывать сотрудникам'))),
     footer: [h('button.btn', { onclick: () => m.close() }, 'Отмена'), save],
   });
 }
