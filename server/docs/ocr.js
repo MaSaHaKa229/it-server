@@ -27,8 +27,10 @@ let req = require; // через него же ищутся словари
 let unavailableReason = null;
 let foundAt = null;
 
+const VENDOR_DIR = path.join(__dirname, '..', 'vendor', 'ocr', 'node_modules');
 function candidates() {
-  const list = [path.join(ROOT, 'node_modules')];
+  // server\vendor\ocr — компоненты, которые приходят в архиве обновления вместе с папкой server
+  const list = [path.join(ROOT, 'node_modules'), path.join(__dirname, '..', 'vendor', 'ocr', 'node_modules')];
   list.push(path.join(ROOT, 'node_modules', 'node_modules'));
   try {
     for (const e of fs.readdirSync(ROOT, { withFileTypes: true })) {
@@ -60,9 +62,11 @@ function candidates() {
   const expected = path.join(ROOT, 'node_modules', 'tesseract.js');
   unavailableReason = places.length
     ? `компоненты распознавания найдены, но не загружаются (${errors.join('; ').slice(0, 400)})`
-    : `на сервере не установлены компоненты распознавания — нет папки ${expected} (распакуйте папку node_modules из архива it-portal-node_modules.zip прямо в ${ROOT})`;
+    : `на сервере не найдены компоненты распознавания — нет папок ${path.join(VENDOR_DIR, 'tesseract.js')} и ${expected}. `
+      + 'Установите полный архив обновления: компоненты лежат в его папке server\\vendor\\ocr';
 })();
-if (foundAt && foundAt !== path.join(ROOT, 'node_modules')) {
+const VENDOR = VENDOR_DIR;
+if (foundAt && foundAt !== path.join(ROOT, 'node_modules') && foundAt !== VENDOR) {
   console.warn(`Распознавание сканов: компоненты найдены в ${foundAt} — работает, но лучше перенести эту папку node_modules в ${ROOT}`);
 }
 
@@ -251,7 +255,7 @@ async function start() {
   try {
     await query(
       `UPDATE document_files SET ocr_status = 'pending'
-        WHERE ocr_status IN ('running', 'unavailable')
+        WHERE ocr_status IN ('running', 'unavailable', 'error')
            OR (ocr_status IS NULL AND lower(filename) LIKE '%.pdf' AND (pages IS NULL OR text_pages IS NULL OR text_pages < pages))`);
     await query(`UPDATE document_files SET ocr_status = 'none' WHERE ocr_status IS NULL`);
     if (!tesseract) console.warn(`Распознавание сканов PDF недоступно: ${unavailableReason}`);

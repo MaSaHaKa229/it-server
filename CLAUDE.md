@@ -139,7 +139,10 @@ npm run build:install && npm run build        # только если прави
   в `%TEMP%\it-portal-tessdata`), очередь — `document_files.ocr_status`, один документ за раз. Пользователь говорил,
   что «раньше распознавание работало» (видимо, в прежней программе docsearch) — в этом репозитории его не было.
   Повёрнутые на 90° сканы не выравниваются (нет osd) — если пожалуются, добавить определение ориентации.
-- Зависимости меняли (tesseract.js): пользователю отправлен отдельный архив `it-portal-node_modules.zip`
-  (собирается: `npm ci --omit=dev --ignore-scripts` в чистой папке + zip), шаг 3а в `UPDATE-README.txt`.
+- Компоненты распознавания (tesseract.js + словари) **едут в архиве обновления** внутри `server/vendor/ocr`
+  (`scripts/vendor-ocr.js`, вызывается из `make-update.sh`; в git не хранятся — `.gitignore`). Отдельный архив
+  `node_modules` пользователь ставил неверно (компонентов в C:\it-portal не оказалось), поэтому так.
+  `server/docs/ocr.js` ищет их в `node_modules`, затем в `server/vendor/ocr/node_modules` и во «вложенных» папках.
+  Ядра tesseract-core нужны все варианты: на Node 22 выбирался relaxedsimd без LSTM.
 - Название сайта заявок («HelpDesk») зашито в `public/helpdesk/app.js`; предлагалось вынести в настройки.
 - Основной веткой репозитория на GitHub должна быть `main` (Settings → General → Default branch).

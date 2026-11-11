@@ -3,3 +3,6 @@ clients/*/node_modules/
 .env
 *.log
 dist-offline/
+
+# Компоненты распознавания для архива обновления (scripts/vendor-ocr.js)
+server/vendor/
