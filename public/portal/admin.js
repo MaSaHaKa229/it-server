@@ -8,7 +8,7 @@ const MOD_ORDER = ['inventory', 'docs', 'calendar', 'helpdesk'];
 const MOD_HINT = {
   inventory: 'Просмотр — только то, что разрешено в настройках читателя (типы техники, отделы, поля, пароли). Редактирование — добавление и изменение техники, справочников, импорт.',
   docs: 'Просмотр — поиск, чтение и скачивание документов. Редактирование — добавление, изменение и удаление документов.',
-  calendar: 'Просмотр — календарь и задачи без изменений. Редактирование — создание и изменение задач, комментарии. Администратор — плюс удаление категорий и журнал.',
+  calendar: 'Просмотр — календарь и задачи без изменений (какие задачи и чьи отпуска видны — настраивается ниже). Редактирование — создание и изменение задач, комментарии. Администратор — плюс удаление категорий и журнал.',
   helpdesk: 'Исполнитель — видит все заявки, берёт их в работу, меняет статус своих, переписывается с заявителем. Администратор — назначает исполнителей и сроки, настраивает виды проблем, статусы и регистрацию сотрудников.',
 };
 // Готовые наборы прав
@@ -85,10 +85,87 @@ function levelCell(u, mod) {
   if (mod === 'docs' && lv !== 'none' && Array.isArray(u.modules.docs_types) && u.modules.docs_types.length) extra.push('часть видов');
   if (mod === 'docs' && lv !== 'none' && Array.isArray(u.modules.docs_folders)) extra.push(`папок: ${u.modules.docs_folders.length}`);
   if (mod === 'calendar' && lv !== 'none' && lv !== 'admin' && u.modules.calendar_own_only) extra.push('только свои');
+  else if (mod === 'calendar' && lv === 'view' && (Array.isArray(u.modules.calendar_cats) || Array.isArray(u.modules.calendar_people))) extra.push('выбранные задачи');
+  if (mod === 'calendar' && lv === 'view' && u.modules.calendar_absences === 'none') extra.push('без отсутствий');
+  else if (mod === 'calendar' && lv === 'view' && Array.isArray(u.modules.calendar_absences)) extra.push('часть отсутствий');
   if (mod === 'inventory' && lv === 'view') extra.push('по настройкам читателя');
   const cls = { view: '', edit: '.green', admin: '.purple', executor: '.blue' }[lv] ?? '';
   return h('td.access-cell', lv === 'none' ? h('span.muted', '—') : h('span.lozenge' + cls, label),
     extra.length ? h('span.muted.small', { style: { marginLeft: '6px' } }, extra.join(', ')) : null);
+}
+
+/**
+ * Уровень «Просмотр» в календаре: какие задачи и чьи отсутствия видит сотрудник.
+ * Задачи: все / только свои / выбранные (категории и исполнители; свои видны всегда). Отсутствия: все / никакие / выбранных сотрудников.
+ */
+function calendarViewScope(mods) {
+  const cats = [{ id: 0, name: 'Без категории' }, ...(meta.calCategories || [])];
+  const people = [{ id: 0, name: 'Без исполнителя' }, ...(meta.calPeople || [])];
+  const absPeople = meta.calPeople || [];
+  const selected = Array.isArray(mods.calendar_cats) || Array.isArray(mods.calendar_people);
+  let taskMode = mods.calendar_own_only ? 'own' : selected ? 'selected' : 'all';
+  let absMode = mods.calendar_absences === 'none' ? 'none' : Array.isArray(mods.calendar_absences) ? 'selected' : 'all';
+
+  // Список с галочкой «все»: при «все» отдельные галочки недоступны
+  function picker(title, items, current, swatch) {
+    const all = h('input', { type: 'checkbox', checked: !Array.isArray(current) });
+    const set = new Set(Array.isArray(current) ? current : []);
+    const boxes = items.map((x) => h('input', { type: 'checkbox', value: x.id, checked: !Array.isArray(current) || set.has(x.id) }));
+    const sync = () => boxes.forEach((b) => { b.disabled = all.checked; if (all.checked) b.checked = true; });
+    all.addEventListener('change', sync);
+    sync();
+    return {
+      el: h('div', { style: { marginTop: '8px' } },
+        h('div.row', h('strong.small', title), h('label.check.small', all, 'все')),
+        h('div.stack', { style: { marginTop: '6px', gap: '4px', maxHeight: '180px', overflowY: 'auto' } },
+          items.map((x, i) => h('label.check.small', boxes[i],
+            swatch && x.color ? h('span', { style: { display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', background: x.color, marginRight: '4px' } }) : null,
+            x.id === 0 ? h('i', x.name) : x.name)))),
+      value: () => (all.checked ? null : boxes.filter((b) => b.checked).map((b) => Number(b.value))),
+    };
+  }
+  const catPick = picker('Категории:', cats, mods.calendar_cats, true);
+  const peoplePick = picker('Исполнители:', people, mods.calendar_people);
+  const absPick = picker('Сотрудники:', absPeople, Array.isArray(mods.calendar_absences) ? mods.calendar_absences : null);
+
+  const taskBox = h('div');
+  const absBox = h('div');
+  const radios = (name, opts, cur, onChange) => h('div.row.wrap', { style: { gap: '14px', marginTop: '4px' } },
+    opts.map(([v, label]) => h('label.check.small',
+      h('input', { type: 'radio', name, checked: cur === v, onchange: () => onChange(v) }), label)));
+  const uid = Math.random().toString(36).slice(2);
+  function draw() {
+    clear(taskBox,
+      radios('calt-' + uid, [['all', 'все задачи'], ['own', 'только свои'], ['selected', 'выбранные']], taskMode, (v) => { taskMode = v; draw(); }),
+      taskMode === 'own' ? h('p.hint', 'Задачи, где сотрудник автор или исполнитель.') : null,
+      taskMode === 'selected' ? [
+        h('p.hint', 'Видны задачи отмеченных категорий, у которых среди исполнителей есть отмеченные сотрудники. Свои задачи видны всегда.'),
+        catPick.el, peoplePick.el] : null);
+    clear(absBox,
+      radios('cala-' + uid, [['all', 'всех сотрудников'], ['none', 'не показывать'], ['selected', 'выбранных сотрудников']], absMode, (v) => { absMode = v; draw(); }),
+      absMode === 'selected' ? [h('p.hint', 'Свои отсутствия видны всегда.'), absPick.el] : null);
+  }
+  draw();
+  return {
+    el: h('div.mod-extra',
+      h('strong.small', 'Какие задачи видит:'), taskBox,
+      h('div', { style: { marginTop: '12px' } }, h('strong.small', 'Отпуска и другие отсутствия:'), absBox)),
+    value() {
+      const out = { calendar_own_only: taskMode === 'own', calendar_cats: null, calendar_people: null, calendar_absences: 'all' };
+      if (taskMode === 'selected') {
+        out.calendar_cats = catPick.value();
+        out.calendar_people = peoplePick.value();
+        if (out.calendar_cats && !out.calendar_cats.length) throw new Error('Отметьте хотя бы одну категорию задач или выберите «все задачи»');
+        if (out.calendar_people && !out.calendar_people.length) throw new Error('Отметьте хотя бы одного исполнителя или выберите «все задачи»');
+        // «Выбранные» без единого ограничения — то же, что «все задачи»
+      }
+      if (absMode === 'none') out.calendar_absences = 'none';
+      if (absMode === 'selected') {
+        out.calendar_absences = absPick.value() || 'all';
+      }
+      return out;
+    },
+  };
 }
 
 function row(u) {
@@ -158,6 +235,7 @@ function userDialog(u) {
   folderAll.addEventListener('change', syncFolders);
   syncFolders();
   const ownOnly = h('input', { type: 'checkbox', checked: !!mods.calendar_own_only });
+  const calView = calendarViewScope(mods);
 
   function renderMods() {
     const admin = isAdmin.checked;
@@ -194,9 +272,10 @@ function userDialog(u) {
                 h('div.mod-extra', h('div.row.wrap', h('strong.small', 'Виды документов:'), h('label.check.small', docAll, 'все')),
                   h('div.row.wrap', { style: { marginTop: '6px', gap: '12px' } }, docBoxes))]
                 : null,
-              m === 'calendar' && ['view', 'edit'].includes(mods.calendar)
+              m === 'calendar' && mods.calendar === 'edit'
                 ? h('div.mod-extra', h('label.check.small', ownOnly, 'Видит только свои задачи (где он автор или исполнитель)'))
-                : null),
+                : null,
+              m === 'calendar' && mods.calendar === 'view' ? calView.el : null),
           ]))));
   }
   isAdmin.addEventListener('change', renderMods);
@@ -211,7 +290,8 @@ function userDialog(u) {
       const body = {
         username: username.value.trim(), password: password.value || undefined,
         full_name: fullName.value, email: email.value, is_active: active.checked, is_admin: isAdmin.checked,
-        modules: { ...mods, docs_types: types, docs_folders: folderIds, calendar_own_only: ownOnly.checked },
+        modules: { ...mods, docs_types: types, docs_folders: folderIds,
+          ...(mods.calendar === 'view' ? calView.value() : { calendar_own_only: ownOnly.checked }) },
       };
       if (isNew) await api.post('/api/admin/users', body); else await api.put('/api/admin/users/' + u.id, body);
       m.close(); toast(isNew ? 'Пользователь создан' : 'Сохранено'); render();

@@ -51,6 +51,14 @@ function normalizeModules(m) {
     ? [...new Set(m.docs_folders.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2000)
     : null;
   out.calendar_own_only = !!m.calendar_own_only;
+  // Уровень «Просмотр» в календаре: какие задачи и чьи отсутствия видны (server/calendar/scope.js).
+  // null — все; список id (0 — «без категории» / «без исполнителя»)
+  const idList = (v) => (Array.isArray(v)
+    ? [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n >= 0))].slice(0, 2000) : null);
+  out.calendar_cats = idList(m.calendar_cats);
+  out.calendar_people = idList(m.calendar_people);
+  out.calendar_absences = m.calendar_absences === 'none' ? 'none'
+    : Array.isArray(m.calendar_absences) ? idList(m.calendar_absences) : 'all';
   return out;
 }
 

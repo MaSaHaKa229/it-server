@@ -5,6 +5,7 @@ import { query, withTransaction, logActivity } from '../db.js';
 import { requireRole } from '../auth.js';
 import { ah, validate, HttpError } from '../validate.js';
 import { ensureOccurrences, EVERY, validTz } from '../series.js';
+import { taskCond } from '../scope.js';
 
 const r = Router();
 
@@ -24,18 +25,18 @@ const SELECT = `
     LEFT JOIN categories c ON c.id = s.category_id
     LEFT JOIN users cu ON cu.id = s.created_by`;
 
-// «Только свои задачи»: серии, которые пользователь создал или в которых он исполнитель
-const own = (user, n) => (user.own_only ? `(s.created_by = $${n} OR $${n} = ANY(s.assignees))` : 'TRUE');
-
+// Ограничения видимости («только свои», выбранные категории/сотрудники) — как у задач
 r.get('/', ah(async (req, res) => {
-  const { rows } = await query(`${SELECT} WHERE ${own(req.user, 1)} ORDER BY s.title`, req.user.own_only ? [req.user.id] : []);
+  const vals = [];
+  const cond = taskCond(req.user, vals, true) || 'TRUE';
+  const { rows } = await query(`${SELECT} WHERE ${cond} ORDER BY s.title`, vals);
   res.json({ series: rows });
 }));
 
 async function getSeries(id, user) {
   const vals = [id];
-  if (user.own_only) vals.push(user.id);
-  const { rows } = await query(`${SELECT} WHERE s.id = $1 AND ${own(user, 2)}`, vals);
+  const cond = taskCond(user, vals, true) || 'TRUE';
+  const { rows } = await query(`${SELECT} WHERE s.id = $1 AND ${cond}`, vals);
   if (!rows[0]) throw new HttpError(404, 'Периодическая задача не найдена');
   return rows[0];
 }

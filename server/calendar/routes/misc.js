@@ -2,27 +2,33 @@ import { Router } from 'express';
 import { query, logActivity } from '../db.js';
 import { requireRole } from '../auth.js';
 import { ah } from '../validate.js';
+import { taskCond } from '../scope.js';
 
 const r = Router();
 
 // Сводка для дашборда
 r.get('/stats', ah(async (req, res) => {
+  // Считаются только задачи, которые пользователю разрешено видеть
+  const sv = [];
+  const sc = taskCond(req.user, sv) || 'TRUE';
+  const wv = [];
+  const wc = taskCond(req.user, wv) || 'TRUE';
   const [byStatus, overdue, mine, today, workload] = await Promise.all([
-    query('SELECT status, count(*)::int AS n FROM tasks GROUP BY status'),
-    query("SELECT count(*)::int AS n FROM tasks WHERE end_at < now() AND status IN ('todo','in_progress')"),
+    query(`SELECT status, count(*)::int AS n FROM tasks t WHERE ${sc} GROUP BY status`, sv),
+    query(`SELECT count(*)::int AS n FROM tasks t WHERE end_at < now() AND status IN ('todo','in_progress') AND ${sc}`, sv),
     query(`SELECT count(*)::int AS n FROM tasks t JOIN task_assignees a ON a.task_id=t.id
            WHERE a.user_id=$1 AND t.status IN ('todo','in_progress')`, [req.user.id]),
-    query(`SELECT count(*)::int AS n FROM tasks WHERE start_at < date_trunc('day', now()) + interval '1 day'
-           AND end_at >= date_trunc('day', now()) AND status <> 'cancelled'`),
+    query(`SELECT count(*)::int AS n FROM tasks t WHERE start_at < date_trunc('day', now()) + interval '1 day'
+           AND end_at >= date_trunc('day', now()) AND status <> 'cancelled' AND ${sc}`, sv),
     query(`SELECT u.id, u.name, u.color,
              count(t.id) FILTER (WHERE t.status IN ('todo','in_progress'))::int AS open,
              count(t.id) FILTER (WHERE t.status IN ('todo','in_progress') AND t.end_at < now())::int AS overdue,
              count(t.id) FILTER (WHERE t.status = 'done' AND t.updated_at > now() - interval '30 days')::int AS done_30d
            FROM users u
            LEFT JOIN task_assignees a ON a.user_id = u.id
-           LEFT JOIN tasks t ON t.id = a.task_id
+           LEFT JOIN tasks t ON t.id = a.task_id AND ${wc}
            WHERE u.is_active AND NOT u.is_system
-           GROUP BY u.id ORDER BY open DESC, u.name`),
+           GROUP BY u.id ORDER BY open DESC, u.name`, wv),
   ]);
   res.json({
     byStatus: Object.fromEntries(byStatus.rows.map((r) => [r.status, r.n])),

@@ -21,7 +21,12 @@ router.get('/meta', ah(async (req, res) => {
   const { rows } = await query('SELECT code, name FROM docs.doc_types ORDER BY sort, name');
   // Папки документов (дерево) — для выдачи доступа по папкам
   const folders = (await require('../docs/routes/folders').loadTree()).map((f) => ({ id: f.id, name: f.name, path: f.path, depth: f.depth, parent_id: f.parent_id }));
+  // Категории задач и сотрудники календаря — для настройки уровня «Просмотр»
+  const calCategories = (await query('SELECT id, name, color FROM calendar.categories ORDER BY name')).rows;
+  const calPeople = (await query('SELECT id, name FROM calendar.users WHERE is_active AND NOT is_system ORDER BY name')).rows;
   res.json({
+    calCategories,
+    calPeople,
     modules: Object.fromEntries(Object.entries(MODULES).map(([k, m]) => [k, { label: m.label, levels: m.levels }])),
     docTypes: Object.fromEntries(rows.map((r) => [r.code, r.name])),
     docFolders: folders,

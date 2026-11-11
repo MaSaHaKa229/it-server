@@ -34,7 +34,9 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
 **Пользователи и права.** Источник истины — `public.users` (таблица инвентаря): `role` (`superadmin` — администратор
 портала; `editor`/`reader` — уровень в инвентаре), `permissions` (тонкие права читателя инвентаря), `modules` (JSONB):
 `inventory`, `docs`, `calendar`, `helpdesk` — уровни из `server/portal/modules.js`; плюс `docs_types`, `docs_folders`,
-`calendar_own_only`. Сессия общая (cookie `itdb.sid`, express-session в PostgreSQL). `server/portal/sync.js` копирует
+`calendar_own_only`, для уровня «Просмотр» календаря — `calendar_cats`/`calendar_people` (null — все, 0 — «без категории»/
+«без исполнителя») и `calendar_absences` ('all'/'none'/[id]); применяются в `server/calendar/scope.js` (`taskCond`,
+`absenceCond`) во всех запросах задач, серий, отсутствий и счётчиков, включая главную. Сессия общая (cookie `itdb.sid`, express-session в PostgreSQL). `server/portal/sync.js` копирует
 пользователей в `docs.users` и `calendar.users` с теми же id (нужны для связей «автор», «исполнитель»).
 Заявители helpdesk — отдельная таблица `helpdesk.requesters` и своя сессия (`helpdesk.sid`).
 **Суперадминистратор — служебная учётная запись** (просьба пользователя): кроме панелей администрирования нигде не

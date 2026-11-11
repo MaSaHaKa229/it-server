@@ -4,6 +4,7 @@ import { query, withTransaction, logActivity } from '../db.js';
 import { requireRole } from '../auth.js';
 import { ah, validate, HttpError } from '../validate.js';
 import { ensureOccurrences, EVERY, validTz } from '../series.js';
+import { taskCond } from '../scope.js';
 
 const r = Router();
 
@@ -84,11 +85,8 @@ function buildFilters(q, user) {
   }
   if (q.mine === '1') add('EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = ?)', user.id);
   if (q.overdue === '1') { add("t.end_at < ?", new Date()); where.push("t.status IN ('todo','in_progress')"); }
-  if (user.own_only) {
-    vals.push(user.id);
-    const n = vals.length;
-    where.push(`(t.created_by = $${n} OR EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = $${n}))`);
-  }
+  const scoped = taskCond(user, vals);
+  if (scoped) where.push(scoped);
   if (q.q) {
     vals.push(`%${q.q}%`);
     where.push(`(t.title ILIKE $${vals.length} OR t.description ILIKE $${vals.length})`);
@@ -96,11 +94,12 @@ function buildFilters(q, user) {
   return { where: where.length ? 'WHERE ' + where.join(' AND ') : '', vals };
 }
 
-// Ограничение «только свои задачи»: чужая задача для такого пользователя как будто не существует
+// Ограничения видимости («только свои», выбранные категории/сотрудники): недоступная задача как будто не существует
 r.param('id', (req, res, next, id) => {
-  if (!req.user.own_only) return next();
-  query(`SELECT 1 FROM tasks t WHERE t.id = $1 AND (t.created_by = $2 OR EXISTS
-           (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = $2))`, [Number(id) || 0, req.user.id])
+  const vals = [Number(id) || 0];
+  const cond = taskCond(req.user, vals);
+  if (!cond) return next();
+  query(`SELECT 1 FROM tasks t WHERE t.id = $1 AND ${cond}`, vals)
     .then(({ rows }) => (rows[0] ? next() : res.status(404).json({ error: 'Задача не найдена' })))
     .catch(next);
 });

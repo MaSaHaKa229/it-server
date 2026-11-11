@@ -2,6 +2,7 @@
 // роль в календаре вычисляется из его прав на модуль «Задачи и календарь».
 import { createRequire } from 'node:module';
 import { query } from './db.js';
+import { scopeOf } from './scope.js';
 
 const require = createRequire(import.meta.url);
 const { level } = require('../portal/modules.js');
@@ -17,12 +18,15 @@ export async function requireAuth(req, res, next) {
     if (!rows[0]) return res.status(401).json({ error: 'Сессия недействительна' });
     req.portalUser = u;
     const role = calRole(u);
+    const scope = scopeOf(u, role);
     req.user = {
       ...rows[0],
       role,
       is_active: true,
       // «Видит только свои задачи» — ограничение для наблюдателей и редакторов
-      own_only: role !== 'admin' && !!(u.modules && u.modules.calendar_own_only),
+      own_only: scope.own,
+      // Что разрешено видеть (только свои / выбранные категории и сотрудники / отсутствия) — server/calendar/scope.js
+      scope,
     };
     next();
   } catch (e) {

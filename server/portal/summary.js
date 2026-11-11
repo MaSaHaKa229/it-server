@@ -4,6 +4,7 @@ const { query } = require('../inventory/db');
 const { requireAuth } = require('../inventory/access');
 const { ah } = require('../inventory/util');
 const { level } = require('./modules');
+const { calRole } = require('./sync');
 
 const router = express.Router();
 
@@ -26,12 +27,20 @@ router.get('/', requireAuth, ah(async (req, res) => {
       [types, await require('../docs/access').allowedFolderIds(u)])).rows[0]);
   }
   if (level(u, 'calendar') !== 'none') {
-    out.calendar = await safe(async () => (await query(
-      `SELECT count(*) FILTER (WHERE a.user_id IS NOT NULL AND t.status IN ('todo','in_progress'))::int AS mine,
-              count(*) FILTER (WHERE t.start_at < date_trunc('day', now()) + interval '1 day'
-                                 AND t.end_at >= date_trunc('day', now()) AND t.status <> 'cancelled')::int AS today
-         FROM calendar.tasks t
-         LEFT JOIN calendar.task_assignees a ON a.task_id = t.id AND a.user_id = $1`, [u.id])).rows[0]);
+    out.calendar = await safe(async () => {
+      // Только задачи, которые пользователю разрешено видеть (как в самом календаре)
+      const { scopeOf, taskCond } = await import('../calendar/scope.js');
+      const vals = [u.id];
+      const cond = (taskCond({ id: u.id, scope: scopeOf(u, calRole(u)) }, vals) || 'TRUE')
+        .replace(/task_assignees/g, 'calendar.task_assignees');
+      return (await query(
+        `SELECT count(*) FILTER (WHERE a.user_id IS NOT NULL AND t.status IN ('todo','in_progress'))::int AS mine,
+                count(*) FILTER (WHERE t.start_at < date_trunc('day', now()) + interval '1 day'
+                                   AND t.end_at >= date_trunc('day', now()) AND t.status <> 'cancelled')::int AS today
+           FROM calendar.tasks t
+           LEFT JOIN calendar.task_assignees a ON a.task_id = t.id AND a.user_id = $1
+          WHERE ${cond}`, vals)).rows[0];
+    });
   }
   if (level(u, 'helpdesk') !== 'none') {
     out.helpdesk = await safe(async () => (await query(

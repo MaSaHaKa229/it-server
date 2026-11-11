@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query, logActivity } from '../db.js';
 import { ah, validate, HttpError } from '../validate.js';
+import { absenceCond } from '../scope.js';
 
 const r = Router();
 
@@ -32,6 +33,8 @@ r.get('/', ah(async (req, res) => {
   }
   if (req.query.kind) { vals.push(String(req.query.kind).split(',')); where.push(`a.kind = ANY($${vals.length}::text[])`); }
   where.push('NOT u.is_system'); // отсутствия служебной учётной записи не показываются
+  const scoped = absenceCond(req.user, vals); // уровень «Просмотр»: только разрешённые администратором
+  if (scoped) where.push(scoped);
   const { rows } = await query(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY a.start_date, u.name LIMIT 5000`, vals);
   res.json({ absences: rows });
 }));
