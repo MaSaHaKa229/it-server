@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import CategoriesPage from './pages/CategoriesPage.jsx';
 import ActivityPage from './pages/ActivityPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
+import StatsPage from './pages/StatsPage.jsx';
 
 // Простая навигация по hash (#/calendar, #/users, ...) — без внешнего роутера
 function useHashRoute() {
@@ -57,7 +58,7 @@ const avColor = (n) => { let s = 0; for (const ch of String(n)) s += ch.charCode
 
 function Shell() {
   const route = useHashRoute();
-  const { user, canEdit } = useApp();
+  const { user, canEdit, isAdmin } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
   const [portal, setPortal] = useState(null);
   const menuRef = useRef(null);
@@ -75,6 +76,7 @@ function Shell() {
     { id: 'dashboard', label: 'Обзор' },
     canEdit && { id: 'categories', label: 'Категории' },
     canEdit && { id: 'activity', label: 'Журнал' },
+    isAdmin && { id: 'stats', label: 'Статистика' },
   ].filter(Boolean);
 
   const page = {
@@ -82,6 +84,7 @@ function Shell() {
     dashboard: <Dashboard />,
     categories: canEdit ? <CategoriesPage /> : null,
     activity: canEdit ? <ActivityPage /> : null,
+    stats: isAdmin ? <StatsPage /> : null,
     profile: <ProfilePage />,
   }[route] ?? <CalendarPage />;
 

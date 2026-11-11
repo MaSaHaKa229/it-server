@@ -91,3 +91,36 @@ CREATE UNIQUE INDEX IF NOT EXISTS tasks_helpdesk_ticket_idx ON tasks (helpdesk_t
 -- Исполнителем задачи можно назначить любого активного сотрудника портала (is_active),
 -- даже без доступа к календарю (has_access = FALSE) — он просто не видит раздел.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS has_access BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- Дата выполнения задачи (для статистики). Ставится автоматически при переходе в статус «Выполнено»
+-- и очищается при выходе из него — триггер срабатывает и при изменениях из заявок helpdesk.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS tasks_completed_idx ON tasks (completed_at) WHERE completed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS task_assignees_user_idx ON task_assignees (user_id);
+
+CREATE OR REPLACE FUNCTION task_set_completed_at() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.status <> 'done' THEN
+    NEW.completed_at := NULL;
+  ELSIF TG_OP = 'INSERT' THEN
+    NEW.completed_at := COALESCE(NEW.completed_at, now());
+  ELSIF OLD.status <> 'done' OR NEW.completed_at IS NULL THEN
+    NEW.completed_at := now();
+  END IF;
+  RETURN NEW;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'tasks_completed_at_trg'
+                   AND tgrelid = 'tasks'::regclass) THEN
+    CREATE TRIGGER tasks_completed_at_trg BEFORE INSERT OR UPDATE OF status, completed_at ON tasks
+      FOR EACH ROW EXECUTE PROCEDURE task_set_completed_at();
+  END IF;
+END $$;
+
+-- Задачи, выполненные до появления поля: дата из журнала (последний перевод в «Выполнено»), иначе — дата изменения
+UPDATE tasks t SET completed_at = COALESCE(
+    (SELECT max(a.created_at) FROM activity_log a
+      WHERE a.entity = 'task' AND a.entity_id = t.id AND a.details->>'status' = 'done'),
+    t.updated_at)
+ WHERE t.status = 'done' AND t.completed_at IS NULL;

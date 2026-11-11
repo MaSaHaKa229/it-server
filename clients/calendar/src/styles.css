@@ -437,3 +437,44 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 16
 .event b { line-height: 16px; font-size: 12px; }
 .event span { line-height: 14px; }
 .event > * { flex-shrink: 0; max-width: 100%; }
+
+/* ===== Статистика ===== */
+.stat-row.six { grid-template-columns: repeat(6, 1fr); }
+.stat-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.stat-of { font-size: 18px; color: var(--muted); font-weight: 500; }
+.stats-toolbar .dates { align-items: center; }
+.stats-toolbar .dates input { width: 150px; height: 34px; }
+.pad-h { padding: 16px 16px 0; }
+.pad-x { padding: 0 16px 12px; margin: 8px 0 0; }
+.table-scroll { overflow-x: auto; }
+.stats-table th.num, .stats-table td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stats-table td.num .load { justify-content: flex-end; }
+.stats-table td.num .load div { max-width: 80px; }
+.stats-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.stats-table th.sortable:hover { color: var(--text); }
+.stats-table tr.clickable { cursor: pointer; }
+.stats-table tr.clickable:hover td { background: var(--surface-2); }
+.stats-table tr.muted-row td { color: var(--muted); }
+.stats-table tfoot td { font-weight: 600; border-top: 2px solid var(--border); border-bottom: 0; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; }
+.chart .grid { stroke: #EBECF0; stroke-width: 1; }
+.chart .axis { stroke: #C1C7D0; stroke-width: 1; }
+.chart .tick { fill: var(--muted); font-size: 11px; }
+.chart .hover-band { fill: rgba(9, 30, 66, .04); }
+.chart-tip {
+  position: absolute; top: 0; transform: translateX(-50%); pointer-events: none; z-index: 5; min-width: 170px;
+  background: #fff; border-radius: 3px; box-shadow: var(--shadow-overlay); padding: 8px 10px; font-size: 12px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.chart-tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.how summary { cursor: pointer; font-weight: 600; }
+.how ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+@media (max-width: 1300px) { .stat-row.six { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 700px) { .stat-row.six { grid-template-columns: repeat(2, 1fr); } .stat b { font-size: 24px; } }
+.stats-toolbar .toolbar-left { flex-wrap: wrap; min-width: 0; }
+.stats-toolbar .segmented { max-width: 100%; overflow-x: auto; }
+@media (max-width: 800px) {
+  .stats-toolbar, .stats-toolbar .toolbar-left, .stats-toolbar .filters { width: 100%; }
+  .stats-toolbar .dates input { width: auto; flex: 1 1 0; min-width: 0; }
+}

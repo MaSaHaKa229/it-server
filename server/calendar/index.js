@@ -1,6 +1,6 @@
 // Модуль «Задачи и календарь» внутри портала
 import express from 'express';
-import { requireAuth } from './auth.js';
+import { requireAuth, requireRole } from './auth.js';
 import { errorHandler } from './validate.js';
 import { migrate } from './migrate.js';
 import authRoutes from './routes/auth.js';
@@ -8,6 +8,7 @@ import userRoutes from './routes/users.js';
 import categoryRoutes from './routes/categories.js';
 import taskRoutes from './routes/tasks.js';
 import miscRoutes from './routes/misc.js';
+import statsRoutes from './routes/stats.js';
 
 export { migrate };
 
@@ -19,6 +20,8 @@ export function apiRouter() {
   r.use('/users', requireAuth, userRoutes);
   r.use('/categories', requireAuth, categoryRoutes);
   r.use('/tasks', requireAuth, taskRoutes);
+  // Статистика по сотрудникам и отделу — только администраторы календаря
+  r.use('/report', requireAuth, requireRole('admin'), statsRoutes);
   r.use('/', requireAuth, miscRoutes);
   r.use((req, res) => res.status(404).json({ error: 'Не найдено' }));
   r.use(errorHandler);
