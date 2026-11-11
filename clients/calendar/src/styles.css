@@ -418,3 +418,22 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 16
 .assignee.no-access { border-style: dashed; }
 .no-access-mark { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .02em; margin-left: 2px; }
 .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+/* Исполнители на плашках задач и в списке */
+.chip { flex-direction: column; align-items: stretch; gap: 0; }
+.chip-line { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.chip-who { font-size: 11px; line-height: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-who.none, .event-who.none, .agenda-who.none { font-style: italic; opacity: .8; }
+.event-who { color: var(--text) !important; font-weight: 500; }
+.agenda-row { grid-template-columns: 110px minmax(0, 1fr) auto auto minmax(160px, 260px); }
+.agenda-who { display: flex; flex-direction: column; gap: 4px; font-size: 13px; min-width: 0; }
+.agenda-who .person { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agenda-who.none { color: var(--muted); font-size: 12px; }
+@media (max-width: 900px) {
+  .agenda-row { grid-template-columns: 1fr auto; }
+  .agenda-who { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: 4px 12px; }
+}
+.event { gap: 0 !important; overflow: hidden; }
+.event b { line-height: 16px; font-size: 12px; }
+.event span { line-height: 14px; }
+.event > * { flex-shrink: 0; max-width: 100%; }
