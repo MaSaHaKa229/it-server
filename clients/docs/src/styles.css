@@ -255,3 +255,10 @@ a.tag:hover, .tag.on { text-decoration: none; border-color: var(--tag); color: v
 .tag-suggest { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; }
 .folder-path { color: var(--text-subtle); }
 .breadcrumbs > span { display: inline-flex; gap: 6px; }
+
+/* Распознавание текста сканов */
+.alert-info { background: var(--b50, #DEEBFF); color: #0747A6; }
+.ocr-note { display: flex; align-items: center; gap: 8px; }
+.ocr-spin { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ocr-spin .8s linear infinite; flex-shrink: 0; }
+@keyframes ocr-spin { to { transform: rotate(360deg); } }
+.btn-small { padding: 2px 10px; font-size: 12px; margin-left: 6px; }

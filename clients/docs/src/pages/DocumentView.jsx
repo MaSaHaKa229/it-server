@@ -31,6 +31,62 @@ function DocList({ title, items, empty }) {
   );
 }
 
+// «1, 2, 3, 5» → «1–3, 5»
+function pageRanges(nums) {
+  const out = [];
+  for (let i = 0; i < nums.length; i++) {
+    let j = i;
+    while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++;
+    out.push(i === j ? String(nums[i]) : `${nums[i]}–${nums[j]}`);
+    i = j;
+  }
+  return out.join(', ');
+}
+
+/** Сведения о сканированных страницах и их распознавании */
+function OcrNote({ doc, canRetry, onRetry }) {
+  const s = doc.ocr_status;
+  const scan = doc.file_pages > 0 && doc.file_text_pages < doc.file_pages;
+  if (s === 'pending' || s === 'running') {
+    const p = doc.ocr_progress;
+    return (
+      <div className="alert alert-info ocr-note">
+        <span className="ocr-spin" />
+        {p ? `Распознаётся текст сканированных страниц: ${p.page} из ${p.total}…` : 'Документ в очереди на распознавание текста…'}
+        {' '}Текст появится здесь сам.
+      </div>
+    );
+  }
+  if (s === 'done' && doc.ocr_pages?.length) {
+    return (
+      <div className="alert alert-info">
+        Текст стр. {pageRanges(doc.ocr_pages)} распознан автоматически со скана — возможны ошибки; их можно исправить в редакторе.
+        Весь документ целиком — кнопка «Открыть оригинал».
+      </div>
+    );
+  }
+  if (s === 'error' || s === 'unavailable' || (s === 'done' && !doc.ocr_pages?.length && scan)) {
+    return (
+      <div className="alert alert-warn">
+        {s === 'unavailable' ? `Распознавание текста недоступно: ${doc.ocr_error}. ` : `Не удалось распознать текст сканированных страниц: ${doc.ocr_error || 'ошибка'}. `}
+        {canRetry && s !== 'done' && <button className="btn btn-small" onClick={onRetry}>Повторить распознавание</button>}
+      </div>
+    );
+  }
+  if (scan) {
+    return (
+      <div className="alert alert-warn">
+        {doc.file_text_pages === 0
+          ? `Файл — скан (${doc.file_pages} стр. без текста). `
+          : `Текст получен с ${doc.file_text_pages} из ${doc.file_pages} стр. файла — остальные страницы являются сканами. `}
+        Весь документ целиком — кнопка «Открыть оригинал».
+        {canRetry && <> <button className="btn btn-small" onClick={onRetry}>Распознать текст</button></>}
+      </div>
+    );
+  }
+  return null;
+}
+
 export default function DocumentView() {
   const { id } = useParams();
   const { user, reloadTypes, folderMap } = useAuth();
@@ -46,6 +102,25 @@ export default function DocumentView() {
     setError('');
     api(`/documents/${id}`).then(setDoc).catch((e) => setError(e.message));
   }, [id]);
+
+  // Пока идёт распознавание сканов — обновляем документ раз в 3 секунды
+  const ocrBusy = doc && ['pending', 'running'].includes(doc.ocr_status);
+  useEffect(() => {
+    if (!ocrBusy) return undefined;
+    const t = setTimeout(() => {
+      api(`/documents/${id}`).then((d) => { setDoc(d); if (!['pending', 'running'].includes(d.ocr_status)) setVersions(null); }).catch(() => {});
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [doc, ocrBusy, id]);
+
+  async function retryOcr() {
+    try {
+      await api(`/documents/${id}/ocr`, { method: 'POST' });
+      setDoc(await api(`/documents/${id}`));
+    } catch (e) {
+      alert(e.message);
+    }
+  }
 
   // Сам документ считается «существующим» для ссылок на себя
   const knownLinks = useMemo(
@@ -126,14 +201,7 @@ export default function DocumentView() {
             )}
           </div>
 
-          {doc.file_pages > 0 && doc.file_text_pages < doc.file_pages && (
-            <div className="alert alert-warn">
-              {doc.file_text_pages === 0
-                ? `Файл — скан (${doc.file_pages} стр. без текста): ниже показан только введённый вручную текст. `
-                : `Текст ниже получен с ${doc.file_text_pages} из ${doc.file_pages} стр. файла — остальные страницы являются сканами. `}
-              Весь документ целиком — кнопка «Открыть оригинал».
-            </div>
-          )}
+          <OcrNote doc={doc} canRetry={canEdit(user)} onRetry={retryOcr} />
           <MarkdownView content={doc.content} links={knownLinks} />
         </article>
 

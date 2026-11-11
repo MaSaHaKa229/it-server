@@ -89,7 +89,7 @@ async function extractPdf(buffer) {
     missing = texts.map((t, i) => (t ? 0 : i + 1)).filter(Boolean);
   }
   if (doc.destroy) doc.destroy();
-  return { text: texts.filter(Boolean).join('\n\n'), pages: total, textPages: total - missing.length, emptyPages: missing };
+  return { text: texts.filter(Boolean).join('\n\n'), texts, pages: total, textPages: total - missing.length, emptyPages: missing };
 }
 
 /** «4, 5, 6, 9» → «4–6, 9» */
@@ -121,11 +121,11 @@ async function extractFile(file) {
       info = { pages: r.pages, textPages: r.textPages, warning: null };
       if (r.emptyPages.length === r.pages) {
         info.warning = `В файле ${r.pages} стр., но текста в них нет — это скан (изображения страниц). ` +
-          'Поиск по тексту такого документа работать не будет; сам файл сохранится и откроется целиком кнопкой «Открыть оригинал». ' +
-          'Текст можно ввести вручную.';
+          'После сохранения документа текст будет распознан автоматически и попадёт в поиск (займёт от нескольких секунд до нескольких минут). ' +
+          'Сам файл сохранится и откроется целиком кнопкой «Открыть оригинал».';
       } else if (r.emptyPages.length) {
         info.warning = `Текст получен с ${r.textPages} из ${r.pages} стр. Без текста страницы: ${ranges(r.emptyPages)} — ` +
-          'скорее всего, это сканы или изображения. Их содержимое не попадёт в поиск; файл сохранится целиком и откроется кнопкой «Открыть оригинал».';
+          'скорее всего, это сканы. После сохранения документа их текст будет распознан автоматически и добавлен к документу.';
       }
     } else if (name.endsWith('.txt') || name.endsWith('.md')) {
       text = decodeText(file.buffer);
@@ -141,4 +141,4 @@ async function extractFile(file) {
 
 const extractText = async (file) => (await extractFile(file)).text;
 
-module.exports = { extractText, extractFile, fixFilename, ALLOWED_EXT };
+module.exports = { extractText, extractFile, extractPdf, cleanup, ranges, engine, fixFilename, ALLOWED_EXT };

@@ -131,3 +131,9 @@ CREATE INDEX IF NOT EXISTS document_tags_tag_idx ON document_tags (tag_id);
 -- Сколько страниц в загруженном PDF и со скольких получен текст (для предупреждения о сканах)
 ALTER TABLE document_files ADD COLUMN IF NOT EXISTS pages INTEGER;
 ALTER TABLE document_files ADD COLUMN IF NOT EXISTS text_pages INTEGER;
+
+-- Распознавание текста сканированных страниц PDF (OCR): pending → running → done / none / error / unavailable
+ALTER TABLE document_files ADD COLUMN IF NOT EXISTS ocr_status TEXT;
+ALTER TABLE document_files ADD COLUMN IF NOT EXISTS ocr_pages INTEGER[];
+ALTER TABLE document_files ADD COLUMN IF NOT EXISTS ocr_error TEXT;
+ALTER TABLE document_files ADD COLUMN IF NOT EXISTS ocr_at TIMESTAMPTZ;

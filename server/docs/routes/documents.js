@@ -3,6 +3,7 @@ const multer = require('multer');
 const { query, withTx } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
 const { extractFile, fixFilename, ALLOWED_EXT } = require('../extract');
+const ocr = require('../ocr');
 const { visibleConds, canSeeDoc } = require('../access');
 const { ah, httpError, parseId, STATUSES, EDITORS } = require('../utils');
 
@@ -119,14 +120,18 @@ async function saveFile(client, id, file) {
   if (file.originalname.toLowerCase().endsWith('.pdf')) {
     try { info = file.extracted || await extractFile(file); } catch { /* файл всё равно сохраняем */ }
   }
+  // PDF со страницами без текста (сканы) — в очередь на распознавание
+  const needOcr = file.originalname.toLowerCase().endsWith('.pdf') && (info.pages == null || info.textPages < info.pages);
   await client.query(
-    `INSERT INTO document_files (document_id, filename, mime_type, size, data, pages, text_pages)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO document_files (document_id, filename, mime_type, size, data, pages, text_pages, ocr_status, ocr_pages, ocr_error, ocr_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NULL)
      ON CONFLICT (document_id) DO UPDATE SET
        filename = EXCLUDED.filename, mime_type = EXCLUDED.mime_type,
        size = EXCLUDED.size, data = EXCLUDED.data, uploaded_at = now(),
-       pages = EXCLUDED.pages, text_pages = EXCLUDED.text_pages`,
-    [id, file.originalname, file.mimetype || 'application/octet-stream', file.size, file.buffer, info.pages, info.textPages]
+       pages = EXCLUDED.pages, text_pages = EXCLUDED.text_pages,
+       ocr_status = EXCLUDED.ocr_status, ocr_pages = NULL, ocr_error = NULL, ocr_at = NULL`,
+    [id, file.originalname, file.mimetype || 'application/octet-stream', file.size, file.buffer, info.pages, info.textPages,
+      needOcr ? 'pending' : 'none']
   );
 }
 
@@ -237,6 +242,7 @@ router.get('/:id', ah(async (req, res) => {
     `SELECT d.id, d.title, d.doc_type, d.number, d.adopted_at, d.status, d.content,
             d.created_at, d.updated_at, d.folder_id, ${TAGS_JSON('d')} AS tags,
             f.pages AS file_pages, f.text_pages AS file_text_pages, f.mime_type AS file_mime,
+            f.ocr_status, f.ocr_pages, f.ocr_error, f.ocr_at,
             COALESCE(NULLIF(cu.full_name, ''), cu.username) AS created_by_name,
             COALESCE(NULLIF(uu.full_name, ''), uu.username) AS updated_by_name,
             f.filename AS file_name, f.size AS file_size
@@ -265,7 +271,19 @@ router.get('/:id', ah(async (req, res) => {
     ),
   ]);
 
-  res.json({ ...rows[0], links: links.rows, backlinks: backlinks.rows });
+  res.json({ ...rows[0], ocr_progress: ocr.progress(id), ocr_available: ocr.available(), links: links.rows, backlinks: backlinks.rows });
+}));
+
+// Повторить распознавание (после ошибки или когда компоненты распознавания были не установлены)
+router.post('/:id/ocr', requireRole(...EDITORS), ah(async (req, res) => {
+  const id = parseId(req.params.id);
+  await assertVisible(req, id);
+  const { rowCount } = await query(
+    `UPDATE document_files SET ocr_status = 'pending', ocr_error = NULL
+      WHERE document_id = $1 AND lower(filename) LIKE '%.pdf' AND COALESCE(ocr_status, '') <> 'running'`, [id]);
+  if (!rowCount) throw httpError(400, 'У документа нет PDF-файла или распознавание уже идёт');
+  ocr.kick();
+  res.json({ ok: true });
 }));
 
 router.get('/:id/file', ah(async (req, res) => {
@@ -338,6 +356,7 @@ router.post('/', requireRole(...EDITORS), upload.single('file'), ah(async (req, 
       await syncLinks(c, newId, f.content);
       return newId;
     });
+    if (req.file) ocr.kick();
     res.status(201).json({ id });
   } catch (e) {
     throw dbError(e);
@@ -385,6 +404,7 @@ router.put('/:id', requireRole(...EDITORS), upload.single('file'), ah(async (req
       }
       await syncLinks(c, id, f.content);
     });
+    if (req.file) ocr.kick();
     res.json({ id });
   } catch (e) {
     throw dbError(e);

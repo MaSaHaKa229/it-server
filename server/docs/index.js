@@ -10,6 +10,7 @@ async function migrate() {
 }
 
 function apiRouter() {
+  require('./ocr').start(); // фоновое распознавание сканов PDF
   const r = express.Router();
   r.use(express.json({ limit: '50mb' }));
   r.use('/auth', require('./routes/auth'));

@@ -2,7 +2,8 @@
 =====================================================
 
 В архиве полные папки server, public, scripts и файлы проекта.
-Папки node_modules нет (зависимости не менялись) — остаётся на сервере.
+Папки node_modules в этом архиве нет. Если вместе с обновлением прислан
+отдельный архив it-portal-node_modules.zip — выполните шаг 3а.
 Файл .env не трогайте.
 
 Папка портала далее — C:\it-portal.
@@ -22,6 +23,11 @@
    папки server, public, scripts и файлы package.json, package-lock.json,
    start-portal.bat, README.md, INSTALL.md, .env.example.
 
+3а. Только если прислан архив it-portal-node_modules.zip (новые компоненты):
+   переименуйте C:\it-portal\node_modules  ->  node_modules.bak
+   и распакуйте из архива папку node_modules в C:\it-portal
+   (должна получиться C:\it-portal\node_modules\tesseract.js и т. д.).
+
 4. Проверьте: в C:\it-portal\public должно быть 7 папок:
    calendar, docs, helpdesk, helpdesk-staff, inventory, portal, shared
 
@@ -35,7 +41,7 @@
 
 6. Откройте http://it-portal и войдите.
 
-7. Если всё работает — папки *.bak можно удалить.
+7. Если всё работает — папки *.bak (и node_modules.bak) можно удалить.
 
 nginx: готовая настройка — scripts\nginx.conf (http://it-portal — портал,
 http://helpdesk и обращение по IP — сайт заявок). Порядок установки —
