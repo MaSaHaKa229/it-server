@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../auth.jsx';
 import { ROLES, canEdit } from '../constants.js';
 
@@ -29,6 +29,7 @@ function sections(p) {
 export default function Header({ onBurger }) {
   const { user, portal, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const folder = new URLSearchParams(useLocation().search).get('folder');
   const ref = useRef(null);
   useEffect(() => {
     const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -45,9 +46,10 @@ export default function Header({ onBurger }) {
       <Link to="/" className="brand" style={{ marginLeft: -12 }}><span className="sep">/</span><span>Документы</span></Link>
       <nav className="topnav">
         <NavLink to="/" end>Поиск</NavLink>
+        {canEdit(user) && <NavLink to="/folders">Папки и теги</NavLink>}
         {canEdit(user) && <NavLink to="/types">Виды документов</NavLink>}
       </nav>
-      {canEdit(user) && <Link to="/documents/new" className="btn btn-primary" style={{ marginLeft: 8 }}>+ Добавить</Link>}
+      {canEdit(user) && <Link to={`/documents/new${folder && folder !== '0' ? `?folder=${folder}` : ''}`} className="btn btn-primary" style={{ marginLeft: 8 }}>+ Добавить</Link>}
       <span className="spacer" />
       <span className="user-name">{name}</span>
       <span className="user-wrap" ref={ref}>

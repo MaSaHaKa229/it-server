@@ -4,6 +4,7 @@ import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { DOC_STATUSES, canEdit, formatDate } from '../constants.js';
 import TypeBadge from '../components/TypeBadge.jsx';
+import { TagList } from '../components/Tags.jsx';
 import Pagination from '../components/Pagination.jsx';
 
 const LIMIT = 20;
@@ -28,12 +29,14 @@ function Snippet({ text }) {
 }
 
 export default function Search() {
-  const { user, docTypes, typeMap } = useAuth();
+  const { user, docTypes, typeMap, folders, folderMap, tags, restrictedFolders } = useAuth();
   const [params, setParams] = useSearchParams();
   const q = params.get('q') || '';
   const mode = params.get('mode') || 'all';
   const type = params.get('type') || '';
   const status = params.get('status') || '';
+  const folder = params.get('folder') || '';
+  const tag = params.get('tag') || '';
   const sort = params.get('sort') || '';
   const page = Number(params.get('page')) || 1;
 
@@ -52,13 +55,15 @@ export default function Search() {
     if (q) query.set('q', q);
     if (type) query.set('type', type);
     if (status) query.set('status', status);
+    if (folder) query.set('folder', folder);
+    if (tag) query.set('tag', tag);
     if (sort) query.set('sort', sort);
     api(`/documents?${query}`)
       .then((d) => !cancelled && setData(d))
       .catch((e) => !cancelled && setError(e.message))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [q, mode, type, status, sort, page]);
+  }, [q, mode, type, status, folder, tag, sort, page]);
 
   function update(changes) {
     const next = new URLSearchParams(params);
@@ -67,10 +72,17 @@ export default function Search() {
     setParams(next);
   }
 
-  const title = type ? (typeMap[type]?.name || 'Документы') : 'Все документы';
+  const curFolder = folder && folder !== '0' ? folderMap[folder] : null;
+  const curTag = tag ? tags.find((t) => String(t.id) === tag) : null;
+  const title = curFolder ? curFolder.name : folder === '0' ? 'Без папки' : curTag ? `Тег «${curTag.name}»`
+    : type ? (typeMap[type]?.name || 'Документы') : 'Все документы';
   return (
     <div>
-      <div className="breadcrumbs"><a href="/">ИТ-портал</a><span className="sep">/</span><span>Документы</span></div>
+      <div className="breadcrumbs">
+        <a href="/">ИТ-портал</a><span className="sep">/</span><Link to="/">Документы</Link>
+        {curFolder && curFolder.path.split(' / ').slice(0, -1).map((n, i) => <span key={i}><span className="sep">/ </span>{n}</span>)}
+        {(curFolder || folder === '0' || curTag) && <><span className="sep">/</span><span>{title}</span></>}
+      </div>
       <div className="page-head"><h1>{title}</h1>{data && <span className="count-badge">{data.total}</span>}</div>
       <form
         className="search-box card"
@@ -102,6 +114,15 @@ export default function Search() {
             <option value="">Все виды</option>
             {Object.entries(docTypes).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
+          <select className="input input-sm" value={folder} onChange={(e) => update({ folder: e.target.value })}>
+            <option value="">{restrictedFolders ? 'Все доступные папки' : 'Все папки'}</option>
+            {folders.map((f) => <option key={f.id} value={f.id}>{'\u00A0\u00A0'.repeat(f.level) + f.name}</option>)}
+            {!restrictedFolders && <option value="0">Без папки</option>}
+          </select>
+          <select className="input input-sm" value={tag} onChange={(e) => update({ tag: e.target.value })}>
+            <option value="">Все теги</option>
+            {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
           <select className="input input-sm" value={status} onChange={(e) => update({ status: e.target.value })}>
             <option value="">Любой статус</option>
             {Object.entries(DOC_STATUSES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -122,7 +143,7 @@ export default function Search() {
         <span className="muted">
           {loading ? 'Поиск…' : data ? `Найдено документов: ${data.total}` : ''}
         </span>
-        {canEdit(user) && <Link to="/documents/new" className="btn btn-primary">+ Добавить документ</Link>}
+        {canEdit(user) && <Link to={`/documents/new${curFolder ? `?folder=${curFolder.id}` : ''}`} className="btn btn-primary">+ Добавить документ{curFolder ? ' в эту папку' : ''}</Link>}
       </div>
 
       {error && <div className="alert">{error}</div>}
@@ -141,6 +162,10 @@ export default function Search() {
               {d.number && <span>№ {d.number}</span>}
               {d.adopted_at && <span>от {formatDate(d.adopted_at)}</span>}
               <span className={`status status-${d.status}`}>{DOC_STATUSES[d.status]}</span>
+              {d.folder_id && folderMap[d.folder_id] && (
+                <Link to={`/?folder=${d.folder_id}`} className="folder-path">📁 {folderMap[d.folder_id].path}</Link>
+              )}
+              <TagList tags={d.tags} />
             </div>
             <Link to={`/documents/${d.id}`} className="result-title">{d.title}</Link>
             <Snippet text={d.snippet} />

@@ -228,3 +228,30 @@ details summary { cursor: pointer; font-weight: 600; font-size: 13px; }
   .search-row { flex-direction: column; }
 }
 @media (max-width: 600px) { .grid-4 { grid-template-columns: 1fr; } }
+
+/* ---------- Папки и теги ---------- */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+.alert-warn { background: var(--y50); color: #974F0C; }
+.folder-ico { flex: none; font-size: 13px; }
+.side-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.side-link { min-width: 0; }
+.side-note { text-transform: none; font-weight: 400; letter-spacing: 0; }
+.side-empty { padding: 4px 8px; font-size: 12px; color: var(--text-subtle); }
+.side-tags { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 8px; }
+.tags { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.tag {
+  display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 10px;
+  font-size: 12px; font-weight: 500; white-space: nowrap; border: 1px solid transparent; font-family: inherit;
+  color: var(--tag); background: color-mix(in srgb, var(--tag) 14%, white);
+}
+a.tag:hover, .tag.on { text-decoration: none; border-color: var(--tag); color: var(--tag); }
+.tag.ghost { background: transparent; border: 1px dashed var(--tag); cursor: pointer; }
+.tag-n { font-size: 11px; opacity: .75; }
+.tag-x { border: 0; background: none; color: inherit; cursor: pointer; padding: 0; font-size: 14px; line-height: 1; }
+.tag-editor .tags { display: flex; min-height: 36px; padding: 4px 6px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--n10); }
+.tag-editor .tags:focus-within { background: var(--n0); border-color: var(--b100); }
+.tag-input { flex: 1; min-width: 140px; border: 0; outline: none; background: transparent; font: inherit; color: var(--text); height: 22px; }
+.tag-suggest { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; }
+.folder-path { color: var(--text-subtle); }
+.breadcrumbs > span { display: inline-flex; gap: 6px; }

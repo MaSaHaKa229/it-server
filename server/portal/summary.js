@@ -21,7 +21,9 @@ router.get('/', requireAuth, ah(async (req, res) => {
       ? u.modules.docs_types : null;
     out.docs = await safe(async () => (await query(
       `SELECT count(*)::int AS total, count(*) FILTER (WHERE updated_at > now() - interval '7 days')::int AS recent
-         FROM docs.documents WHERE $1::text[] IS NULL OR doc_type = ANY($1::text[])`, [types])).rows[0]);
+         FROM docs.documents WHERE ($1::text[] IS NULL OR doc_type = ANY($1::text[]))
+          AND ($2::int[] IS NULL OR folder_id = ANY($2::int[]))`,
+      [types, await require('../docs/access').allowedFolderIds(u)])).rows[0]);
   }
   if (level(u, 'calendar') !== 'none') {
     out.calendar = await safe(async () => (await query(

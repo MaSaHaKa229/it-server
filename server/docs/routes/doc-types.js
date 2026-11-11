@@ -13,12 +13,14 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 // Список видов (с учётом ограничений пользователя) и число документов каждого вида
 router.get('/', ah(async (req, res) => {
   const t = req.user.docTypes;
+  // Количество — только по папкам, доступным пользователю
   const { rows } = await query(
     `SELECT dt.code, dt.name, dt.color, dt.sort,
-            (SELECT count(*)::int FROM documents d WHERE d.doc_type = dt.code) AS count
+            (SELECT count(*)::int FROM documents d WHERE d.doc_type = dt.code
+               AND ($2::int[] IS NULL OR d.folder_id = ANY($2::int[]))) AS count
        FROM doc_types dt
       WHERE $1::text[] IS NULL OR dt.code = ANY($1::text[])
-      ORDER BY dt.sort, dt.name`, [t]);
+      ORDER BY dt.sort, dt.name`, [t, req.user.folderIds]);
   res.json({ items: rows });
 }));
 
