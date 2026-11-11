@@ -187,3 +187,9 @@ CREATE TABLE IF NOT EXISTS settings (
 -- Свой цвет задачи / регулярной задачи (иначе — по настройке раскраски)
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS color TEXT;
 ALTER TABLE task_series ADD COLUMN IF NOT EXISTS color TEXT;
+
+-- Суперадминистратор — служебная учётная запись: в списках людей не показывается,
+-- вместо его имени в авторах и журналах пишется «Служба ИТ». Отметку ставит синхронизация пользователей.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE users x SET is_system = (p.role = 'superadmin')
+  FROM public.users p WHERE p.id = x.id AND x.is_system IS DISTINCT FROM (p.role = 'superadmin');

@@ -12,7 +12,7 @@ export const KINDS = ['vacation', 'sick', 'trip', 'dayoff', 'other'];
 
 const SELECT = `
   SELECT a.id, a.user_id, a.kind, to_char(a.start_date, 'YYYY-MM-DD') AS start_date, to_char(a.end_date, 'YYYY-MM-DD') AS end_date,
-         a.comment, a.created_at, u.name AS user_name, u.color AS user_color, cu.name AS created_by_name
+         a.comment, a.created_at, u.name AS user_name, u.color AS user_color, CASE WHEN cu.is_system THEN 'Служба ИТ' ELSE cu.name END AS created_by_name
     FROM absences a
     JOIN users u ON u.id = a.user_id
     LEFT JOIN users cu ON cu.id = a.created_by`;
@@ -31,7 +31,8 @@ r.get('/', ah(async (req, res) => {
     where.push(`a.user_id = ANY($${vals.length}::int[])`);
   }
   if (req.query.kind) { vals.push(String(req.query.kind).split(',')); where.push(`a.kind = ANY($${vals.length}::text[])`); }
-  const { rows } = await query(`${SELECT} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.start_date, u.name LIMIT 5000`, vals);
+  where.push('NOT u.is_system'); // отсутствия служебной учётной записи не показываются
+  const { rows } = await query(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY a.start_date, u.name LIMIT 5000`, vals);
   res.json({ absences: rows });
 }));
 

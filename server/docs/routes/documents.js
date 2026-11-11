@@ -243,8 +243,8 @@ router.get('/:id', ah(async (req, res) => {
             d.created_at, d.updated_at, d.folder_id, ${TAGS_JSON('d')} AS tags,
             f.pages AS file_pages, f.text_pages AS file_text_pages, f.mime_type AS file_mime,
             f.ocr_status, f.ocr_pages, f.ocr_error, f.ocr_at,
-            COALESCE(NULLIF(cu.full_name, ''), cu.username) AS created_by_name,
-            COALESCE(NULLIF(uu.full_name, ''), uu.username) AS updated_by_name,
+            CASE WHEN cu.is_system THEN 'Служба ИТ' ELSE COALESCE(NULLIF(cu.full_name, ''), cu.username) END AS created_by_name,
+            CASE WHEN uu.is_system THEN 'Служба ИТ' ELSE COALESCE(NULLIF(uu.full_name, ''), uu.username) END AS updated_by_name,
             f.filename AS file_name, f.size AS file_size
      FROM documents d
      LEFT JOIN users cu ON cu.id = d.created_by
@@ -314,7 +314,7 @@ router.get('/:id/versions', ah(async (req, res) => {
   await assertVisible(req, id);
   const { rows } = await query(
     `SELECT v.id, v.title, v.edited_at, length(v.content) AS content_length,
-            COALESCE(NULLIF(u.full_name, ''), u.username) AS edited_by_name
+            CASE WHEN u.is_system THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS edited_by_name
      FROM document_versions v LEFT JOIN users u ON u.id = v.edited_by
      WHERE v.document_id = $1 ORDER BY v.edited_at DESC, v.id DESC`,
     [id]
@@ -327,7 +327,7 @@ router.get('/:id/versions/:vid', ah(async (req, res) => {
   const vid = parseId(req.params.vid);
   await assertVisible(req, id);
   const { rows } = await query(
-    `SELECT v.*, COALESCE(NULLIF(u.full_name, ''), u.username) AS edited_by_name
+    `SELECT v.*, CASE WHEN u.is_system THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS edited_by_name
      FROM document_versions v LEFT JOIN users u ON u.id = v.edited_by
      WHERE v.document_id = $1 AND v.id = $2`,
     [id, vid]

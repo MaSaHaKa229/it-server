@@ -69,7 +69,7 @@ const TASK_LIST = (where, order, limit = 50) => `
   SELECT s.id, s.title, s.status, s.priority, s.start_at, s.end_at, s.all_day, s.deadline, s.completed_at,
          s.helpdesk_ticket_id, c.name AS category_name, c.color AS category_color,
          COALESCE((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'color', u.color) ORDER BY u.name)
-           FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id = s.id), '[]') AS assignees
+           FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id = s.id AND NOT u.is_system), '[]') AS assignees
     FROM scope s LEFT JOIN categories c ON c.id = s.category_id
    WHERE $1::timestamptz < $2::timestamptz AND (${where}) -- $1/$2 упомянуты, чтобы PostgreSQL знал их тип
    ORDER BY ${order} LIMIT ${limit}`;
@@ -85,7 +85,7 @@ r.get('/', ah(async (req, res) => {
 
   let person = null;
   if (p.user) {
-    const { rows } = await query('SELECT id, name, color, position, is_active, has_access FROM users WHERE id = $1', [p.user]);
+    const { rows } = await query('SELECT id, name, color, position, is_active, has_access FROM users WHERE id = $1 AND NOT is_system', [p.user]);
     if (!rows[0]) throw new HttpError(404, 'Сотрудник не найден');
     person = rows[0];
   }
@@ -127,6 +127,7 @@ r.get('/', ah(async (req, res) => {
                FROM users u
                LEFT JOIN task_assignees a ON a.user_id = u.id
                LEFT JOIN scope s ON s.id = a.task_id
+              WHERE NOT u.is_system
               GROUP BY u.id
               ORDER BY u.name`, vals),
       // Задачи без исполнителя

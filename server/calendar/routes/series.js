@@ -11,9 +11,9 @@ const r = Router();
 const SELECT = `
   SELECT s.id, s.title, s.description, s.start_at, s.end_at, s.all_day, s.priority, s.category_id, s.every_months, s.color,
          to_char(s.until, 'YYYY-MM-DD') AS until, s.assignees AS assignee_ids, s.checklist, s.created_at, s.updated_at,
-         c.name AS category_name, c.color AS category_color, cu.name AS created_by_name,
+         c.name AS category_name, c.color AS category_color, CASE WHEN cu.is_system THEN 'Служба ИТ' ELSE cu.name END AS created_by_name,
          COALESCE((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'color', u.color) ORDER BY u.name)
-           FROM users u WHERE u.id = ANY(s.assignees)), '[]') AS assignees,
+           FROM users u WHERE u.id = ANY(s.assignees) AND NOT u.is_system), '[]') AS assignees,
          (SELECT json_build_object('id', t.id, 'start_at', t.start_at, 'end_at', t.end_at, 'status', t.status)
             FROM tasks t WHERE t.series_id = s.id AND t.status IN ('todo', 'in_progress')
            ORDER BY t.start_at LIMIT 1) AS next,

@@ -331,7 +331,7 @@ function createHelpdeskApp() {
     const t = await ownTicket(req);
     const [comments, files, history] = await Promise.all([
       query(`SELECT c.id, c.body, c.created_at, c.requester_id IS NOT NULL AS mine,
-                    COALESCE(r.full_name, NULLIF(u.full_name, ''), u.username, 'Служба ИТ') AS author
+                    COALESCE(r.full_name, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END, 'Служба ИТ') AS author
                FROM comments c
                LEFT JOIN requesters r ON r.id = c.requester_id
                LEFT JOIN public.users u ON u.id = c.user_id

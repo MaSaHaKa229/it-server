@@ -37,7 +37,7 @@ export default function Dashboard() {
   return (
     <div className="page">
       <header className="page-head">
-        <h2>Добрый день, {user.name.split(' ')[0]}!</h2>
+        <h2>{user.is_system ? 'Добрый день!' : `Добрый день, ${user.name.split(' ')[0]}!`}</h2>
         <p className="muted">Сводка по задачам службы ИТ</p>
       </header>
 

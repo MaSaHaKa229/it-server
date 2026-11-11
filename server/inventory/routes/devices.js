@@ -159,13 +159,15 @@ router.get('/:id', ah(async (req, res) => {
   }
   if (P.passwords) {
     out.credentials = (await query(
-      `SELECT c.id, c.title, c.login, c.note, c.updated_at, u.username AS updated_by
+      `SELECT c.id, c.title, c.login, c.note, c.updated_at, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE u.username END AS updated_by
          FROM device_credentials c LEFT JOIN users u ON u.id = c.updated_by
         WHERE c.device_id = $1 ORDER BY c.id`, [id])).rows;
   }
   if (P.history) {
     out.history = (await query(
-      `SELECT h.id, h.action, h.changes, h.created_at, u.username, u.full_name
+      `SELECT h.id, h.action, h.changes, h.created_at,
+              CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE u.username END AS username,
+              CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE u.full_name END AS full_name
          FROM device_history h LEFT JOIN users u ON u.id = h.user_id
         WHERE h.device_id = $1 ORDER BY h.created_at DESC LIMIT 200`, [id])).rows;
   }

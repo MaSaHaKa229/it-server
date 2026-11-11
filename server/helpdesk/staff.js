@@ -30,7 +30,7 @@ async function executors() {
   const { rows } = await query(
     `SELECT id, username, COALESCE(NULLIF(full_name, ''), username) AS name, email
        FROM public.users
-      WHERE is_active AND (role = 'superadmin' OR modules->>'helpdesk' IN ('executor', 'admin'))
+      WHERE is_active AND role <> 'superadmin' AND modules->>'helpdesk' IN ('executor', 'admin')
       ORDER BY 3`);
   return rows;
 }
@@ -38,7 +38,7 @@ async function executors() {
 router.get('/meta', ah(async (req, res) => {
   const [statuses, categories, execs, settings] = await Promise.all([
     query('SELECT * FROM statuses ORDER BY sort, id'),
-    query(`SELECT c.*, COALESCE(NULLIF(u.full_name, ''), u.username) AS default_assignee_name,
+    query(`SELECT c.*, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS default_assignee_name,
                   (SELECT count(*)::int FROM tickets t WHERE t.category_id = c.id) AS ticket_count
              FROM categories c LEFT JOIN public.users u ON u.id = c.default_assignee_id ORDER BY c.sort, c.name`),
     executors(),
@@ -104,7 +104,7 @@ router.get('/tickets/:id', ah(async (req, res) => {
   const t = await loadTicket(intOrNull(req.params.id));
   const [comments, files, history, device, reqStats] = await Promise.all([
     query(`SELECT c.id, c.body, c.is_internal, c.created_at, c.user_id, c.requester_id,
-                  COALESCE(r.full_name, NULLIF(u.full_name, ''), u.username, '—') AS author
+                  COALESCE(r.full_name, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END, '—') AS author
              FROM comments c
              LEFT JOIN requesters r ON r.id = c.requester_id
              LEFT JOIN public.users u ON u.id = c.user_id
@@ -112,7 +112,7 @@ router.get('/tickets/:id', ah(async (req, res) => {
     query(`SELECT id, comment_id, filename, mime_type, size, is_internal, created_at
              FROM attachments WHERE ticket_id = $1 ORDER BY id`, [t.id]),
     query(`SELECT h.action, h.details, h.created_at,
-                  COALESCE(r.full_name, NULLIF(u.full_name, ''), u.username) AS author
+                  COALESCE(r.full_name, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END) AS author
              FROM history h
              LEFT JOIN requesters r ON r.id = h.requester_id
              LEFT JOIN public.users u ON u.id = h.user_id

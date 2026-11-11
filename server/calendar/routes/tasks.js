@@ -37,9 +37,9 @@ const taskBody = z.object({
 const TASK_SELECT = `
   SELECT t.*,
     c.name AS category_name, c.color AS category_color,
-    cu.name AS created_by_name, uu.name AS updated_by_name,
+    CASE WHEN cu.is_system THEN 'Служба ИТ' ELSE cu.name END AS created_by_name, CASE WHEN uu.is_system THEN 'Служба ИТ' ELSE uu.name END AS updated_by_name,
     COALESCE((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'color', u.color) ORDER BY u.name)
-      FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id = t.id), '[]') AS assignees,
+      FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id = t.id AND NOT u.is_system), '[]') AS assignees,
     (SELECT count(*)::int FROM task_checklist cl WHERE cl.task_id = t.id) AS checklist_total,
     (SELECT count(*)::int FROM task_checklist cl WHERE cl.task_id = t.id AND cl.done) AS checklist_done,
     (SELECT count(*)::int FROM task_comments cm WHERE cm.task_id = t.id) AS comment_count,
@@ -155,9 +155,9 @@ r.get('/:id', ah(async (req, res) => {
   if (!rows[0]) throw new HttpError(404, 'Задача не найдена');
   const [checklist, comments, history] = await Promise.all([
     query('SELECT id, text, done FROM task_checklist WHERE task_id=$1 ORDER BY position, id', [id]),
-    query(`SELECT cm.id, cm.body, cm.created_at, cm.user_id, u.name AS user_name, u.color AS user_color
+    query(`SELECT cm.id, cm.body, cm.created_at, cm.user_id, CASE WHEN u.is_system THEN 'Служба ИТ' ELSE u.name END AS user_name, CASE WHEN u.is_system THEN '#5E6C84' ELSE u.color END AS user_color
            FROM task_comments cm LEFT JOIN users u ON u.id = cm.user_id WHERE cm.task_id=$1 ORDER BY cm.created_at`, [id]),
-    query(`SELECT a.action, a.details, a.created_at, u.name AS user_name
+    query(`SELECT a.action, a.details, a.created_at, CASE WHEN u.is_system THEN 'Служба ИТ' ELSE u.name END AS user_name
            FROM activity_log a LEFT JOIN users u ON u.id = a.user_id
            WHERE a.entity='task' AND a.entity_id=$1 ORDER BY a.created_at DESC LIMIT 50`, [id]),
   ]);

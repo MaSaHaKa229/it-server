@@ -21,7 +21,7 @@ r.get('/stats', ah(async (req, res) => {
            FROM users u
            LEFT JOIN task_assignees a ON a.user_id = u.id
            LEFT JOIN tasks t ON t.id = a.task_id
-           WHERE u.is_active
+           WHERE u.is_active AND NOT u.is_system
            GROUP BY u.id ORDER BY open DESC, u.name`),
   ]);
   res.json({
@@ -64,7 +64,8 @@ r.put('/settings/colors', requireRole('admin'), ah(async (req, res) => {
 r.get('/activity', requireRole('editor'), ah(async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
   const { rows } = await query(
-    `SELECT a.id, a.action, a.entity, a.entity_id, a.details, a.created_at, u.name AS user_name, u.color AS user_color
+    `SELECT a.id, a.action, a.entity, a.entity_id, a.details, a.created_at, CASE WHEN u.is_system THEN 'Служба ИТ' ELSE u.name END AS user_name,
+            CASE WHEN u.is_system THEN '#5E6C84' ELSE u.color END AS user_color
      FROM activity_log a LEFT JOIN users u ON u.id = a.user_id
      ORDER BY a.created_at DESC LIMIT $1`, [limit]);
   res.json({ activity: rows });

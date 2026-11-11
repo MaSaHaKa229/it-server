@@ -11,7 +11,7 @@ r.get('/', ah(async (req, res) => {
   const isAdmin = req.user.role === 'admin';
   const { rows } = await query(
     `SELECT ${isAdmin ? 'id, email, name, role, position, color, is_active, has_access, last_login_at, created_at' : 'id, name, role, position, color, is_active, has_access'}
-       FROM users ORDER BY is_active DESC, has_access DESC, name`
+       FROM users WHERE NOT is_system ORDER BY is_active DESC, has_access DESC, name`
   );
   res.json({ users: rows });
 }));

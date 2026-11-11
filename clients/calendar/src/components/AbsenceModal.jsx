@@ -21,7 +21,8 @@ export default function AbsenceModal({ absence, defaults, onClose, onSaved }) {
   const editable = absence ? canManage(absence.user_id) : true;
   const today = toInputDate(new Date());
   const [f, setF] = useState(() => ({
-    user_id: absence?.user_id ?? defaults?.user_id ?? user.id,
+    // Служебной учётной записи (суперадминистратора) нет в списке сотрудников — тогда первый сотрудник
+    user_id: absence?.user_id ?? defaults?.user_id ?? (users.some((u) => u.id === user.id) ? user.id : users.find((u) => u.is_active)?.id),
     kind: absence?.kind ?? defaults?.kind ?? 'vacation',
     start_date: absence?.start_date ?? defaults?.start_date ?? today,
     end_date: absence?.end_date ?? defaults?.end_date ?? defaults?.start_date ?? today,

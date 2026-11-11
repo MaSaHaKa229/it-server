@@ -13,7 +13,7 @@ export async function requireAuth(req, res, next) {
     if (!u) return res.status(401).json({ error: 'Требуется вход' });
     if (level(u, 'calendar') === 'none') return res.status(403).json({ error: 'Нет доступа к разделу «Задачи и календарь»' });
     await syncUser(u);
-    const { rows } = await query('SELECT id, email, name, position, color FROM users WHERE id = $1', [u.id]);
+    const { rows } = await query('SELECT id, email, name, position, color, is_system FROM users WHERE id = $1', [u.id]);
     if (!rows[0]) return res.status(401).json({ error: 'Сессия недействительна' });
     req.portalUser = u;
     const role = calRole(u);
