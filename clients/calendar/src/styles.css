@@ -594,3 +594,22 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 16
 
 /* Отсутствия — внизу ячейки месяца */
 .cell-abs { margin-top: auto; padding-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+
+/* Год: число задач и метки приоритетов в ячейке дня */
+.year-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px 32px; }
+.yd { height: 44px; display: flex; flex-direction: column; justify-content: space-between; padding: 3px 4px; text-align: left;
+  border: 1px solid transparent; }
+.yd.busy { background: var(--surface-2); border-color: var(--border); }
+.yd.weekend.busy { background: #FFF5F7; }
+.yd.dark { color: inherit; }
+.yd-top { display: flex; align-items: center; gap: 3px; width: 100%; line-height: 14px; }
+.yd-num { font-size: 11px; }
+.yd-total { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--text); }
+.yd .yd-abs { position: static; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.yd-prio { display: flex; flex-wrap: wrap; gap: 2px; width: 100%; }
+.yd-p { min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px; color: #fff; font-size: 9px; font-weight: 700;
+  line-height: 14px; text-align: center; text-shadow: 0 0 2px rgba(0,0,0,.35); }
+.legend-total { display: inline-block; min-width: 14px; text-align: center; margin-right: 2px; }
+.yd-abs-legend { width: 8px !important; height: 8px !important; border-radius: 50% !important; }
+.yd { height: 54px; justify-content: flex-start; gap: 3px; }
+.yd-p { min-width: 13px; height: 13px; line-height: 13px; padding: 0 2px; border-radius: 7px; }
