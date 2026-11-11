@@ -190,3 +190,6 @@ CREATE TABLE IF NOT EXISTS assign_rules (
 -- channel — откуда заявка: web (сайт заявок), phone, visit, email, other (создана службой ИТ за сотрудника)
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS due_auto BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'web';
+
+-- Рабочее место инвентаря ↔ сотрудник сайта заявок (раздел «Заявки сотрудника» в карточке рабочего места)
+ALTER TABLE public.workplaces ADD COLUMN IF NOT EXISTS requester_id INT REFERENCES requesters(id) ON DELETE SET NULL;

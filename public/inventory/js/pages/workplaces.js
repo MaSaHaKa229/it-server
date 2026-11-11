@@ -151,6 +151,7 @@ export async function renderWorkplace(root, id) {
                   h('button.btn.subtle.sm.icon', { title: 'Отвязать от рабочего места', onclick: () => detach(d) }, icon('close', 14))) : null)))))
             : h('div.empty-state', h('h3', 'Техника не привязана'),
               staff ? h('p', 'Нажмите «Привязать технику» и выберите из базы компьютер, монитор, принтер и другое оборудование этого места.') : null)),
+        ticketsSection(w, staff),
         w.notes ? h('div.section', h('h3', 'Примечание'), h('div.pre', w.notes)) : null),
       h('div',
         h('div.details',
@@ -218,4 +219,64 @@ function attachModal(w, done) {
   });
   updateChosen();
   load();
+}
+
+// ---------------- Заявки сотрудника (видят сотрудники службы ИТ с доступом к заявкам) ----------------
+function ticketsSection(w, staff) {
+  const box = h('div.section');
+  const load = async () => {
+    let d;
+    try { d = await api.get(`/api/workplaces/${w.id}/tickets`); } catch { box.remove(); return; } // нет доступа к заявкам
+    const link = async (rid) => {
+      await api.put(`/api/workplaces/${w.id}/requester`, { requester_id: rid });
+      toast(rid ? 'Сотрудник связан с рабочим местом' : 'Связь снята');
+      load();
+    };
+    // Кто это на сайте заявок
+    let who;
+    if (d.requester) {
+      const r = d.requester;
+      who = h('div.row.wrap', { style: { gap: '8px', alignItems: 'center', marginBottom: '8px' } },
+        h('span.muted', 'Сотрудник на сайте заявок:'), h('b', r.full_name),
+        h('span.muted.small', [r.department, r.room ? `каб. ${r.room}` : '', r.phone, r.email].filter(Boolean).join(', ')),
+        h('a.small', { href: `/helpdesk/#/?view=all&requester=${r.id}` }, 'все заявки в разделе «Заявки»'),
+        staff ? h('button.btn.subtle.sm', { onclick: () => run(() => link(null)) }, 'отвязать') : null);
+    } else {
+      const q = h('input', { type: 'search', placeholder: 'Найти сотрудника: ФИО, e-mail, телефон, кабинет', style: { maxWidth: '360px' } });
+      const found = h('span');
+      let t = null;
+      q.addEventListener('input', () => {
+        clearTimeout(t);
+        t = setTimeout(async () => {
+          const list = q.value.trim().length >= 2 ? await api.get('/api/workplaces/requesters/search?q=' + encodeURIComponent(q.value.trim())).catch(() => []) : [];
+          clear(found, list.map((r) => h('button.btn.sm', { style: { margin: '2px 4px 2px 0' }, onclick: () => run(() => link(r.id)) },
+            r.full_name, r.department ? h('span.muted.small', ' ' + r.department) : null)));
+        }, 250);
+      });
+      who = h('div', { style: { marginBottom: '8px' } },
+        h('p.muted.small', { style: { margin: '0 0 6px' } }, w.employee
+          ? `Сотрудник «${w.employee}» не связан с сайтом заявок — показаны только заявки по технике этого места.`
+          : 'Показаны заявки по технике этого рабочего места.'),
+        staff && d.suggestions.length ? h('div.row.wrap', { style: { gap: '6px', alignItems: 'center', marginBottom: '6px' } },
+          h('span.small', { style: { whiteSpace: 'nowrap' } }, 'Это он?'), d.suggestions.map((r) => h('button.btn.sm', { onclick: () => run(() => link(r.id)) },
+            r.full_name, r.department ? h('span.muted.small', ' ' + r.department) : null))) : null,
+        staff ? h('div', q, found) : null);
+    }
+    const open = d.tickets.filter((t) => !t.is_closed).length;
+    clear(box,
+      h('h3', 'Заявки сотрудника ', h('span.badge', d.tickets.length), open ? h('span.lozenge.blue', { style: { marginLeft: '6px' } }, `открыто: ${open}`) : null),
+      who,
+      d.tickets.length ? h('div.table-wrap', h('table.list',
+        h('thead', h('tr', h('th', '№'), h('th', 'Тема'), h('th', 'Статус'), h('th', 'Заявитель / техника'), h('th', 'Исполнитель'), h('th', 'Создана'))),
+        h('tbody', d.tickets.map((t) => h('tr.clickable', { onclick: () => { location.href = `/helpdesk/#/tickets/${t.id}`; } },
+          h('td', h('a', { href: `/helpdesk/#/tickets/${t.id}` }, '#' + t.id)),
+          h('td', t.title),
+          h('td', h('span.lozenge', { style: { background: (t.status_color || '#999') + '26', color: t.status_color } }, t.status)),
+          h('td.small', t.by_employee ? t.requester : h('span.muted', t.requester), t.devices ? h('div.muted', 'техника: ' + t.devices) : null),
+          h('td.small', t.assignee || h('span.muted', '—')),
+          h('td.small.nowrap', fmtDate(t.created_at, false)))))))
+        : h('p.muted', 'Заявок нет.'));
+  };
+  load();
+  return box;
 }

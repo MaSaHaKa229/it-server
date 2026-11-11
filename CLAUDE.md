@@ -90,6 +90,8 @@ React-клиенты грузят его динамически по адрес�
 (enabled/control/consent, меняет суперадмин), каждое скачивание — `device_history` action `remote_connect`. На Windows не проверялось.
 **Перемещения** — `device_moves` (`server/inventory/routes/moves.js`, `public/inventory/js/pages/moves.js`: окно
 «Переместить», «Изменить поля…» → `devices/bulk` action `update` через `updateDevice()` из devices.js).
+**Заявки сотрудника в рабочем месте** — `workplaces.requester_id` (колонка добавляется в helpdesk/schema.sql, т. к. FK на
+`helpdesk.requesters`), маршруты `workplaces/:id/tickets|requester`, `workplaces/requesters/search` (только с доступом к helpdesk).
 **Заявка за сотрудника** — `POST /helpdesk/api/tickets` (staff.js, `requesterFor`: без e-mail — адрес-заглушка
 `*@helpdesk.invalid`, на него `mail.send` не шлёт), `tickets.channel`; **норматив** — `categories.sla_hours`,
 `tickets.due_auto` (подтверждение `confirm_due`), это смягчает правило «срок ставит только администратор».
