@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query, withTransaction, logActivity } from '../db.js';
 import { requireRole } from '../auth.js';
 import { ah, validate, HttpError } from '../validate.js';
+import { ensureOccurrences, EVERY, validTz } from '../series.js';
 
 const r = Router();
 
@@ -20,9 +21,13 @@ const taskBody = z.object({
   category_id: z.number().int().nullable().optional(),
   assignees: z.array(z.number().int()).default([]),
   checklist: z.array(z.object({ text: z.string().trim().min(1).max(300), done: z.boolean().default(false) })).optional(),
+  // daily/weekdays/weekly — несколько отдельных копий (count);
+  // monthly/quarterly/halfyear/yearly — периодическая задача без конца (или до until)
   repeat: z.object({
-    freq: z.enum(['daily', 'weekdays', 'weekly', 'monthly']),
-    count: z.number().int().min(2).max(52),
+    freq: z.enum(['daily', 'weekdays', 'weekly', 'monthly', 'quarterly', 'halfyear', 'yearly']),
+    count: z.number().int().min(2).max(52).optional(),
+    until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    tz: z.string().max(64).optional(),
   }).nullable().optional(),
 }).refine((d) => d.end_at >= d.start_at, { message: 'Окончание не может быть раньше начала', path: ['end_at'] });
 
@@ -35,8 +40,10 @@ const TASK_SELECT = `
       FROM task_assignees ta JOIN users u ON u.id = ta.user_id WHERE ta.task_id = t.id), '[]') AS assignees,
     (SELECT count(*)::int FROM task_checklist cl WHERE cl.task_id = t.id) AS checklist_total,
     (SELECT count(*)::int FROM task_checklist cl WHERE cl.task_id = t.id AND cl.done) AS checklist_done,
-    (SELECT count(*)::int FROM task_comments cm WHERE cm.task_id = t.id) AS comment_count
+    (SELECT count(*)::int FROM task_comments cm WHERE cm.task_id = t.id) AS comment_count,
+    ts.every_months AS series_every_months, to_char(ts.until, 'YYYY-MM-DD') AS series_until
   FROM tasks t
+  LEFT JOIN task_series ts ON ts.id = t.series_id
   LEFT JOIN categories c ON c.id = t.category_id
   LEFT JOIN users cu ON cu.id = t.created_by
   LEFT JOIN users uu ON uu.id = t.updated_by`;
@@ -49,8 +56,30 @@ function buildFilters(q, user) {
   if (q.to) add('t.start_at < ?', new Date(q.to));
   if (q.status) add('t.status::text = ANY(?::text[])', String(q.status).split(','));
   if (q.priority) add('t.priority::text = ANY(?::text[])', String(q.priority).split(','));
-  if (q.category) add('t.category_id = ANY(?::int[])', String(q.category).split(',').map(Number));
-  if (q.assignee) add('EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = ANY(?::int[]))', String(q.assignee).split(',').map(Number));
+  // Списки через запятую; «none» — «без категории» / «без исполнителя»
+  const anyOf = (v, idSql, noneSql) => {
+    const parts = String(v).split(',');
+    const ids = parts.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+    const or = [];
+    if (ids.length) { vals.push(ids); or.push(idSql.replace('?', `$${vals.length}`)); }
+    if (parts.includes('none')) or.push(noneSql);
+    where.push(or.length ? `(${or.join(' OR ')})` : 'FALSE');
+  };
+  if (q.category) anyOf(q.category, 't.category_id = ANY(?::int[])', 't.category_id IS NULL');
+  if (q.assignee) {
+    anyOf(q.assignee, 'EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = ANY(?::int[]))',
+      'NOT EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id)');
+  }
+  if (q.author) anyOf(q.author, 't.created_by = ANY(?::int[])', 'FALSE');
+  // Вид задачи: обычная, периодическая, из заявки
+  if (q.source) {
+    const src = String(q.source).split(',');
+    const or = [];
+    if (src.includes('series')) or.push('t.series_id IS NOT NULL');
+    if (src.includes('helpdesk')) or.push('t.helpdesk_ticket_id IS NOT NULL');
+    if (src.includes('plain')) or.push('(t.series_id IS NULL AND t.helpdesk_ticket_id IS NULL)');
+    where.push(or.length ? `(${or.join(' OR ')})` : 'FALSE');
+  }
   if (q.mine === '1') add('EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id = t.id AND a.user_id = ?)', user.id);
   if (q.overdue === '1') { add("t.end_at < ?", new Date()); where.push("t.status IN ('todo','in_progress')"); }
   if (user.own_only) {
@@ -74,15 +103,25 @@ r.param('id', (req, res, next, id) => {
     .catch(next);
 });
 
+// Для запрошенного периода — создать недостающие повторы периодических задач
+async function prepare(q) {
+  if (q.from || q.to) {
+    const d = (v) => (v && !isNaN(new Date(v)) ? new Date(v) : null);
+    await ensureOccurrences(d(q.from), d(q.to));
+  }
+}
+
 r.get('/', ah(async (req, res) => {
+  await prepare(req.query);
   const { where, vals } = buildFilters(req.query, req.user);
-  const limit = Math.min(Number(req.query.limit) || 1000, 2000);
+  const limit = Math.min(Number(req.query.limit) || 1000, 5000); // 5000 — для вида «Год»
   const { rows } = await query(`${TASK_SELECT} ${where} ORDER BY t.start_at LIMIT ${limit}`, vals);
   res.json({ tasks: rows });
 }));
 
 // Экспорт в iCalendar (.ics) — можно импортировать в Outlook / Google Calendar
 r.get('/export.ics', ah(async (req, res) => {
+  await prepare(req.query);
   const { where, vals } = buildFilters(req.query, req.user);
   const { rows } = await query(`${TASK_SELECT} ${where} ORDER BY t.start_at LIMIT 5000`, vals);
   const esc = (s = '') => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
@@ -167,6 +206,8 @@ function occurrenceOffsets(start, repeat) {
 
 r.post('/', requireRole('editor'), ah(async (req, res) => {
   const d = validate(taskBody, req.body);
+  if (d.repeat && EVERY[d.repeat.freq]) return res.status(201).json(await createSeries(d, req.user));
+  if (d.repeat && !d.repeat.count) throw new HttpError(400, 'Укажите количество повторений');
   const created = await withTransaction(async (db) => {
     const ids = [];
     const freq = d.repeat?.freq === 'weekdays' ? 'daily' : d.repeat?.freq;
@@ -187,6 +228,24 @@ r.post('/', requireRole('editor'), ah(async (req, res) => {
   });
   res.status(201).json({ task: created[0], tasks: created });
 }));
+
+// Периодическая задача: серия + повторы на год вперёд. Ответ — первый созданный повтор.
+async function createSeries(d, user) {
+  const seriesId = await withTransaction(async (db) => {
+    const { rows } = await db.query(
+      `INSERT INTO task_series (title, description, start_at, end_at, all_day, priority, category_id, every_months, until,
+                                assignees, checklist, created_by, updated_by, tz)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13) RETURNING id`,
+      [d.title, d.description, d.start_at, d.end_at, d.all_day, d.priority, d.category_id ?? null, EVERY[d.repeat.freq],
+        d.repeat.until || null, [...new Set(d.assignees)], JSON.stringify((d.checklist || []).map((c) => ({ text: c.text }))), user.id,
+        await validTz(db, d.repeat.tz)]);
+    await logActivity(db, user.id, 'create', 'series', rows[0].id, { title: d.title, every_months: EVERY[d.repeat.freq] });
+    return rows[0].id;
+  });
+  await ensureOccurrences(null, null, seriesId);
+  const { rows } = await query(`${TASK_SELECT} WHERE t.series_id = $1 ORDER BY t.series_idx LIMIT 1`, [seriesId]);
+  return { task: rows[0] || null, tasks: rows, series_id: seriesId };
+}
 
 const LABELS = { title: 'название', description: 'описание', start_at: 'начало', end_at: 'окончание', all_day: 'весь день',
   status: 'статус', priority: 'приоритет', category_id: 'категория' };
@@ -240,12 +299,37 @@ r.post('/:id/duplicate', requireRole('editor'), ah(async (req, res) => {
   res.status(201).json({ task });
 }));
 
+// Удаление. Для повтора периодической задачи scope: one — только этот повтор (больше не появится),
+// following — этот и все следующие (серия заканчивается; выполненные остаются), all — вся серия.
 r.delete('/:id', requireRole('editor'), ah(async (req, res) => {
   const id = Number(req.params.id);
-  const { rows } = await query('DELETE FROM tasks WHERE id=$1 RETURNING title', [id]);
-  if (!rows[0]) throw new HttpError(404, 'Задача не найдена');
-  await logActivity({ query }, req.user.id, 'delete', 'task', id, { title: rows[0].title });
-  res.json({ ok: true });
+  const scope = ['one', 'following', 'all'].includes(req.query.scope) ? req.query.scope : 'one';
+  const removed = await withTransaction(async (db) => {
+    const { rows: [t] } = await db.query('SELECT id, title, series_id, series_idx, start_at FROM tasks WHERE id=$1 FOR UPDATE', [id]);
+    if (!t) throw new HttpError(404, 'Задача не найдена');
+    if (!t.series_id || scope === 'one') {
+      await db.query('DELETE FROM tasks WHERE id=$1', [id]);
+      if (t.series_id) {
+        await db.query('INSERT INTO task_series_skips (series_id, idx) VALUES ($1,$2) ON CONFLICT DO NOTHING', [t.series_id, t.series_idx]);
+      }
+      await logActivity(db, req.user.id, 'delete', 'task', id, { title: t.title });
+      return 1;
+    }
+    if (scope === 'following') {
+      // Серия заканчивается накануне этого повтора
+      await db.query(`UPDATE task_series SET until = (($2::timestamptz AT TIME ZONE tz)::date - 1), updated_at = now(), updated_by = $3
+                       WHERE id = $1`, [t.series_id, t.start_at, req.user.id]);
+      const { rowCount } = await db.query(
+        `DELETE FROM tasks WHERE series_id=$1 AND (id=$3 OR (series_idx > $2 AND status <> 'done'))`, [t.series_id, t.series_idx, id]);
+      await logActivity(db, req.user.id, 'update', 'series', t.series_id, { title: t.title, fields: ['окончание повторов'] });
+      return rowCount;
+    }
+    const { rowCount } = await db.query(`DELETE FROM tasks WHERE series_id=$1 AND (id=$2 OR status <> 'done')`, [t.series_id, id]);
+    await db.query('DELETE FROM task_series WHERE id=$1', [t.series_id]);
+    await logActivity(db, req.user.id, 'delete', 'series', t.series_id, { title: t.title });
+    return rowCount;
+  });
+  res.json({ ok: true, removed });
 }));
 
 // ---- Чек-лист: отметка пункта без открытия формы редактирования

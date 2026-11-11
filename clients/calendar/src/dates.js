@@ -37,10 +37,13 @@ export const taskCoversDay = (t, day) => startOfDay(t.start_at) <= day && taskEn
 
 export function fmtTaskPeriod(t) {
   const s = new Date(t.start_at), e = new Date(t.end_at);
+  // Год показываем, если задача не в текущем году
+  const y = new Date().getFullYear();
+  const yr = s.getFullYear() !== y || e.getFullYear() !== y ? ` ${e.getFullYear()} г.` : '';
   if (t.all_day) {
-    return sameDay(s, e) ? `${fmtDate(s)}, весь день` : `${fmtDate(s)} — ${fmtDate(e)}`;
+    return sameDay(s, e) ? `${fmtDate(s)}${yr}, весь день` : `${fmtDate(s)} — ${fmtDate(e)}${yr}`;
   }
-  return sameDay(s, e) ? `${fmtDate(s)}, ${fmtTime(s)}–${fmtTime(e)}` : `${fmtDateTime(s)} — ${fmtDateTime(e)}`;
+  return sameDay(s, e) ? `${fmtDate(s)}${yr}, ${fmtTime(s)}–${fmtTime(e)}` : `${fmtDateTime(s)} — ${fmtDateTime(e)}${yr}`;
 }
 
 export function relative(d) {
@@ -49,4 +52,34 @@ export function relative(d) {
   if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
   return fmtDateTime(d);
+}
+
+// Дата в виде «ГГГГ-ММ-ДД» по местному времени
+export const dateKey = (d) => toInputDate(d);
+export const absenceCoversDay = (a, day) => { const k = toInputDate(day); return a.start_date <= k && a.end_date >= k; };
+export const daysBetween = (a, b) => Math.round((fromInputDate(b) - fromInputDate(a)) / 86400000) + 1;
+export const fmtShort = (s) => fromInputDate(s).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' });
+
+// Сдвиг на n месяцев с «прилипанием» к концу месяца (31 января + 1 месяц = 28/29 февраля)
+export function addMonthsClamp(d, n) {
+  const x = new Date(d);
+  const day = x.getDate();
+  x.setDate(1);
+  x.setMonth(x.getMonth() + n);
+  const last = new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate();
+  x.setDate(Math.min(day, last));
+  return x;
+}
+
+/** Ближайший повтор регулярной задачи, который ещё не закончился (как считает сервер) */
+export function nextOccurrence(start, end, months, allDay, until) {
+  const today = startOfDay(new Date());
+  for (let k = 0; k < 600; k++) {
+    const s = addMonthsClamp(start, k * months);
+    const e = addMonthsClamp(end, k * months);
+    if (until && toInputDate(s) > until) return null;
+    const fin = allDay ? addDays(startOfDay(e), 1) : e;
+    if (fin > today) return { start: s, end: e };
+  }
+  return null;
 }

@@ -12,6 +12,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../db.js';
 import { ah, validate, HttpError } from '../validate.js';
+import { ensureOccurrences } from '../series.js';
 
 const r = Router();
 
@@ -80,6 +81,7 @@ r.get('/', ah(async (req, res) => {
   const cats = p.category ? p.category.split(',').map(Number) : null;
   const vals = [p.from, p.to, cats, p.user ?? null];
   const step = stepFor(p.from, p.to);
+  await ensureOccurrences(p.from, p.to);
 
   let person = null;
   if (p.user) {

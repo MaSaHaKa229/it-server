@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { addDays, fmtTime, isWeekend, sameDay, startOfDay, taskCoversDay, taskEndDay, WEEKDAYS } from '../dates.js';
+import { absenceCoversDay, addDays, fmtDate, fmtTime, isWeekend, sameDay, startOfDay, taskCoversDay, taskEndDay, WEEKDAYS } from '../dates.js';
 import { isOverdue, taskColor, whoShort, whoFull } from '../constants.js';
 import TaskChip from './TaskChip.jsx';
+import AbsenceChip from './AbsenceChip.jsx';
 
-const HOUR = 48; // высота часа в пикселях
+// Масштаб: высота часа в пикселях
+const HOURS = [24, 36, 48, 72, 96];
 
 // Раскладка пересекающихся задач по колонкам внутри дня
 function layout(items) {
@@ -29,13 +31,16 @@ function layout(items) {
   return sorted;
 }
 
-export default function WeekView({ from, tasks, canEdit, onOpen, onCreate, onMove }) {
+/** Неделя (count = 7) или день (count = 1) с сеткой по часам */
+export default function WeekView({ from, count = 7, tasks, absences = [], zoom = 3, canEdit, onOpen, onOpenAbsence, onCreate, onMove, onDayClick }) {
+  const HOUR = HOURS[zoom - 1] || 48;
+  const cols = { gridTemplateColumns: `58px repeat(${count}, minmax(0, 1fr))` };
   const scroller = useRef(null);
   const [now, setNow] = useState(new Date());
   const [dragOver, setDragOver] = useState(null);
-  const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
+  const days = Array.from({ length: count }, (_, i) => addDays(from, i));
 
-  useEffect(() => { if (scroller.current) scroller.current.scrollTop = HOUR * 8 - 8; }, []);
+  useEffect(() => { if (scroller.current) scroller.current.scrollTop = HOUR * 8 - 8; }, [HOUR]);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
 
   const isAllDayRow = (t) => t.all_day || !sameDay(startOfDay(t.start_at), taskEndDay(t));
@@ -63,23 +68,25 @@ export default function WeekView({ from, tasks, canEdit, onOpen, onCreate, onMov
   };
 
   return (
-    <div className="week">
-      <div className="week-head">
+    <div className={`week ${count === 1 ? 'day-view' : ''}`} style={{ '--hour': `${HOUR}px` }}>
+      <div className="week-head" style={cols}>
         <div className="gutter" />
         {days.map((d) => (
-          <div key={d} className={`week-day-head ${sameDay(d, now) ? 'today' : ''} ${isWeekend(d) ? 'weekend' : ''}`}>
-            <span>{WEEKDAYS[(d.getDay() + 6) % 7]}</span>
-            <b>{d.getDate()}</b>
+          <div key={d} className={`week-day-head ${sameDay(d, now) ? 'today' : ''} ${isWeekend(d) ? 'weekend' : ''} ${onDayClick ? 'clickable' : ''}`}
+            onClick={onDayClick ? () => onDayClick(d) : undefined} title={onDayClick ? 'Открыть день' : undefined}>
+            <span>{count === 1 ? fmtDate(d, { weekday: 'long' }) : WEEKDAYS[(d.getDay() + 6) % 7]}</span>
+            <b>{count === 1 ? fmtDate(d, { day: 'numeric', month: 'long' }) : d.getDate()}</b>
           </div>
         ))}
       </div>
-      <div className="week-allday">
+      <div className="week-allday" style={cols}>
         <div className="gutter small">весь день</div>
         {days.map((d) => (
           <div key={d} className="allday-cell"
             onDoubleClick={() => onCreate(d, true)}
             onDragOver={canEdit ? (e) => e.preventDefault() : undefined}
             onDrop={canEdit ? (e) => onDrop(e, d) : undefined}>
+            {absences.filter((a) => absenceCoversDay(a, d)).map((a) => <AbsenceChip key={`a${a.id}`} a={a} onClick={onOpenAbsence} />)}
             {topRow.filter((t) => taskCoversDay(t, d)).map((t) => (
               <TaskChip key={t.id} task={t} day={d} draggable={canEdit} onClick={() => onOpen(t)} />
             ))}
@@ -87,7 +94,7 @@ export default function WeekView({ from, tasks, canEdit, onOpen, onCreate, onMov
         ))}
       </div>
       <div className="week-scroll" ref={scroller}>
-        <div className="week-grid" style={{ height: HOUR * 24 }}>
+        <div className="week-grid" style={{ height: HOUR * 24, ...cols }}>
           <div className="gutter hours">
             {Array.from({ length: 24 }, (_, h) => <div key={h} style={{ height: HOUR }}><span>{h ? `${String(h).padStart(2, '0')}:00` : ''}</span></div>)}
           </div>

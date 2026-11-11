@@ -35,3 +35,29 @@ export const whoShort = (people) => (people?.length ? people.map((p) => shortNam
 export const whoFull = (people) => (people?.length ? people.map((p) => p.name).join(', ') : 'Исполнитель не назначен');
 
 export const initials = (name = '') => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+
+// Виды отсутствий сотрудников
+export const ABSENCE_KINDS = {
+  vacation: { label: 'Отпуск', color: '#00875A' },
+  sick: { label: 'Больничный', color: '#DE350B' },
+  trip: { label: 'Командировка', color: '#6554C0' },
+  dayoff: { label: 'Отгул', color: '#FF8B00' },
+  other: { label: 'Другое', color: '#5E6C84' },
+};
+
+// Периодичность регулярных задач (месяцев между повторами)
+export const FREQS = {
+  monthly: { label: 'Каждый месяц', months: 1 },
+  quarterly: { label: 'Каждый квартал', months: 3 },
+  halfyear: { label: 'Каждые полгода', months: 6 },
+  yearly: { label: 'Каждый год', months: 12 },
+};
+export const freqByMonths = (m) => Object.keys(FREQS).find((k) => FREQS[k].months === m);
+export const freqLabel = (m) => FREQS[freqByMonths(m)]?.label || '';
+
+// Вид задачи (для фильтра)
+export const SOURCES = {
+  plain: 'Обычные',
+  series: 'Регулярные',
+  helpdesk: 'Из заявок',
+};

@@ -9,6 +9,8 @@ import CategoriesPage from './pages/CategoriesPage.jsx';
 import ActivityPage from './pages/ActivityPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import StatsPage from './pages/StatsPage.jsx';
+import AbsencesPage from './pages/AbsencesPage.jsx';
+import SeriesPage from './pages/SeriesPage.jsx';
 
 // Простая навигация по hash (#/calendar, #/users, ...) — без внешнего роутера
 function useHashRoute() {
@@ -74,6 +76,8 @@ function Shell() {
   const nav = [
     { id: 'calendar', label: 'Календарь' },
     { id: 'dashboard', label: 'Обзор' },
+    { id: 'absences', label: 'Отпуска' },
+    { id: 'series', label: 'Регулярные' },
     canEdit && { id: 'categories', label: 'Категории' },
     canEdit && { id: 'activity', label: 'Журнал' },
     isAdmin && { id: 'stats', label: 'Статистика' },
@@ -82,6 +86,8 @@ function Shell() {
   const page = {
     calendar: <CalendarPage />,
     dashboard: <Dashboard />,
+    absences: <AbsencesPage />,
+    series: <SeriesPage />,
     categories: canEdit ? <CategoriesPage /> : null,
     activity: canEdit ? <ActivityPage /> : null,
     stats: isAdmin ? <StatsPage /> : null,

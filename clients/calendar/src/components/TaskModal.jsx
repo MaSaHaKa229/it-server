@@ -2,22 +2,59 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useApp } from '../context.jsx';
 import { fmtTaskPeriod, relative } from '../dates.js';
-import { initials, isOverdue, PRIORITIES, STATUSES } from '../constants.js';
+import { freqLabel, initials, isOverdue, PRIORITIES, STATUSES } from '../constants.js';
+import { fmtDate, fromInputDate } from '../dates.js';
 import Icon from './Icon.jsx';
 import Modal from './Modal.jsx';
 import TaskForm from './TaskForm.jsx';
 
 const ACTIONS = { create: 'создал(а) задачу', update: 'изменил(а)', comment: 'оставил(а) комментарий' };
 
-export default function TaskModal({ taskId, createDefaults, onClose, onChanged }) {
+/** Удаление повтора регулярной задачи: только этот, этот и следующие, вся серия */
+function DeleteSeriesDialog({ task, onPick, onClose }) {
+  return (
+    <Modal title="Удалить регулярную задачу" onClose={onClose}>
+      <p>«{task.title}» повторяется {freqLabel(task.series_every_months).toLowerCase()}. Что удалить?</p>
+      <div className="choice-list">
+        <button className="choice" onClick={() => onPick('one')}>
+          <b>Только этот повтор</b><small>Остальные повторы останутся, этот больше не появится</small>
+        </button>
+        <button className="choice" onClick={() => onPick('following')}>
+          <b>Этот и все следующие</b><small>Повторы прекратятся; выполненные ранее задачи сохранятся</small>
+        </button>
+        <button className="choice danger-choice" onClick={() => onPick('all')}>
+          <b>Все повторы</b><small>Регулярная задача удаляется целиком; выполненные повторы сохранятся как обычные задачи</small>
+        </button>
+      </div>
+      <div className="form-actions"><button className="btn ghost" onClick={onClose}>Отмена</button></div>
+    </Modal>
+  );
+}
+
+export default function TaskModal({ taskId, seriesId, createDefaults, onClose, onChanged }) {
   const { canEdit, user, toast } = useApp();
   const [task, setTask] = useState(null);
   const [editing, setEditing] = useState(!taskId);
+  const [series, setSeries] = useState(null); // изменение всех повторов
+  const [askDelete, setAskDelete] = useState(false);
   const [comment, setComment] = useState('');
   const [tab, setTab] = useState('comments');
 
   const load = () => api.get(`/tasks/${taskId}`).then((d) => setTask(d.task)).catch((e) => { toast(e.message, 'err'); onClose(); });
   useEffect(() => { if (taskId) load(); }, [taskId]);
+  const editSeries = (id) => api.get(`/series/${id}`).then((d) => setSeries(d.series)).catch((e) => toast(e.message, 'err'));
+  useEffect(() => { if (seriesId) editSeries(seriesId); }, [seriesId]);
+
+  if (seriesId && !series) return <Modal title="Регулярная задача" onClose={onClose}><div className="spinner" /></Modal>;
+  if (series) {
+    const close = seriesId ? onClose : () => setSeries(null);
+    return (
+      <Modal title="Изменение всех повторов" onClose={close} wide>
+        <TaskForm series={series} onCancel={close}
+          onSaved={() => { toast('Регулярная задача сохранена'); onChanged(); if (seriesId) onClose(); else { setSeries(null); load(); } }} />
+      </Modal>
+    );
+  }
 
   if (editing) {
     return (
@@ -26,8 +63,10 @@ export default function TaskModal({ taskId, createDefaults, onClose, onChanged }
           task={task}
           defaults={createDefaults}
           onCancel={taskId ? () => setEditing(false) : onClose}
-          onSaved={(t, count) => {
-            toast(taskId ? 'Задача сохранена' : count > 1 ? `Создано задач: ${count}` : 'Задача создана');
+          onSaved={(t, count, res) => {
+            toast(taskId ? 'Задача сохранена' : res?.series_id
+              ? (t ? `Регулярная задача создана, ближайший повтор — ${fmtDate(t.start_at, { day: 'numeric', month: 'long', year: 'numeric' })}` : 'Регулярная задача создана')
+              : count > 1 ? `Создано задач: ${count}` : 'Задача создана');
             onChanged();
             if (taskId) { setEditing(false); load(); } else onClose();
           }}
@@ -42,10 +81,13 @@ export default function TaskModal({ taskId, createDefaults, onClose, onChanged }
     try { await fn(); if (msg) toast(msg); onChanged(); } catch (e) { toast(e.message, 'err'); }
   };
   const setStatus = (status) => act(async () => { await api.patch(`/tasks/${task.id}`, { status }); await load(); }, 'Статус обновлён');
-  const remove = () => {
-    if (!confirm(`Удалить задачу «${task.title}»?`)) return;
-    act(async () => { await api.del(`/tasks/${task.id}`); onClose(); }, 'Задача удалена');
+  const remove = (scope) => {
+    if (task.series_id && !scope) return setAskDelete(true);
+    if (!task.series_id && !confirm(`Удалить задачу «${task.title}»?`)) return;
+    const msg = { one: 'Повтор удалён', following: 'Повторы прекращены', all: 'Регулярная задача удалена' }[scope] || 'Задача удалена';
+    act(async () => { await api.del(`/tasks/${task.id}${scope ? `?scope=${scope}` : ''}`); onClose(); }, msg);
   };
+  if (askDelete) return <DeleteSeriesDialog task={task} onClose={() => setAskDelete(false)} onPick={(sc) => { setAskDelete(false); remove(sc); }} />;
   const duplicate = () => act(async () => { await api.post(`/tasks/${task.id}/duplicate`); onClose(); }, 'Создана копия задачи');
   const toggleItem = (it) => act(async () => { await api.patch(`/tasks/${task.id}/checklist/${it.id}`, { done: !it.done }); await load(); });
   const sendComment = async (e) => {
@@ -64,7 +106,7 @@ export default function TaskModal({ taskId, createDefaults, onClose, onChanged }
       actions={canEdit && (
         <>
           <button className="icon-btn" title="Копировать" onClick={duplicate}><Icon name="copy" /></button>
-          <button className="icon-btn" title="Удалить" onClick={remove}><Icon name="trash" /></button>
+          <button className="icon-btn" title="Удалить" onClick={() => remove()}><Icon name="trash" /></button>
           <button className="btn" onClick={() => setEditing(true)}><Icon name="edit" /> Изменить</button>
         </>
       )}>
@@ -81,6 +123,16 @@ export default function TaskModal({ taskId, createDefaults, onClose, onChanged }
           </div>
           <div className="meta-row"><span>Приоритет</span><span className="pill" style={{ '--p': PRIORITIES[task.priority].color }}>{PRIORITIES[task.priority].label}</span></div>
           <div className="meta-row"><span>Категория</span><b>{task.category_name || '—'}</b></div>
+          {task.series_id && (
+            <div className="meta-row">
+              <span>Повтор</span>
+              <span className="series-meta">
+                <b>{freqLabel(task.series_every_months)}</b>
+                {task.series_until && <span className="muted"> · до {fmtDate(fromInputDate(task.series_until), { day: 'numeric', month: 'long', year: 'numeric' })}</span>}
+                {canEdit && <button className="link" onClick={() => editSeries(task.series_id)}>Изменить все повторы</button>}
+              </span>
+            </div>
+          )}
           <div className="meta-row">
             <span>Исполнители</span>
             <div className="people">

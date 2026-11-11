@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useApp } from '../context.jsx';
 import { fmtDateTime } from '../dates.js';
-import { initials, ROLES, STATUSES } from '../constants.js';
+import { ABSENCE_KINDS, freqLabel, initials, ROLES, STATUSES } from '../constants.js';
+import { fmtShort } from '../dates.js';
 
-const ENTITY = { task: 'задачу', user: 'пользователя', category: 'категорию' };
+const ENTITY = { task: 'задачу', user: 'пользователя', category: 'категорию', series: 'регулярную задачу', absence: 'отсутствие' };
 const VERB = { create: 'создал(а)', update: 'изменил(а)', delete: 'удалил(а)', comment: 'прокомментировал(а)', login: 'вошёл(ла) в систему' };
 
 function describe(a) {
@@ -14,6 +15,8 @@ function describe(a) {
   const name = d.title || d.name;
   if (name) s += ` «${name}»`;
   if (d.duplicated_from) s += ' (копия)';
+  if (a.entity === 'series' && d.every_months) s += ` — ${freqLabel(d.every_months).toLowerCase()}`;
+  if (a.entity === 'absence' && d.kind) s += `: ${ABSENCE_KINDS[d.kind]?.label.toLowerCase() || d.kind}, ${fmtShort(d.from)} — ${fmtShort(d.to)}`;
   if (d.fields?.length) s += `: ${d.fields.join(', ')}`;
   if (d.status && a.entity === 'task') s += ` → ${STATUSES[d.status]?.label}`;
   if (d.role) s += ` → ${ROLES[d.role]?.label}`;

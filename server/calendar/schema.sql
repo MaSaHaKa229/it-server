@@ -124,3 +124,55 @@ UPDATE tasks t SET completed_at = COALESCE(
       WHERE a.entity = 'task' AND a.entity_id = t.id AND a.details->>'status' = 'done'),
     t.updated_at)
  WHERE t.status = 'done' AND t.completed_at IS NULL;
+
+-- Периодические задачи (серии): ежемесячно, ежеквартально, раз в полгода, ежегодно.
+-- По серии автоматически создаются обычные задачи-повторы (series_id, series_idx — номер повтора),
+-- у каждого повтора свой статус, комментарии и чек-лист.
+CREATE TABLE IF NOT EXISTS task_series (
+  id           SERIAL PRIMARY KEY,
+  title        TEXT NOT NULL,
+  description  TEXT NOT NULL DEFAULT '',
+  start_at     TIMESTAMPTZ NOT NULL,
+  end_at       TIMESTAMPTZ NOT NULL,
+  all_day      BOOLEAN NOT NULL DEFAULT FALSE,
+  priority     task_priority NOT NULL DEFAULT 'normal',
+  category_id  INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+  every_months INTEGER NOT NULL DEFAULT 12,
+  until        DATE,
+  assignees    INTEGER[] NOT NULL DEFAULT '{}',
+  checklist    JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT task_series_period_chk CHECK (end_at >= start_at),
+  CONSTRAINT task_series_every_chk CHECK (every_months IN (1, 3, 6, 12))
+);
+-- Удалённые по одному повторы — чтобы они не появились снова
+CREATE TABLE IF NOT EXISTS task_series_skips (
+  series_id INTEGER NOT NULL REFERENCES task_series(id) ON DELETE CASCADE,
+  idx       INTEGER NOT NULL,
+  PRIMARY KEY (series_id, idx)
+);
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS series_id INTEGER REFERENCES task_series(id) ON DELETE SET NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS series_idx INTEGER;
+CREATE UNIQUE INDEX IF NOT EXISTS tasks_series_occ_idx ON tasks (series_id, series_idx) WHERE series_id IS NOT NULL;
+
+-- Отсутствия сотрудников: отпуск, больничный, командировка, отгул
+CREATE TABLE IF NOT EXISTS absences (
+  id         SERIAL PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL DEFAULT 'vacation',
+  start_date DATE NOT NULL,
+  end_date   DATE NOT NULL,
+  comment    TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT absences_period_chk CHECK (end_date >= start_date)
+);
+CREATE INDEX IF NOT EXISTS absences_period_idx ON absences (start_date, end_date);
+CREATE INDEX IF NOT EXISTS absences_user_idx ON absences (user_id);
+
+-- Часовой пояс, в котором считаются даты повторов (пояс браузера автора серии)
+ALTER TABLE task_series ADD COLUMN IF NOT EXISTS tz TEXT NOT NULL DEFAULT current_setting('TimeZone');

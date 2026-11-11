@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import { addDays, dayKey, isWeekend, sameDay, startOfDay, taskCoversDay, WEEKDAYS } from '../dates.js';
+import { absenceCoversDay, addDays, dayKey, isWeekend, sameDay, startOfDay, taskCoversDay, WEEKDAYS } from '../dates.js';
 import TaskChip from './TaskChip.jsx';
+import AbsenceChip from './AbsenceChip.jsx';
 
-const MAX_VISIBLE = 3;
+// Масштаб: высота ячейки и сколько задач видно без «ещё N»
+const ZOOM = [{ h: 84, n: 2 }, { h: 100, n: 3 }, { h: 118, n: 3 }, { h: 168, n: 5 }, { h: 240, n: 8 }];
+const MAX_ABS = 2;
 
-export default function MonthView({ cursor, from, tasks, canEdit, onOpen, onCreate, onMove, onDayClick }) {
+export default function MonthView({ cursor, from, tasks, absences = [], zoom = 3, canEdit, onOpen, onOpenAbsence, onCreate, onMove, onDayClick }) {
+  const { h: cellH, n: MAX_VISIBLE } = ZOOM[zoom - 1] || ZOOM[2];
   const [dragOver, setDragOver] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const today = startOfDay(new Date());
@@ -36,6 +40,9 @@ export default function MonthView({ cursor, from, tasks, canEdit, onOpen, onCrea
           const key = dayKey(day);
           const isExpanded = expanded === key;
           const visible = isExpanded ? list : list.slice(0, MAX_VISIBLE);
+          const abs = absences.filter((a) => absenceCoversDay(a, day));
+          const absVisible = isExpanded ? abs : abs.slice(0, MAX_ABS);
+          const hidden = list.length - visible.length + abs.length - absVisible.length;
           return (
             <div
               key={key}
@@ -47,6 +54,7 @@ export default function MonthView({ cursor, from, tasks, canEdit, onOpen, onCrea
                 dragOver === key && 'drag-over',
                 canEdit && 'editable',
               ].filter(Boolean).join(' ')}
+              style={{ minHeight: cellH }}
               onDoubleClick={() => onCreate(day)}
               onDragOver={canEdit ? (e) => { e.preventDefault(); setDragOver(key); } : undefined}
               onDragLeave={() => setDragOver((k) => (k === key ? null : k))}
@@ -57,12 +65,13 @@ export default function MonthView({ cursor, from, tasks, canEdit, onOpen, onCrea
                 {canEdit && <button className="cell-add" onClick={() => onCreate(day)} title="Добавить задачу">+</button>}
               </div>
               <div className="cell-tasks">
+                {absVisible.map((a) => <AbsenceChip key={`a${a.id}`} a={a} onClick={onOpenAbsence} />)}
                 {visible.map((t) => (
                   <TaskChip key={t.id} task={t} day={day} draggable={canEdit} onClick={() => onOpen(t)} />
                 ))}
-                {list.length > MAX_VISIBLE && (
+                {(hidden > 0 || isExpanded) && (list.length > MAX_VISIBLE || abs.length > MAX_ABS) && (
                   <button className="more" onClick={() => setExpanded(isExpanded ? null : key)}>
-                    {isExpanded ? 'Свернуть' : `ещё ${list.length - MAX_VISIBLE}`}
+                    {isExpanded ? 'Свернуть' : `ещё ${hidden}`}
                   </button>
                 )}
               </div>
