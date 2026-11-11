@@ -15,6 +15,10 @@ export async function renderNetprobeSettings(box) {
   const snmpComm = h('input', { type: 'text', value: s.snmp_communities, placeholder: 'public' });
   const threshold = h('input', { type: 'number', min: 1, max: 90, value: s.supply_threshold ?? 15, style: { width: '90px' } });
   const scanNets = h('input', { type: 'text', value: s.scan_networks || '', placeholder: 'Например: 10.0.1.0/24, 10.0.2.0/24' });
+  const rc = s.remote_connect || { enabled: true, control: true, consent: true };
+  const rcEnabled = h('input', { type: 'checkbox', checked: rc.enabled });
+  const rcControl = h('input', { type: 'checkbox', checked: rc.control });
+  const rcConsent = h('input', { type: 'checkbox', checked: rc.consent });
   let clearPassword = false;
 
   const save = h('button.btn.primary', 'Сохранить');
@@ -23,6 +27,7 @@ export async function renderNetprobeSettings(box) {
       username: username.value.trim(), ad_enabled: adEnabled.checked, ad_server: adServer.value.trim(), ad_base_dn: adBase.value.trim(),
       wmi_enabled: wmiEnabled.checked, snmp_enabled: snmpEnabled.checked, snmp_communities: snmpComm.value.trim() || 'public',
       scan_networks: scanNets.value.trim(), supply_threshold: Number(threshold.value) || 15,
+      remote_connect: { enabled: rcEnabled.checked, control: rcControl.checked, consent: rcConsent.checked },
     };
     if (password.value) body.password = password.value;
     if (clearPassword) body.clear_password = true;
@@ -95,6 +100,19 @@ export async function renderNetprobeSettings(box) {
       h('label.field', { style: { maxWidth: '520px' } }, h('span', 'Сети по умолчанию'), scanNets,
         h('div.hint', 'Подставляются на вкладке «Сканирование сети». Через запятую: 10.0.1.0/24, диапазоны 10.0.2.10-10.0.2.50 или отдельные адреса. '
           + 'Если не заполнено — сети самого сервера.'))),
+
+    h('div.np-box',
+      h('h3', h('label.check', rcEnabled, 'Кнопка «Подключиться к сеансу» в карточке техники')),
+      h('p.hint', 'Редакторы подключаются к экрану сотрудника, не выкидывая его из системы (теневое подключение RDP, Windows 8.1/10/11 Pro). ',
+        'Кнопка скачивает файл connect-ИМЯ.cmd — откройте его. Если подключиться не удалось (например, Windows XP), файл предложит «Удалённый помощник» ',
+        'или обычное подключение RDP. Каждое подключение записывается в историю техники.'),
+      h('div.stack', { style: { gap: '6px', margin: '6px 0' } },
+        h('label.check', rcControl, 'Управлять компьютером (иначе — только смотреть)'),
+        h('label.check', rcConsent, 'Спрашивать разрешение у пользователя')),
+      h('p.hint', 'На компьютерах сотрудников нужна групповая политика: «Компоненты Windows → Службы удалённых рабочих столов → Узел сеансов → ',
+        'Подключения → Установить правила удалённого управления для пользовательских сеансов» — «Полный контроль с разрешения пользователя» ',
+        '(или «без разрешения», если снята галочка «Спрашивать разрешение»), а также правила брандмауэра «Удалённый рабочий стол — теневой сеанс» ',
+        'и «Общий доступ к файлам и принтерам». Для Windows XP — «Система → Удалённый помощник → Предлагать удалённую помощь».')),
 
     h('div.row', { style: { gap: '8px', alignItems: 'center' } }, save,
       s.updated_at ? h('span.muted.small', `Изменено ${fmtDate(s.updated_at)}`) : null),

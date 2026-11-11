@@ -132,7 +132,8 @@ export async function renderDevice(root, id) {
         // Сведения из AD / WMI / SNMP — только редакторам и при известном сетевом имени или IP
         staff && (d.hostname || d.ip_address)
           ? h('button.btn', { onclick: () => openNetInfo(d, changed), title: 'Данные из Active Directory, WMI и SNMP' }, icon('eye'), 'Сведения из сети')
-          : null),
+          : null,
+        staff && (d.hostname || d.ip_address) ? remoteButton(d) : null),
       notesDesc ? h('div.section', h('h3', 'Описание'), editable(notesDesc, { block: true, multiline: true })) : null,
       renderTabs());
 
@@ -287,6 +288,7 @@ export async function renderDevice(root, id) {
     software_updated: 'изменил(а) ПО', software_removed: 'удалил(а) ПО', password_added: 'добавил(а) пароль',
     password_updated: 'изменил(а) пароль', password_removed: 'удалил(а) пароль', password_viewed: 'просмотрел(а) пароль',
     ticket_linked: 'привязал(а) к заявке', ticket_unlinked: 'отвязал(а) от заявки',
+    remote_connect: 'подключился(-ась) к сеансу пользователя',
     audit: 'провёл(а) инвентаризацию',
   };
   // Заявки helpdesk, к которым привязана эта техника
@@ -489,3 +491,17 @@ function genPassword(len = 14) {
   return [...a].map((x) => chars[x % chars.length]).join('');
 }
 
+
+// Кнопка «Подключиться к сеансу» (теневое подключение RDP) — если не отключена администратором
+let remoteCfg = null;
+function remoteButton(d) {
+  const btn = h('a.btn', {
+    href: `/inventory/api/netinfo/device/${d.id}/connect.cmd`, download: '',
+    title: 'Подключиться к экрану сотрудника, не выкидывая его из системы. Скачается файл connect-….cmd — откройте его.',
+  }, icon('screen'), 'Подключиться к сеансу');
+  btn.style.display = 'none';
+  (remoteCfg ||= api.get('/api/netinfo/remote').catch(() => ({ enabled: false })))
+    .then((c) => { btn.style.display = c.enabled ? '' : 'none'; });
+  btn.addEventListener('click', () => { toast('Скачивается файл подключения — откройте его'); remoteCfg = null; });
+  return btn;
+}

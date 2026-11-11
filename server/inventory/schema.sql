@@ -378,3 +378,6 @@ CREATE TABLE IF NOT EXISTS inventory_audit_items (
   checked_at TIMESTAMPTZ,
   PRIMARY KEY (audit_id, device_id)
 );
+
+-- Кнопка «Подключиться к сеансу» в карточке техники: {"enabled":true,"control":true,"consent":true}
+ALTER TABLE netprobe_settings ADD COLUMN IF NOT EXISTS remote_connect JSONB NOT NULL DEFAULT '{"enabled":true,"control":true,"consent":true}'::jsonb;

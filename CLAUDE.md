@@ -85,6 +85,9 @@ React-клиенты грузят его динамически по адрес�
 пропускает отсутствующих по `calendar.absences`), страницы — `public/helpdesk-staff/extra.js`.
 **Инвентаризация** — `server/inventory/routes/audits.js`, `public/inventory/js/pages/audits.js` (`inventory_audits`,
 `inventory_audit_items` со снимком устройства; завершение пишет `device_history` action `audit`).
+**Подключение к сеансу** (RDP shadow) — `netprobe/remote.js`: кнопка в карточке скачивает `.cmd` с
+`powershell -EncodedCommand` (qwinsta → `mstsc /shadow`, иначе msra/RDP), настройка `netprobe_settings.remote_connect`
+(enabled/control/consent, меняет суперадмин), каждое скачивание — `device_history` action `remote_connect`. На Windows не проверялось.
 **Сканирование по расписанию** — `netprobe_settings.scan_schedule`, `scan.js` `startSchedule()`; новые — уведомление `netscan_new`.
 Главная — `public/portal/home.js` + `/api/summary/my` (мои заявки, мои задачи на сегодня, уведомления).
 Значения для карточки — `netprobe/format.js`: шаблоны (`netprobe_settings.formats`) и замены (`netprobe_replacements`). Поиск в AD: база из настроек → домен контроллера → GC:// леса

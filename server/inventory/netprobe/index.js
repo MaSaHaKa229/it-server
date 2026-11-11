@@ -9,6 +9,7 @@ const { encrypt, decrypt } = require('../crypto');
 const P = require('./probes');
 const { adLookup, wmiCollect } = require('./powershell');
 const F = require('./format');
+const Remote = require('./remote');
 
 const router = express.Router();
 const MAX_JOBS = 4;
@@ -23,6 +24,7 @@ async function loadSettings({ withPassword = false } = {}) {
     ad_server: s.ad_server, ad_base_dn: s.ad_base_dn, username: s.username, has_password: !!s.password_enc,
     snmp_communities: s.snmp_communities, scan_networks: s.scan_networks || '', updated_at: s.updated_at || null,
     scan_schedule: s.scan_schedule || { mode: 'off' }, scan_last_auto: s.scan_last_auto || null,
+    remote_connect: Remote.settingsOf(s),
     supply_threshold: s.supply_threshold ?? 15,
   };
   if (withPassword) {
@@ -55,6 +57,11 @@ router.put('/settings', requireSuperadmin, require('../../portal/audit').trackCh
   await query(
     `UPDATE netprobe_settings SET ad_enabled = $1, wmi_enabled = $2, snmp_enabled = $3, ad_server = $4, ad_base_dn = $5,
             username = $6, snmp_communities = $7, updated_by = $8, updated_at = now(), scan_networks = $9, supply_threshold = $10${pw} WHERE id = 1`, vals);
+  if (b.remote_connect && typeof b.remote_connect === 'object') {
+    const r = b.remote_connect;
+    await query('UPDATE netprobe_settings SET remote_connect = $1 WHERE id = 1',
+      [JSON.stringify({ enabled: !!r.enabled, control: !!r.control, consent: !!r.consent })]);
+  }
   res.json({ settings: await loadSettings() });
 }));
 
@@ -249,6 +256,27 @@ function startJob(key, target, userId, onDone) {
 const publicJob = (j) => (j ? { started_at: j.started_at, finished_at: j.finished_at || null, done: j.done, error: j.error || null, sections: j.sections } : null);
 
 // Сохранённые сведения + идущий опрос
+// ---------------- Подключение к сеансу пользователя (RDP shadow) ----------------
+router.get('/remote', requireStaff, ah(async (req, res) => {
+  res.json(Remote.settingsOf(await loadSettings()));
+}));
+
+router.get('/device/:id/connect.cmd', requireStaff, ah(async (req, res) => {
+  const s = await loadSettings();
+  if (!Remote.settingsOf(s).enabled) throw new HttpError(403, 'Подключение к сеансу отключено администратором');
+  const { rows } = await query('SELECT id, hostname, ip_address FROM devices WHERE id = $1', [intOrNull(req.params.id)]);
+  const d = rows[0];
+  if (!d) throw new HttpError(404, 'Устройство не найдено');
+  const target = String(d.hostname || '').trim() || String(d.ip_address || '').trim();
+  if (!/^[A-Za-z0-9_.-]{1,253}$/.test(target)) throw new HttpError(400, 'У устройства не указано сетевое имя или IP-адрес (допустимы латиница, цифры, точка, дефис)');
+  await query(`INSERT INTO device_history (device_id, user_id, action, changes) VALUES ($1, $2, 'remote_connect', $3)`,
+    [d.id, req.user.id, JSON.stringify({ 'Подключение': [null, target] })]);
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="connect-${target.replace(/[^\w.-]/g, '')}.cmd"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(Remote.cmdFile(target, s));
+}));
+
 router.get('/device/:id', requireStaff, ah(async (req, res) => {
   const id = intOrNull(req.params.id);
   const d = await loadDevice(id);
