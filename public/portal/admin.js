@@ -13,7 +13,7 @@ const MOD_HINT = {
 };
 // Готовые наборы прав
 const PRESETS = [
-  ['Сотрудник ИТ-отдела', { inventory: 'edit', docs: 'edit', calendar: 'edit', helpdesk: 'executor' }],
+  ['Сотрудник службы ИТ', { inventory: 'edit', docs: 'edit', calendar: 'edit', helpdesk: 'executor' }],
   ['Только просмотр', { inventory: 'view', docs: 'view', calendar: 'view', helpdesk: 'none' }],
   ['Без доступа', { inventory: 'none', docs: 'none', calendar: 'none', helpdesk: 'none' }],
 ];
@@ -68,11 +68,11 @@ async function render() {
         h('h1', 'Пользователи и доступ'), info,
         h('span.spacer'),
         h('button.btn.primary', { onclick: () => userDialog(null) }, '+ Создать пользователя')),
-      h('p.muted', { style: { margin: '-8px 0 16px' } }, 'Учётные записи сотрудников ИТ-отдела и права на разделы портала. Нажмите на заголовок столбца, чтобы отсортировать.'),
+      h('p.muted', { style: { margin: '-8px 0 16px' } }, 'Учётные записи сотрудников службы ИТ и права на разделы портала. Нажмите на заголовок столбца, чтобы отсортировать.'),
       h('div.toolbar', h('div.search-box', search), h('label.check', showInactive, 'Показывать отключённых')),
       h('div.table-wrap', table),
       h('p.hint', { style: { marginTop: '12px' } },
-        'Сотрудники предприятия, которые подают заявки в ИТ-отдел, регистрируются сами на сайте заявок — ',
+        'Сотрудники предприятия, которые подают заявки в службу ИТ, регистрируются сами на сайте заявок — ',
         'их список в разделе «Заявки» → «Сотрудники».')))));
   fill();
 }

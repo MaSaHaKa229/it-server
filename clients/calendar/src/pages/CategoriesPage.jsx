@@ -17,11 +17,14 @@ export default function CategoriesPage() {
 
   return (
     <div className="page narrow">
-      <header className="page-head"><h2>Категории задач</h2><p className="muted">Цвет категории определяет цвет задачи в календаре</p></header>
+      <header className="page-head"><h2>Категории задач</h2><p className="muted">Цвет категории — цвет задачи в календаре при раскраске «по категории» (страница «Цвета»)</p></header>
       <form className="card cat-form" onSubmit={add}>
         <input placeholder="Название новой категории" value={name} onChange={(e) => setName(e.target.value)} required maxLength={60} />
         <div className="swatches">
           {PALETTE.map((c) => <button type="button" key={c} className={`swatch ${color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setColor(c)} />)}
+          <label className={`swatch-input ${PALETTE.includes(color) ? '' : 'on'}`} style={{ background: PALETTE.includes(color) ? undefined : color }} title="Любой цвет">
+            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />{PALETTE.includes(color) && '…'}
+          </label>
         </div>
         <button className="btn primary"><Icon name="plus" /> Добавить</button>
       </form>

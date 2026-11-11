@@ -1,4 +1,4 @@
-// Статистика по задачам: отдел в целом и каждый сотрудник (только для администраторов календаря)
+// Статистика по задачам: служба ИТ в целом и каждый сотрудник (только для администраторов календаря)
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, qs } from '../api.js';
 import { useApp } from '../context.jsx';
@@ -219,10 +219,10 @@ function EmployeesTable({ rows, unassigned, totals, onPick }) {
           ) : null}
         </tbody>
         <tfoot>
-          <tr><td>Отдел в целом</td>{COLS.map((c) => <td key={c.k} className={`num ${c.sm ? 'hide-sm' : ''}`}>{show(c, totals)}</td>)}</tr>
+          <tr><td>Служба в целом</td>{COLS.map((c) => <td key={c.k} className={`num ${c.sm ? 'hide-sm' : ''}`}>{show(c, totals)}</td>)}</tr>
         </tfoot>
       </table>
-      <p className="hint pad-x">Задача с несколькими исполнителями учитывается у каждого, а в строке «Отдел в целом» — один раз. Нажмите на сотрудника, чтобы открыть его статистику.</p>
+      <p className="hint pad-x">Задача с несколькими исполнителями учитывается у каждого, а в строке «Служба в целом» — один раз. Нажмите на сотрудника, чтобы открыть его статистику.</p>
     </div>
   );
 }
@@ -351,7 +351,7 @@ export default function StatsPage() {
       downloadCsv(`stats_department_${fileTag}.csv`, ['Сотрудник', ...CSV_HEAD], [
         ...data.employees.map((e) => [e.name, ...csvRow(e)]),
         ['Без исполнителя', ...csvRow(data.unassigned)],
-        ['Отдел в целом', ...csvRow(data.totals)],
+        ['Служба в целом', ...csvRow(data.totals)],
       ]);
     }
   };
@@ -368,10 +368,10 @@ export default function StatsPage() {
         <div>
           {data?.user ? (
             <>
-              <div className="breadcrumbs"><a href="#/stats" onClick={(e) => { e.preventDefault(); pick(''); }}>Статистика отдела</a><span className="sep">/</span></div>
+              <div className="breadcrumbs"><a href="#/stats" onClick={(e) => { e.preventDefault(); pick(''); }}>Статистика службы ИТ</a><span className="sep">/</span></div>
               <h2 className="person big"><span className="avatar" style={{ background: data.user.color }}>{initials(data.user.name)}</span>{data.user.name}</h2>
             </>
-          ) : <h2>Статистика отдела</h2>}
+          ) : <h2>Статистика службы ИТ</h2>}
           <p className="muted">{title}{category ? ` · ${categories.find((c) => String(c.id) === category)?.name || ''}` : ''}</p>
         </div>
         <div className="toolbar-right">
@@ -400,7 +400,7 @@ export default function StatsPage() {
         </div>
         <div className="filters">
           <select value={userId} onChange={(e) => pick(Number(e.target.value) || '')} aria-label="Сотрудник">
-            <option value="">Весь отдел</option>
+            <option value="">Вся служба ИТ</option>
             {people.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
           <select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Категория">

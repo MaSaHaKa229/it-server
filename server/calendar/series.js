@@ -29,9 +29,9 @@ WITH s AS (
      AND NOT EXISTS (SELECT 1 FROM task_series_skips k WHERE k.series_id = o.series_id AND k.idx = o.idx)
      AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.series_id = o.series_id AND t.series_idx = o.idx)
 ), ins AS (
-  INSERT INTO tasks (title, description, start_at, end_at, all_day, priority, category_id,
+  INSERT INTO tasks (title, description, start_at, end_at, all_day, priority, category_id, color,
                      created_by, updated_by, series_id, series_idx)
-  SELECT s.title, s.description, o.st, o.en, s.all_day, s.priority, s.category_id,
+  SELECT s.title, s.description, o.st, o.en, s.all_day, s.priority, s.category_id, s.color,
          s.created_by, s.created_by, o.series_id, o.idx
     FROM todo o JOIN s ON s.id = o.series_id
   ON CONFLICT DO NOTHING

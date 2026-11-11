@@ -11,7 +11,7 @@
       '<h2 style="font-weight:500">Браузер устарел</h2>' +
       '<p>Сайт заявок не открывается в этом браузере. Откройте его в Firefox (версии 52 и новее), ' +
       'Google Chrome, Microsoft Edge или Яндекс Браузере.</p>' +
-      '<p>Если на компьютере нет подходящего браузера — позвоните в ИТ-отдел.</p></div>';
+      '<p>Если на компьютере нет подходящего браузера — позвоните в службу ИТ.</p></div>';
   }
   if (document.readyState === 'complete' || document.readyState === 'interactive') show();
   else if (window.addEventListener) window.addEventListener('load', show, false);

@@ -577,3 +577,20 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 16
 .choice small { color: var(--muted); }
 .danger-choice:hover { border-color: var(--danger); background: #FFEBE6; }
 .empty-card p { margin: 0 0 6px; }
+
+/* ===== Цвета ===== */
+.color-pick, .swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.swatch-input { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 2px dashed var(--border);
+  color: var(--muted); font-weight: 700; font-size: 13px; line-height: 1; }
+.swatch-input.on { border: 2px solid var(--text); box-shadow: inset 0 0 0 2px var(--surface); }
+.cat-row .swatch-input { border-radius: 3px; border: 0; }
+.color-auto { height: 26px; padding: 0 10px; border: 2px solid var(--border); border-radius: 13px; background: #fff; cursor: pointer; font-size: 12px; color: var(--muted); }
+.color-auto.on { border-color: var(--text); color: var(--text); font-weight: 600; }
+.swatch:disabled { cursor: default; }
+.color-row { display: grid; grid-template-columns: 180px 1fr; gap: 12px; align-items: center; padding: 6px 0; }
+.color-sample { display: inline-block; padding: 3px 10px; border-radius: 3px; border-left: 3px solid var(--k);
+  background: color-mix(in srgb, var(--k) 16%, #fff); font-weight: 600; font-size: 13px; }
+.card h3 + .form-grid { margin-top: 4px; }
+
+/* Отсутствия — внизу ячейки месяца */
+.cell-abs { margin-top: auto; padding-top: 4px; display: flex; flex-direction: column; gap: 2px; }

@@ -1,6 +1,6 @@
 # ИТ-портал — контекст проекта
 
-Единый сайт ИТ-отдела предприятия: ИТ-инвентарь, документы, задачи с календарём, заявки (helpdesk).
+Единый сайт службы ИТ предприятия: ИТ-инвентарь, документы, задачи с календарём, заявки (helpdesk).
 Node.js (Express) + PostgreSQL. Описание возможностей — `README.md`, установка и обновление — `INSTALL.md`.
 С пользователем общаемся **по-русски**; интерфейс, комментарии в коде, коммиты и PR — тоже на русском.
 
@@ -23,7 +23,7 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
 
 | Порт | Что | Код |
 |---|---|---|
-| `PORT` (3000) | портал ИТ-отдела: `/`, `/admin`, `/inventory/`, `/docs/`, `/calendar/`, `/helpdesk/` | `server/portal`, `server/inventory`, `server/docs`, `server/calendar` (ES-модули), `server/helpdesk/staff.js` |
+| `PORT` (3000) | портал службы ИТ: `/`, `/admin`, `/inventory/`, `/docs/`, `/calendar/`, `/helpdesk/` | `server/portal`, `server/inventory`, `server/docs`, `server/calendar` (ES-модули), `server/helpdesk/staff.js` |
 | `HELPDESK_PORT` (3100) | сайт заявок для всех сотрудников | `server/helpdesk/public.js` |
 
 Одна база, схемы: `public` — инвентарь и пользователи портала, `docs`, `calendar`, `helpdesk`
@@ -62,7 +62,7 @@ NetBIOS, ARP, SNMP — на чистом Node.js (`probes.js`); AD и WMI — в
 
 | Раздел | Технология | Исходники | Что отдаётся |
 |---|---|---|---|
-| Портал (главная, вход, админка), заявки ИТ-отдела, сайт заявок, инвентарь | чистый JS, ES-модули, без сборки | `public/portal`, `public/helpdesk-staff`, `public/helpdesk`, `public/inventory`, `public/shared` | те же файлы |
+| Портал (главная, вход, админка), заявки службы ИТ, сайт заявок, инвентарь | чистый JS, ES-модули, без сборки | `public/portal`, `public/helpdesk-staff`, `public/helpdesk`, `public/inventory`, `public/shared` | те же файлы |
 | Документы | React + Vite | `clients/docs` | `public/docs` (сборка, **в репозитории**) |
 | Календарь | React + Vite | `clients/calendar` | `public/calendar` (сборка, **в репозитории**) |
 | Сайт заявок для Firefox 52 | esbuild | `clients/helpdesk-legacy` | `public/helpdesk/app.legacy.js`, `public/shared/legacy.css` (**в репозитории**) |

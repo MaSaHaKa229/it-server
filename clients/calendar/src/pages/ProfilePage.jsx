@@ -47,6 +47,9 @@ export default function ProfilePage() {
           <span>Цвет</span>
           <div className="swatches">
             {PALETTE.map((c) => <button type="button" key={c} className={`swatch ${p.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => setP({ ...p, color: c })} />)}
+            <label className={`swatch-input ${PALETTE.includes(p.color) ? '' : 'on'}`} style={{ background: PALETTE.includes(p.color) ? undefined : p.color }} title="Любой цвет">
+              <input type="color" value={p.color} onChange={(e) => setP({ ...p, color: e.target.value })} />{PALETTE.includes(p.color) && '…'}
+            </label>
           </div>
         </div>
         <div className="form-actions"><button className="btn primary">Сохранить</button></div>

@@ -86,10 +86,10 @@ export default function WeekView({ from, count = 7, tasks, absences = [], zoom =
             onDoubleClick={() => onCreate(d, true)}
             onDragOver={canEdit ? (e) => e.preventDefault() : undefined}
             onDrop={canEdit ? (e) => onDrop(e, d) : undefined}>
-            {absences.filter((a) => absenceCoversDay(a, d)).map((a) => <AbsenceChip key={`a${a.id}`} a={a} onClick={onOpenAbsence} />)}
             {topRow.filter((t) => taskCoversDay(t, d)).map((t) => (
               <TaskChip key={t.id} task={t} day={d} draggable={canEdit} onClick={() => onOpen(t)} />
             ))}
+            {absences.filter((a) => absenceCoversDay(a, d)).map((a) => <AbsenceChip key={`a${a.id}`} a={a} onClick={onOpenAbsence} />)}
           </div>
         ))}
       </div>

@@ -9,7 +9,7 @@ import { ensureOccurrences, EVERY, validTz } from '../series.js';
 const r = Router();
 
 const SELECT = `
-  SELECT s.id, s.title, s.description, s.start_at, s.end_at, s.all_day, s.priority, s.category_id, s.every_months,
+  SELECT s.id, s.title, s.description, s.start_at, s.end_at, s.all_day, s.priority, s.category_id, s.every_months, s.color,
          to_char(s.until, 'YYYY-MM-DD') AS until, s.assignees AS assignee_ids, s.checklist, s.created_at, s.updated_at,
          c.name AS category_name, c.color AS category_color, cu.name AS created_by_name,
          COALESCE((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'color', u.color) ORDER BY u.name)
@@ -52,6 +52,7 @@ const body = z.object({
   all_day: z.boolean().default(false),
   priority: z.enum(['low', 'normal', 'high', 'critical']).default('normal'),
   category_id: z.number().int().nullable().optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
   freq: z.enum(Object.keys(EVERY)),
   until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   assignees: z.array(z.number().int()).default([]),
@@ -74,9 +75,9 @@ r.patch('/:id', requireRole('editor'), ah(async (req, res) => {
     await db.query(
       `UPDATE task_series SET title=$2, description=$3, start_at=$4, end_at=$5, all_day=$6, priority=$7, category_id=$8,
               every_months=$9, until=$10, assignees=$11, checklist=$12, updated_by=$13, updated_at=now(),
-              tz=COALESCE($14, tz) WHERE id=$1`,
+              tz=COALESCE($14, tz), color=$15 WHERE id=$1`,
       [id, d.title, d.description, d.start_at, d.end_at, d.all_day, d.priority, d.category_id ?? null, every,
-        d.until || null, assignees, JSON.stringify(d.checklist), req.user.id, d.tz ? await validTz(db, d.tz) : null]);
+        d.until || null, assignees, JSON.stringify(d.checklist), req.user.id, d.tz ? await validTz(db, d.tz) : null, d.color ?? null]);
     const future = `series_id = $1 AND status = 'todo' AND start_at >= date_trunc('day', now())`;
     if (timingChanged) {
       // Даты изменились — будущие повторы создаются заново
@@ -84,8 +85,8 @@ r.patch('/:id', requireRole('editor'), ah(async (req, res) => {
       await db.query('DELETE FROM task_series_skips WHERE series_id = $1', [id]);
     } else {
       await db.query(
-        `UPDATE tasks SET title=$2, description=$3, priority=$4, category_id=$5, updated_by=$6, updated_at=now() WHERE ${future}`,
-        [id, d.title, d.description, d.priority, d.category_id ?? null, req.user.id]);
+        `UPDATE tasks SET title=$2, description=$3, priority=$4, category_id=$5, updated_by=$6, color=$7, updated_at=now() WHERE ${future}`,
+        [id, d.title, d.description, d.priority, d.category_id ?? null, req.user.id, d.color ?? null]);
       await db.query(`DELETE FROM task_assignees WHERE task_id IN (SELECT id FROM tasks WHERE ${future})`, [id]);
       await db.query(
         `INSERT INTO task_assignees (task_id, user_id)

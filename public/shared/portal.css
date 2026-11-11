@@ -126,3 +126,12 @@ dl.kv { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 8px 12p
 dl.kv dt { color: var(--text-subtle); font-weight: 600; font-size: 13px; }
 dl.kv dd { margin: 0; }
 a.tab:hover { text-decoration: none; }
+
+/* Выбор отдела из справочника (сайт заявок) */
+.dp { position: relative; }
+.dp-list { position: absolute; left: 0; right: 0; top: 100%; z-index: 60; max-height: 300px; overflow-y: auto; margin-top: 2px;
+  background: #fff; border: 1px solid var(--border); border-radius: 3px; box-shadow: 0 8px 16px -4px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31); }
+.dp-item { padding: 7px 12px; cursor: pointer; border-left: 2px solid transparent; }
+.dp-item:hover, .dp-item.active { background: #F4F5F7; border-left-color: #0052CC; }
+.dp-empty { padding: 8px 12px; color: var(--text-subtle); font-size: 13px; }
+.hint.dp-ok { color: #006644; }

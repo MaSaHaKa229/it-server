@@ -22,7 +22,26 @@ export const PALETTE = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '
 
 export const isOverdue = (t) => (t.status === 'todo' || t.status === 'in_progress') && new Date(t.end_at) < new Date();
 
-export const taskColor = (t) => t.category_color || '#64748b';
+// ---------- Раскраска ----------
+// Как раскрашивать задачи и отсутствия — личная настройка пользователя (хранится в браузере)
+export const COLOR_MODES = {
+  tasks: { category: 'по категории', assignee: 'по исполнителю', priority: 'по приоритету', status: 'по статусу' },
+  absences: { kind: 'по виду отсутствия', user: 'по цвету сотрудника' },
+};
+const MODE = { tasks: 'category', absences: 'kind' };
+export const setColorModes = (m) => Object.assign(MODE, m);
+const DEFAULT_TASK = '#64748b';
+
+/** Цвет задачи: свой цвет задачи, иначе — по выбранной раскраске */
+export function taskColor(t) {
+  if (t.color) return t.color;
+  if (MODE.tasks === 'assignee') return t.assignees?.[0]?.color || DEFAULT_TASK;
+  if (MODE.tasks === 'priority') return PRIORITIES[t.priority]?.color || DEFAULT_TASK;
+  if (MODE.tasks === 'status') return STATUSES[t.status]?.color || DEFAULT_TASK;
+  return t.category_color || DEFAULT_TASK;
+}
+/** Цвет отсутствия: по виду или цвет сотрудника */
+export const absenceColor = (a) => (MODE.absences === 'user' && a.user_color ? a.user_color : (ABSENCE_KINDS[a.kind] || ABSENCE_KINDS.other).color);
 
 // «Иванов Иван Иванович» → «Иванов И.И.»; «Иванов И.И.» и одиночные имена — как есть
 export function shortName(name = '') {
@@ -61,3 +80,17 @@ export const SOURCES = {
   series: 'Регулярные',
   helpdesk: 'Из заявок',
 };
+
+// Цвета по умолчанию — чтобы можно было вернуть после настройки
+export const DEFAULT_COLORS = {
+  absence: Object.fromEntries(Object.entries(ABSENCE_KINDS).map(([k, v]) => [k, v.color])),
+  priority: Object.fromEntries(Object.entries(PRIORITIES).map(([k, v]) => [k, v.color])),
+  status: Object.fromEntries(Object.entries(STATUSES).map(([k, v]) => [k, v.color])),
+};
+const GROUPS = { absence: ABSENCE_KINDS, priority: PRIORITIES, status: STATUSES };
+/** Применить цвета, заданные администратором (поверх цветов по умолчанию) */
+export function applyColors(colors = {}) {
+  for (const [g, list] of Object.entries(GROUPS)) {
+    for (const k of Object.keys(list)) list[k].color = colors[g]?.[k] || DEFAULT_COLORS[g][k];
+  }
+}

@@ -1,4 +1,4 @@
--- Схема базы данных календаря задач отдела
+-- Схема базы данных календаря задач службы ИТ
 
 DO $$ BEGIN
   CREATE TYPE user_role AS ENUM ('admin', 'editor', 'viewer');
@@ -176,3 +176,14 @@ CREATE INDEX IF NOT EXISTS absences_user_idx ON absences (user_id);
 
 -- Часовой пояс, в котором считаются даты повторов (пояс браузера автора серии)
 ALTER TABLE task_series ADD COLUMN IF NOT EXISTS tz TEXT NOT NULL DEFAULT current_setting('TimeZone');
+
+-- Настройки календаря (цвета видов отсутствий, приоритетов, статусов и т. п.)
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+-- Свой цвет задачи / регулярной задачи (иначе — по настройке раскраски)
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS color TEXT;
+ALTER TABLE task_series ADD COLUMN IF NOT EXISTS color TEXT;

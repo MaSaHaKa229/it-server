@@ -62,7 +62,7 @@ async function seedDemo() {
     return (L[kind + ':' + value] = r.rows[0].id);
   };
   const types = Object.fromEntries((await query('SELECT id, code FROM device_types')).rows.map((r) => [r.code, r.id]));
-  const depts = ['Бухгалтерия', 'Отдел кадров', 'ИТ-отдел', 'Отдел продаж', 'Юридический отдел'];
+  const depts = ['Бухгалтерия', 'Отдел кадров', 'Служба ИТ', 'Отдел продаж', 'Юридический отдел'];
   const emps = ['Иванов И.И.', 'Петрова А.С.', 'Сидоров П.П.', 'Кузнецова М.В.', 'Смирнов Д.А.', 'Волкова Е.Н.'];
   for (const d of depts) await lk('department', d);
   for (const e of emps) await lk('employee', e);
@@ -100,9 +100,9 @@ async function seedDemo() {
   await add({ t: 'PC', inv: 'ИН-0002', host: 'BUH-PC02', model: 'Dell OptiPlex 7010', cpu: 'Intel Core i5-12400', ram: '8 ГБ', disk: 'SSD 256 ГБ', os: 'Windows 10 Pro', emp: 'Кузнецова М.В.', dep: 'Бухгалтерия', loc: 'Каб. 101', sn: 'DL7010-8842', ip: '10.0.1.22' }, [...office, ['1С:Предприятие 8.3', '8.3.24'], ['КонсультантПлюс', '4018']]);
   await add({ t: 'PC', inv: 'ИН-0003', host: 'HR-PC01', model: 'Lenovo ThinkCentre M70q', cpu: 'AMD Ryzen 5 5600G', ram: '16 ГБ', disk: 'SSD 512 ГБ', os: 'Windows 11 Pro', emp: 'Волкова Е.Н.', dep: 'Отдел кадров', loc: 'Каб. 205', sn: 'LNV-M70Q-1122', ip: '10.0.1.31' }, office);
   await add({ t: 'PC', inv: 'ИН-0004', host: 'SALES-PC03', model: 'Lenovo ThinkCentre M70q', cpu: 'Intel Core i5-12400', ram: '8 ГБ', disk: 'SSD 256 ГБ', os: 'Windows 10 Pro', emp: 'Смирнов Д.А.', dep: 'Отдел продаж', loc: 'Каб. 310', sn: 'LNV-M70Q-1190', ip: '10.0.1.45', status: 'broken', specs: 'Не включается, подозрение на БП' }, office);
-  await add({ t: 'NB', inv: 'ИН-0005', host: 'IT-NB01', model: 'HP ProBook 450 G9', cpu: 'Intel Core i7-12700', ram: '32 ГБ', disk: 'SSD 1 ТБ', os: 'Windows 11 Pro', emp: 'Сидоров П.П.', dep: 'ИТ-отдел', loc: 'Каб. 205', sn: 'HP450G9-5531', ip: '10.0.1.60' }, [...office, ['7-Zip', '24.08']]);
-  await add({ t: 'SRV', inv: 'ИН-0100', host: 'SRV-DC01', model: 'Dell PowerEdge R650', cpu: 'Intel Xeon Silver 4314', ram: '128 ГБ', disk: 'RAID10 4×1.92 ТБ', os: 'Windows Server 2022', dep: 'ИТ-отдел', loc: 'Серверная', sn: 'R650-00017', ip: '10.0.0.10', specs: 'Контроллер домена, DNS, DHCP' });
-  await add({ t: 'SRV', inv: 'ИН-0101', host: 'SRV-1C', model: 'Dell PowerEdge R650', cpu: 'Intel Xeon Silver 4314', ram: '128 ГБ', disk: 'RAID10 4×1.92 ТБ', os: 'Windows Server 2022', dep: 'ИТ-отдел', loc: 'Серверная', sn: 'R650-00018', ip: '10.0.0.11' }, [['1С:Предприятие 8.3', '8.3.24']]);
+  await add({ t: 'NB', inv: 'ИН-0005', host: 'IT-NB01', model: 'HP ProBook 450 G9', cpu: 'Intel Core i7-12700', ram: '32 ГБ', disk: 'SSD 1 ТБ', os: 'Windows 11 Pro', emp: 'Сидоров П.П.', dep: 'Служба ИТ', loc: 'Каб. 205', sn: 'HP450G9-5531', ip: '10.0.1.60' }, [...office, ['7-Zip', '24.08']]);
+  await add({ t: 'SRV', inv: 'ИН-0100', host: 'SRV-DC01', model: 'Dell PowerEdge R650', cpu: 'Intel Xeon Silver 4314', ram: '128 ГБ', disk: 'RAID10 4×1.92 ТБ', os: 'Windows Server 2022', dep: 'Служба ИТ', loc: 'Серверная', sn: 'R650-00017', ip: '10.0.0.10', specs: 'Контроллер домена, DNS, DHCP' });
+  await add({ t: 'SRV', inv: 'ИН-0101', host: 'SRV-1C', model: 'Dell PowerEdge R650', cpu: 'Intel Xeon Silver 4314', ram: '128 ГБ', disk: 'RAID10 4×1.92 ТБ', os: 'Windows Server 2022', dep: 'Служба ИТ', loc: 'Серверная', sn: 'R650-00018', ip: '10.0.0.11' }, [['1С:Предприятие 8.3', '8.3.24']]);
   await add({ t: 'PRN', inv: 'ИН-0200', host: 'PRN-BUH', model: 'HP LaserJet Pro M404dn', emp: 'Петрова А.С.', dep: 'Бухгалтерия', loc: 'Каб. 101', sn: 'HPM404-7781', ip: '10.0.2.10' });
   await add({ t: 'PRN', inv: 'ИН-0201', host: 'PRN-OLD', model: 'HP LaserJet Pro M404dn', dep: 'Отдел продаж', loc: 'Каб. 310', sn: 'HPM404-1002', ip: '10.0.2.11', status: 'written_off' });
   await add({ t: 'MFU', inv: 'ИН-0300', host: 'MFU-HR', model: 'Kyocera ECOSYS M2540dn', dep: 'Отдел кадров', loc: 'Каб. 205', sn: 'KY2540-3321', ip: '10.0.2.20' });

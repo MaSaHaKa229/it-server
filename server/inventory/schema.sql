@@ -280,3 +280,7 @@ CREATE TABLE IF NOT EXISTS device_netinfo (
   collected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   collected_by INT REFERENCES users(id) ON DELETE SET NULL
 );
+
+-- Справочники: полное и короткое название (используются у «Отделов», поиск идёт по всем трём полям)
+ALTER TABLE lookups ADD COLUMN IF NOT EXISTS full_name TEXT;
+ALTER TABLE lookups ADD COLUMN IF NOT EXISTS short_name TEXT;

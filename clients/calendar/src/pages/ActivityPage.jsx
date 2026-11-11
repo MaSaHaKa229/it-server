@@ -5,7 +5,7 @@ import { fmtDateTime } from '../dates.js';
 import { ABSENCE_KINDS, freqLabel, initials, ROLES, STATUSES } from '../constants.js';
 import { fmtShort } from '../dates.js';
 
-const ENTITY = { task: 'задачу', user: 'пользователя', category: 'категорию', series: 'регулярную задачу', absence: 'отсутствие' };
+const ENTITY = { task: 'задачу', user: 'пользователя', category: 'категорию', series: 'регулярную задачу', absence: 'отсутствие', settings: 'настройки' };
 const VERB = { create: 'создал(а)', update: 'изменил(а)', delete: 'удалил(а)', comment: 'прокомментировал(а)', login: 'вошёл(ла) в систему' };
 
 function describe(a) {

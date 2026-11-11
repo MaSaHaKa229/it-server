@@ -1,4 +1,4 @@
-// Переписка по заявке и вложения — общие для ИТ-отдела и сайта сотрудников
+// Переписка по заявке и вложения — общие для службы ИТ и сайта сотрудников
 import { h, avatar, fmtDateTime, fmtSize, relTime } from './ui.js';
 
 const isImage = (f) => /^image\/(png|jpe?g|gif|webp|bmp)$/i.test(f.mime_type);

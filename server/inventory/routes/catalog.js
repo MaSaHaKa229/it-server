@@ -63,14 +63,19 @@ router.get('/lookups', ah(async (req, res) => {
   const params = [kind];
   let where = 'l.kind = $1';
   const q = (req.query.q || '').trim();
-  if (q) { params.push('%' + q + '%'); where += ` AND l.value ILIKE $${params.length}`; }
+  // Поиск по значению, полному и короткому названию
+  if (q) {
+    params.push('%' + q + '%');
+    const n = params.length;
+    where += ` AND (l.value ILIKE $${n} OR l.full_name ILIKE $${n} OR l.short_name ILIKE $${n})`;
+  }
   if (kind === 'department' && P.departments !== null) {
     params.push(P.departments); where += ` AND l.id = ANY($${params.length}::int[])`;
   }
   const withUsage = isStaff(req.user) && req.query.usage === '1';
   const limit = Math.min(Number(req.query.limit) || 1000, 5000);
   const { rows } = await query(
-    `SELECT l.id, l.value, l.note${withUsage ? `, ${lookupUsageExpr} AS usage` : ''}
+    `SELECT l.id, l.value, l.note, l.full_name, l.short_name${withUsage ? `, ${lookupUsageExpr} AS usage` : ''}
        FROM lookups l WHERE ${where} ORDER BY l.value LIMIT ${limit}`, params);
   res.json(rows);
 }));
@@ -82,9 +87,11 @@ router.post('/lookups', requireStaff, ah(async (req, res) => {
   const k = await query('SELECT 1 FROM lookup_kinds WHERE code = $1', [kind]);
   if (!k.rows[0]) throw new HttpError(400, 'Неизвестный справочник');
   const { rows } = await query(
-    `INSERT INTO lookups (kind, value, note) VALUES ($1, $2, $3)
-     ON CONFLICT (kind, value) DO UPDATE SET value = EXCLUDED.value RETURNING id, value, note`,
-    [kind, value, str(req.body.note, 1000)]);
+    `INSERT INTO lookups (kind, value, note, full_name, short_name) VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (kind, value) DO UPDATE SET value = EXCLUDED.value,
+       full_name = COALESCE(EXCLUDED.full_name, lookups.full_name), short_name = COALESCE(EXCLUDED.short_name, lookups.short_name)
+     RETURNING id, value, note, full_name, short_name`,
+    [kind, value, str(req.body.note, 1000), str(req.body.full_name, 500) || null, str(req.body.short_name, 100) || null]);
   res.status(201).json(rows[0]);
 }));
 
@@ -92,10 +99,17 @@ router.put('/lookups/:id', requireStaff, ah(async (req, res) => {
   const value = str(req.body.value, 300);
   if (!value) throw new HttpError(400, 'Введите значение');
   try {
-    const { rowCount } = await query('UPDATE lookups SET value = $1, note = $2 WHERE id = $3',
-      [value, str(req.body.note, 1000), intOrNull(req.params.id)]);
+    // Полное и короткое название меняются, только если присланы
+    const { rowCount } = await query(
+      `UPDATE lookups SET value = $1, note = $2,
+              full_name = CASE WHEN $4 THEN $5 ELSE full_name END, short_name = CASE WHEN $6 THEN $7 ELSE short_name END
+        WHERE id = $3`,
+      [value, str(req.body.note, 1000), intOrNull(req.params.id),
+        'full_name' in req.body, str(req.body.full_name, 500) || null, 'short_name' in req.body, str(req.body.short_name, 100) || null]);
     if (!rowCount) throw new HttpError(404, 'Значение не найдено');
   } catch (e) { pgUnique(e, 'Такое значение уже есть — используйте «Объединить»'); }
+  // Новое название отдела — и у заявителей сайта заявок
+  await query('UPDATE helpdesk.requesters SET department = $1 WHERE department_id = $2', [value, intOrNull(req.params.id)]);
   res.json({ ok: true });
 }));
 
@@ -109,6 +123,9 @@ router.post('/lookups/:id/merge', requireStaff, ah(async (req, res) => {
     for (const f of LOOKUP_FIELDS) {
       await db.query(`UPDATE devices SET ${f.col} = $1 WHERE ${f.col} = $2`, [into, id]);
     }
+    await db.query(
+      `UPDATE helpdesk.requesters SET department_id = $1, department = (SELECT value FROM lookups WHERE id = $1) WHERE department_id = $2`,
+      [into, id]);
     await db.query('DELETE FROM lookups WHERE id = $1', [id]);
   });
   res.json({ ok: true });

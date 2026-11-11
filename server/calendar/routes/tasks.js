@@ -19,6 +19,8 @@ const taskBody = z.object({
   status: STATUS.default('todo'),
   priority: PRIORITY.default('normal'),
   category_id: z.number().int().nullable().optional(),
+  // Свой цвет задачи; null — по настройке раскраски (категория, исполнитель…)
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Цвет в виде #RRGGBB').nullable().optional(),
   assignees: z.array(z.number().int()).default([]),
   checklist: z.array(z.object({ text: z.string().trim().min(1).max(300), done: z.boolean().default(false) })).optional(),
   // daily/weekdays/weekly — несколько отдельных копий (count);
@@ -213,10 +215,10 @@ r.post('/', requireRole('editor'), ah(async (req, res) => {
     const freq = d.repeat?.freq === 'weekdays' ? 'daily' : d.repeat?.freq;
     for (const n of occurrenceOffsets(d.start_at, d.repeat)) {
       const { rows } = await db.query(
-        `INSERT INTO tasks (title, description, start_at, end_at, all_day, status, priority, category_id, created_by, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9) RETURNING id`,
+        `INSERT INTO tasks (title, description, start_at, end_at, all_day, status, priority, category_id, created_by, updated_by, color)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10) RETURNING id`,
         [d.title, d.description, shiftDate(d.start_at, freq, n), shiftDate(d.end_at, freq, n),
-         d.all_day, d.status, d.priority, d.category_id ?? null, req.user.id]
+         d.all_day, d.status, d.priority, d.category_id ?? null, req.user.id, d.color ?? null]
       );
       const id = rows[0].id;
       await setAssignees(db, id, d.assignees);
@@ -234,11 +236,11 @@ async function createSeries(d, user) {
   const seriesId = await withTransaction(async (db) => {
     const { rows } = await db.query(
       `INSERT INTO task_series (title, description, start_at, end_at, all_day, priority, category_id, every_months, until,
-                                assignees, checklist, created_by, updated_by, tz)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13) RETURNING id`,
+                                assignees, checklist, created_by, updated_by, tz, color)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13,$14) RETURNING id`,
       [d.title, d.description, d.start_at, d.end_at, d.all_day, d.priority, d.category_id ?? null, EVERY[d.repeat.freq],
         d.repeat.until || null, [...new Set(d.assignees)], JSON.stringify((d.checklist || []).map((c) => ({ text: c.text }))), user.id,
-        await validTz(db, d.repeat.tz)]);
+        await validTz(db, d.repeat.tz), d.color ?? null]);
     await logActivity(db, user.id, 'create', 'series', rows[0].id, { title: d.title, every_months: EVERY[d.repeat.freq] });
     return rows[0].id;
   });
@@ -248,7 +250,7 @@ async function createSeries(d, user) {
 }
 
 const LABELS = { title: 'название', description: 'описание', start_at: 'начало', end_at: 'окончание', all_day: 'весь день',
-  status: 'статус', priority: 'приоритет', category_id: 'категория' };
+  status: 'статус', priority: 'приоритет', category_id: 'категория', color: 'цвет' };
 
 r.patch('/:id', requireRole('editor'), ah(async (req, res) => {
   const id = Number(req.params.id);
@@ -287,8 +289,8 @@ r.post('/:id/duplicate', requireRole('editor'), ah(async (req, res) => {
   const id = Number(req.params.id);
   const task = await withTransaction(async (db) => {
     const { rows: [n] } = await db.query(
-      `INSERT INTO tasks (title, description, start_at, end_at, all_day, status, priority, category_id, created_by, updated_by)
-       SELECT title || ' (копия)', description, start_at, end_at, all_day, 'todo', priority, category_id, $2, $2
+      `INSERT INTO tasks (title, description, start_at, end_at, all_day, status, priority, category_id, created_by, updated_by, color)
+       SELECT title || ' (копия)', description, start_at, end_at, all_day, 'todo', priority, category_id, $2, $2, color
        FROM tasks WHERE id=$1 RETURNING id`, [id, req.user.id]);
     if (!n) throw new HttpError(404, 'Задача не найдена');
     await db.query('INSERT INTO task_assignees (task_id, user_id) SELECT $2, user_id FROM task_assignees WHERE task_id=$1', [id, n.id]);

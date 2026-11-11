@@ -150,7 +150,35 @@ const TICKET_SELECT = `
     LEFT JOIN categories c ON c.id = t.category_id
     LEFT JOIN public.users u ON u.id = t.assignee_id`;
 
+/**
+ * Отдел заявителя: { id, name }. По department_id из справочника «Отделы» инвентаря;
+ * иначе — по тексту: если он совпадает со значением, полным или коротким названием отдела, берём его из справочника,
+ * если нет — сохраняем как написано (id = null).
+ */
+async function resolveDepartment(b) {
+  const id = Number(b.department_id) || null;
+  if (id) {
+    const { rows } = await query(`SELECT id, value FROM public.lookups WHERE id = $1 AND kind = 'department'`, [id]);
+    if (rows[0]) return { id: rows[0].id, name: rows[0].value };
+  }
+  const text = b.department == null ? '' : String(b.department).trim().slice(0, 200);
+  if (!text) return { id: null, name: null };
+  const { rows } = await query(
+    `SELECT id, value FROM public.lookups WHERE kind = 'department'
+       AND (lower(value) = lower($1) OR lower(full_name) = lower($1) OR lower(short_name) = lower($1))
+     ORDER BY (lower(value) = lower($1)) DESC LIMIT 1`, [text]);
+  return rows[0] ? { id: rows[0].id, name: rows[0].value } : { id: null, name: text };
+}
+
+/** Справочник «Отделы» для выбора при регистрации */
+async function departments() {
+  const { rows } = await query(
+    `SELECT id, value AS name, full_name, short_name FROM public.lookups WHERE kind = 'department' ORDER BY lower(value) LIMIT 3000`);
+  return rows;
+}
+
 module.exports = {
+  resolveDepartment, departments,
   pool, query, tx, migrate, parseDomains, getSettings, setSetting,
   mailEnabled, sendMail, sendMailStrict, helpdeskUrl, portalUrl,
   upload, saveAttachments, sendAttachment, addHistory, PRIORITIES, TICKET_SELECT, MAX_FILE,

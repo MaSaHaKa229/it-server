@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, qs } from '../api.js';
 import { useApp } from '../context.jsx';
 import { addDays, fmtDate, fmtShort, fromInputDate, nextOccurrence, toInputDate, toInputDateTime } from '../dates.js';
-import { ABSENCE_KINDS, FREQS, freqByMonths, initials, PRIORITIES, shortName, STATUSES } from '../constants.js';
+import { ABSENCE_KINDS, COLOR_MODES, FREQS, freqByMonths, initials, PALETTE, PRIORITIES, shortName, STATUSES } from '../constants.js';
 import Icon from './Icon.jsx';
 
 const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })();
@@ -14,7 +14,7 @@ const COPIES = { daily: 'Каждый день', weekdays: 'По будням', 
  * без них — новая задача (defaults: { start, end, allDay, repeat }).
  */
 export default function TaskForm({ task, series, defaults, onSaved, onCancel }) {
-  const { users, categories } = useApp();
+  const { users, categories, colorModes } = useApp();
   const init = series ?? task ?? {
     title: '', description: '', status: 'todo', priority: 'normal', category_id: null, assignees: [],
     start_at: defaults?.start ?? new Date(), end_at: defaults?.end ?? new Date(), all_day: defaults?.allDay ?? false,
@@ -25,6 +25,7 @@ export default function TaskForm({ task, series, defaults, onSaved, onCancel }) 
     status: init.status ?? 'todo',
     priority: init.priority,
     category_id: init.category_id ?? '',
+    color: init.color ?? '',
     assignees: (init.assignee_ids ?? init.assignees).map((a) => a.id ?? a),
     all_day: init.all_day,
     start: init.all_day ? toInputDate(init.start_at) : toInputDateTime(init.start_at),
@@ -100,7 +101,7 @@ export default function TaskForm({ task, series, defaults, onSaved, onCancel }) 
     if (isSeries && f.until && f.until < toInputDate(start)) return setError('Дата «Повторять до» раньше первой даты задачи');
     const common = {
       title: f.title, description: f.description, priority: f.priority,
-      category_id: f.category_id ? Number(f.category_id) : null, assignees: f.assignees,
+      category_id: f.category_id ? Number(f.category_id) : null, assignees: f.assignees, color: f.color || null,
       all_day: f.all_day, start_at: start.toISOString(), end_at: end.toISOString(),
     };
     setBusy(true);
@@ -225,6 +226,21 @@ export default function TaskForm({ task, series, defaults, onSaved, onCancel }) 
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
+      </div>
+
+      <div className="field">
+        <span>Цвет в календаре</span>
+        <div className="color-pick">
+          <button type="button" className={`color-auto ${f.color ? '' : 'on'}`} onClick={() => set('color', '')}
+            title="Цвет по общей настройке раскраски">Авто ({COLOR_MODES.tasks[colorModes.tasks]})</button>
+          {PALETTE.map((c) => (
+            <button type="button" key={c} className={`swatch ${f.color === c ? 'on' : ''}`} style={{ background: c }} onClick={() => set('color', c)} title={c} />
+          ))}
+          <label className={`swatch-input ${f.color && !PALETTE.includes(f.color) ? 'on' : ''}`} style={{ background: f.color && !PALETTE.includes(f.color) ? f.color : undefined }} title="Любой цвет">
+            <input type="color" value={f.color || '#0052cc'} onChange={(e) => set('color', e.target.value)} />
+            {!(f.color && !PALETTE.includes(f.color)) && '…'}
+          </label>
+        </div>
       </div>
 
       <div className="field">

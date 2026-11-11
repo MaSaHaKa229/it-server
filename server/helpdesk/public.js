@@ -36,7 +36,7 @@ async function sendCode(r, purpose) {
   await query(`UPDATE requesters SET verify_code = $2, verify_expires = now() + interval '30 minutes' WHERE id = $1`,
     [r.id, await bcrypt.hash(code, 8)]);
   const what = purpose === 'reset' ? 'восстановления пароля' : 'подтверждения регистрации';
-  await L.sendMailStrict(r.email, `Код ${what} — заявки в ИТ-отдел`,
+  await L.sendMailStrict(r.email, `Код ${what} — заявки в службу ИТ`,
     `Здравствуйте, ${r.full_name}!\n\nКод для ${what}: ${code}\nКод действует 30 минут.\n\n` +
     `Если вы не запрашивали код, просто проигнорируйте это письмо.\n${L.helpdeskUrl()}`);
 }
@@ -57,7 +57,7 @@ function domainAllowed(email, domains) {
 const getRequester = async (email) =>
   (await query('SELECT * FROM requesters WHERE lower(email) = lower($1)', [email])).rows[0];
 
-const PROFILE = 'id, email, full_name, department, position, phone, room, created_at';
+const PROFILE = 'id, email, full_name, department, department_id, position, phone, room, created_at';
 
 function createHelpdeskApp() {
   const app = express();
@@ -118,6 +118,11 @@ function createHelpdeskApp() {
     });
   }));
 
+  // Справочник отделов — для выбора при регистрации и в профиле (вход не нужен)
+  api.get('/departments', ah(async (req, res) => {
+    res.json({ departments: await L.departments() });
+  }));
+
   // ---------- регистрация и вход ----------
   api.post('/register', ah(async (req, res) => {
     limited('reg:' + req.ip, 20);
@@ -135,19 +140,20 @@ function createHelpdeskApp() {
     const existing = await getRequester(email);
     if (existing && existing.email_verified) throw new HttpError(409, 'Этот e-mail уже зарегистрирован. Войдите или восстановите пароль');
     const mail = L.mailEnabled();
-    const vals = [email, fullName, str(b.department, 200), str(b.position, 200), str(b.phone, 50), str(b.room, 100),
-      await bcrypt.hash(String(b.password), 10), !s.require_approval, !mail];
+    const dep = await L.resolveDepartment(b);
+    const vals = [email, fullName, dep.name, str(b.position, 200), str(b.phone, 50), str(b.room, 100),
+      await bcrypt.hash(String(b.password), 10), !s.require_approval, !mail, dep.id];
     let r;
     if (existing) {
       // Повторная регистрация неподтверждённого адреса — обновляем данные
       r = (await query(
         `UPDATE requesters SET email = $1, full_name = $2, department = $3, position = $4, phone = $5, room = $6,
-                password_hash = $7, is_approved = $8, email_verified = $9 WHERE id = $10 RETURNING *`,
+                password_hash = $7, is_approved = $8, email_verified = $9, department_id = $10 WHERE id = $11 RETURNING *`,
         [...vals, existing.id])).rows[0];
     } else {
       r = (await query(
-        `INSERT INTO requesters (email, full_name, department, position, phone, room, password_hash, is_approved, email_verified)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`, vals)).rows[0];
+        `INSERT INTO requesters (email, full_name, department, position, phone, room, password_hash, is_approved, email_verified, department_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`, vals)).rows[0];
     }
     if (mail) {
       await sendCode(r, 'verify');
@@ -203,8 +209,8 @@ function createHelpdeskApp() {
       }
       await query('UPDATE requesters SET email_verified = TRUE WHERE id = $1', [r.id]);
     }
-    if (!r.is_approved) throw new HttpError(403, 'Регистрация ещё не подтверждена ИТ-отделом');
-    if (!r.is_active) throw new HttpError(403, 'Учётная запись заблокирована. Обратитесь в ИТ-отдел');
+    if (!r.is_approved) throw new HttpError(403, 'Регистрация ещё не подтверждена службой ИТ');
+    if (!r.is_active) throw new HttpError(403, 'Учётная запись заблокирована. Обратитесь в службу ИТ');
     attempts.delete(key);
     await new Promise((ok, ko) => req.session.regenerate((e) => (e ? ko(e) : ok())));
     req.session.requesterId = r.id;
@@ -217,7 +223,7 @@ function createHelpdeskApp() {
   });
 
   api.post('/forgot', ah(async (req, res) => {
-    if (!L.mailEnabled()) throw new HttpError(400, 'Для смены пароля обратитесь в ИТ-отдел');
+    if (!L.mailEnabled()) throw new HttpError(400, 'Для смены пароля обратитесь в службу ИТ');
     const email = String(req.body.email || '').trim();
     limited('forgot:' + email.toLowerCase(), 5);
     failed('forgot:' + email.toLowerCase());
@@ -241,17 +247,18 @@ function createHelpdeskApp() {
   // ---------- профиль ----------
   api.get('/me', auth, (req, res) => {
     const r = req.requester;
-    res.json({ id: r.id, email: r.email, full_name: r.full_name, department: r.department, position: r.position, phone: r.phone, room: r.room });
+    res.json({ id: r.id, email: r.email, full_name: r.full_name, department: r.department, department_id: r.department_id, position: r.position, phone: r.phone, room: r.room });
   });
 
   api.patch('/me', auth, ah(async (req, res) => {
     const b = req.body || {};
     const fullName = str(b.full_name, 200);
     if (!fullName) throw new HttpError(400, 'Укажите ФИО');
+    const dep = await L.resolveDepartment(b);
     const { rows } = await query(
-      `UPDATE requesters SET full_name = $2, department = $3, position = $4, phone = $5, room = $6
+      `UPDATE requesters SET full_name = $2, department = $3, position = $4, phone = $5, room = $6, department_id = $7
         WHERE id = $1 RETURNING ${PROFILE}`,
-      [req.requester.id, fullName, str(b.department, 200), str(b.position, 200), str(b.phone, 50), str(b.room, 100)]);
+      [req.requester.id, fullName, dep.name, str(b.position, 200), str(b.phone, 50), str(b.room, 100), dep.id]);
     res.json(rows[0]);
   }));
 
@@ -324,7 +331,7 @@ function createHelpdeskApp() {
     const t = await ownTicket(req);
     const [comments, files, history] = await Promise.all([
       query(`SELECT c.id, c.body, c.created_at, c.requester_id IS NOT NULL AS mine,
-                    COALESCE(r.full_name, NULLIF(u.full_name, ''), u.username, 'ИТ-отдел') AS author
+                    COALESCE(r.full_name, NULLIF(u.full_name, ''), u.username, 'Служба ИТ') AS author
                FROM comments c
                LEFT JOIN requesters r ON r.id = c.requester_id
                LEFT JOIN public.users u ON u.id = c.user_id

@@ -1,4 +1,4 @@
-// Сайт заявок в ИТ-отдел для сотрудников предприятия
+// Сайт заявок в службу ИТ для сотрудников предприятия
 import { h, clear, makeApi, run, toast, fmtDateTime, relTime, statusPill, parseHash, topbar } from '/shared/ui.js';
 import { thread, fileList, fileInput, historyList } from '/shared/thread.js';
 
@@ -17,6 +17,61 @@ async function boot() {
 }
 
 const PUBLIC = ['login', 'register', 'verify', 'forgot', 'pending'];
+
+// ---------------- Выбор отдела ----------------
+// Отделы — из справочника ИТ-инвентаря. Поиск по названию, полному и короткому названию.
+// Если отдела нет в списке, можно оставить своё название.
+let departmentsCache = null;
+const loadDepartments = () => {
+  if (!departmentsCache) departmentsCache = api.get('/departments').then((d) => d.departments).catch(() => { departmentsCache = null; return []; });
+  return departmentsCache;
+};
+const normText = (s) => String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+
+function departmentPicker(cur) {
+  const input = h('input', { type: 'text', value: cur.department || '', autocomplete: 'off', placeholder: 'Начните вводить: название, полное или короткое' });
+  const list = h('div.dp-list.hidden');
+  const note = h('div.hint');
+  let id = cur.department_id || null;
+  let items = [];
+  let shown = [];
+  let active = -1;
+  let open = false;
+
+  const updateNote = () => {
+    note.textContent = id ? 'Отдел выбран из списка'
+      : input.value.trim() && items.length ? 'Отдел не выбран из списка — будет сохранено, как написано' : '';
+    note.className = 'hint' + (id ? ' dp-ok' : '');
+  };
+  const pick = (d) => { id = d.id; input.value = d.name; open = false; draw(); updateNote(); };
+  function draw() {
+    const q = normText(input.value);
+    shown = items.filter((d) => !q || [d.name, d.full_name, d.short_name].some((x) => normText(x).indexOf(q) !== -1)).slice(0, 60);
+    if (active >= shown.length) active = shown.length - 1;
+    clear(list, shown.length
+      ? shown.map((d, i) => h('div.dp-item' + (i === active ? '.active' : ''), {
+        onmousedown: (e) => { e.preventDefault(); pick(d); },
+      }, h('div', h('b', d.name), d.short_name ? h('span.muted', ' · ' + d.short_name) : null),
+      d.full_name ? h('div.small.muted', d.full_name) : null))
+      : h('div.dp-empty', items.length ? 'Такого отдела нет в списке — можно оставить своё название' : 'Список отделов пуст — напишите название'));
+    if (open && (items.length || q)) list.classList.remove('hidden'); else list.classList.add('hidden');
+  }
+  input.addEventListener('input', () => { id = null; open = true; active = -1; draw(); updateNote(); });
+  input.addEventListener('focus', () => { open = true; draw(); });
+  input.addEventListener('blur', () => { open = false; draw(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'Down') { e.preventDefault(); open = true; active = Math.min(shown.length - 1, active + 1); draw(); }
+    else if (e.key === 'ArrowUp' || e.key === 'Up') { e.preventDefault(); active = Math.max(0, active - 1); draw(); }
+    else if (e.key === 'Enter' && open && shown[active]) { e.preventDefault(); pick(shown[active]); }
+    else if (e.key === 'Escape' || e.key === 'Esc') { open = false; draw(); }
+  });
+  loadDepartments().then((d) => { items = d; draw(); updateNote(); });
+  return {
+    el: h('div.dp', input, list),
+    note,
+    value: () => ({ department: input.value.trim(), department_id: id }),
+  };
+}
 
 async function route() {
   const { parts, params } = parseHash();
@@ -104,13 +159,13 @@ function renderRegister() {
   const f = {
     email: h('input', { type: 'email', required: true, autocomplete: 'email', placeholder: cfg.domains[0] ? 'ivanov@' + cfg.domains[0] : 'ivanov@company.local' }),
     full_name: h('input', { type: 'text', required: true, autocomplete: 'name', placeholder: 'Иванов Иван Иванович' }),
-    department: h('input', { type: 'text', placeholder: 'Бухгалтерия' }),
     position: h('input', { type: 'text', placeholder: 'Бухгалтер' }),
     room: h('input', { type: 'text', placeholder: 'Каб. 101' }),
     phone: h('input', { type: 'tel', placeholder: 'внутр. 123' }),
     password: h('input', { type: 'password', required: true, minlength: 8, autocomplete: 'new-password' }),
   };
   const pass2 = h('input', { type: 'password', required: true, autocomplete: 'new-password' });
+  const dept = departmentPicker({});
   const err = errBox();
   const btn = h('button.btn.primary', { type: 'submit' }, 'Зарегистрироваться');
   authPage('Регистрация',
@@ -120,7 +175,9 @@ function renderRegister() {
         if (f.password.value !== pass2.value) { showErr(err, new Error('Пароли не совпадают')); return; }
         btn.disabled = true;
         try {
-          const res = await api.post('/register', Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value])));
+          const body = dept.value();
+          Object.keys(f).forEach((k) => { body[k] = f[k].value; });
+          const res = await api.post('/register', body);
           if (res.next === 'verify') location.hash = '#/verify?email=' + encodeURIComponent(res.email);
           else if (res.next === 'approval') location.hash = '#/pending';
           else { me = await api.get('/me'); toast('Добро пожаловать!'); location.hash = '#/new'; }
@@ -130,15 +187,15 @@ function renderRegister() {
     cfg.domains.length ? h('div.info-box.small', 'Регистрация по рабочей почте: ', cfg.domains.map((d) => '@' + d).join(', ')) : null,
     h('label.field', h('span', 'Рабочий e-mail *'), f.email),
     h('label.field', h('span', 'ФИО *'), f.full_name),
+    h('div.field', h('span.field-label', 'Отдел'), dept.el, dept.note),
     h('div.form-grid',
-      h('label.field', h('span', 'Отдел'), f.department),
       h('label.field', h('span', 'Должность'), f.position),
       h('label.field', h('span', 'Кабинет'), f.room),
       h('label.field', h('span', 'Телефон'), f.phone),
       h('label.field', h('span', 'Пароль * (от 8 символов)'), f.password),
       h('label.field', h('span', 'Повторите пароль *'), pass2)),
     cfg.mailEnabled ? h('p.hint', 'На почту придёт код подтверждения.') : null,
-    cfg.requireApproval ? h('p.hint', 'После регистрации ИТ-отдел подтвердит вашу учётную запись.') : null,
+    cfg.requireApproval ? h('p.hint', 'После регистрации служба ИТ подтвердит вашу учётную запись.') : null,
     btn,
     h('div', 'Уже зарегистрированы? ', h('a', { href: '#/login' }, 'Войти'))));
 }
@@ -166,7 +223,7 @@ function renderVerify(email) {
 function renderPending() {
   authPage('Регистрация принята',
     h('div.stack',
-      h('div.ok-box', 'Спасибо! Ваша учётная запись ждёт подтверждения ИТ-отделом.'),
+      h('div.ok-box', 'Спасибо! Ваша учётная запись ждёт подтверждения службой ИТ.'),
       h('p.muted', 'Когда её подтвердят, вы сможете войти с указанными e-mail и паролем.'),
       h('a.btn', { href: '#/login' }, 'Ко входу')));
 }
@@ -174,7 +231,7 @@ function renderPending() {
 function renderForgot() {
   if (!cfg.mailEnabled) {
     authPage('Восстановление пароля', h('div.stack',
-      h('div.info-box', 'Чтобы сменить пароль, обратитесь в ИТ-отдел — вам установят новый.'),
+      h('div.info-box', 'Чтобы сменить пароль, обратитесь в службу ИТ — вам установят новый.'),
       h('a.btn', { href: '#/login' }, 'Ко входу')));
     return;
   }
@@ -269,7 +326,7 @@ async function renderNew() {
     h('label.field', h('span', 'Подробное описание'), desc),
     h('div.form-grid',
       h('label.field', h('span', 'Где находится (кабинет, рабочее место)'), location_),
-      h('label.field', h('span', 'Срочность'), prio, h('span.hint', 'Срок выполнения назначит ИТ-отдел'))),
+      h('label.field', h('span', 'Срочность'), prio, h('span.hint', 'Срок выполнения назначит служба ИТ'))),
     files.el,
     h('p.hint', 'Приложите фото или скриншот ошибки — так проблему решат быстрее.'),
     h('div.row', btn, h('a.btn.subtle', { href: '#/' }, 'Отмена')))));
@@ -279,7 +336,7 @@ async function renderNew() {
 async function renderTicket(id) {
   const [t, sts] = await Promise.all([api.get('/tickets/' + id), statuses.length ? statuses : api.get('/statuses')]);
   statuses = sts;
-  const body = h('textarea', { placeholder: t.is_closed ? 'Заявка закрыта. Если проблема осталась — напишите, ИТ-отдел увидит сообщение.' : 'Уточнение, ответ на вопрос ИТ-отдела…' });
+  const body = h('textarea', { placeholder: t.is_closed ? 'Заявка закрыта. Если проблема осталась — напишите, служба ИТ увидит сообщение.' : 'Уточнение, ответ на вопрос службы ИТ…' });
   const files = fileInput();
   const send = h('button.btn.primary', {
     onclick: () => run(async () => {
@@ -310,7 +367,7 @@ async function renderTicket(id) {
         h('div.ticket-desc', t.description || h('span.muted', 'Без описания')),
         fileList(topFiles, fileUrl)),
       h('div.panel',
-        h('h3', 'Переписка с ИТ-отделом'),
+        h('h3', 'Переписка со службой ИТ'),
         thread(t.comments, t.attachments, { urlFor: fileUrl }),
         h('div.reply', body, files.el, h('div.row', h('span.spacer'), send)))),
     h('div.side-panel',
@@ -320,7 +377,7 @@ async function renderTicket(id) {
           h('dt', 'Вид проблемы'), h('dd', (t.category_icon || '') + ' ' + (t.category_name || '—')),
           h('dt', 'Срочность'), h('dd', cfg.priorities[t.priority]),
           h('dt', 'Исполнитель'), h('dd', t.assignee_name || h('span.muted', 'ещё не назначен')),
-          h('dt', 'Срок выполнения'), h('dd' + (t.is_overdue ? '.overdue' : ''), t.due_at ? fmtDateTime(t.due_at) : h('span.muted', 'назначит ИТ-отдел')),
+          h('dt', 'Срок выполнения'), h('dd' + (t.is_overdue ? '.overdue' : ''), t.due_at ? fmtDateTime(t.due_at) : h('span.muted', 'назначит служба ИТ')),
           h('dt', 'Место'), h('dd', t.location || '—'),
           h('dt', 'Создана'), h('dd', fmtDateTime(t.created_at)),
           t.closed_at ? [h('dt', 'Закрыта'), h('dd', fmtDateTime(t.closed_at))] : null)),
@@ -331,9 +388,12 @@ async function renderTicket(id) {
 function renderProfile() {
   const f = {};
   const field = (k, label, type = 'text') => { f[k] = h('input', { type, value: me[k] || '' }); return h('label.field', h('span', label), f[k]); };
+  const dept = departmentPicker(me);
   const save = h('button.btn.primary', {
     onclick: () => run(async () => {
-      me = { ...me, ...(await api.patch('/me', Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value])))) };
+      const body = dept.value();
+      Object.keys(f).forEach((k) => { body[k] = f[k].value; });
+      me = { ...me, ...(await api.patch('/me', body)) };
       toast('Профиль сохранён'); renderProfile();
     }, save),
   }, 'Сохранить');
@@ -353,7 +413,8 @@ function renderProfile() {
     h('div.panel.stack',
       h('div.muted', 'E-mail: ', h('strong', me.email)),
       field('full_name', 'ФИО'),
-      h('div.form-grid', field('department', 'Отдел'), field('position', 'Должность'), field('room', 'Кабинет'), field('phone', 'Телефон', 'tel')),
+      h('div.field', h('span.field-label', 'Отдел'), dept.el, dept.note),
+      h('div.form-grid', field('position', 'Должность'), field('room', 'Кабинет'), field('phone', 'Телефон', 'tel')),
       h('div', save)),
     h('div.panel.stack',
       h('h3', 'Смена пароля'),

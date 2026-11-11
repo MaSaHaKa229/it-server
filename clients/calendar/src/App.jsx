@@ -11,6 +11,7 @@ import ProfilePage from './pages/ProfilePage.jsx';
 import StatsPage from './pages/StatsPage.jsx';
 import AbsencesPage from './pages/AbsencesPage.jsx';
 import SeriesPage from './pages/SeriesPage.jsx';
+import ColorsPage from './pages/ColorsPage.jsx';
 
 // Простая навигация по hash (#/calendar, #/users, ...) — без внешнего роутера
 function useHashRoute() {
@@ -80,6 +81,7 @@ function Shell() {
     { id: 'series', label: 'Регулярные' },
     canEdit && { id: 'categories', label: 'Категории' },
     canEdit && { id: 'activity', label: 'Журнал' },
+    { id: 'colors', label: 'Цвета' },
     isAdmin && { id: 'stats', label: 'Статистика' },
   ].filter(Boolean);
 
@@ -92,6 +94,7 @@ function Shell() {
     activity: canEdit ? <ActivityPage /> : null,
     stats: isAdmin ? <StatsPage /> : null,
     profile: <ProfilePage />,
+    colors: <ColorsPage />,
   }[route] ?? <CalendarPage />;
 
   return (

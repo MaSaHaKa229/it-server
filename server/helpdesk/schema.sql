@@ -1,4 +1,4 @@
--- Helpdesk: заявки сотрудников в ИТ-отдел (схема helpdesk). Скрипт идемпотентный.
+-- Helpdesk: заявки сотрудников в службу ИТ (схема helpdesk). Скрипт идемпотентный.
 
 -- Сотрудники предприятия, зарегистрированные по внутренней почте
 CREATE TABLE IF NOT EXISTS requesters (
@@ -144,8 +144,15 @@ WHERE NOT EXISTS (SELECT 1 FROM categories);
 INSERT INTO settings (key, value) VALUES
   ('allowed_domains',  '[]'::jsonb),
   ('require_approval', 'false'::jsonb),
-  ('welcome_text',     '"Опишите проблему — специалисты ИТ-отдела возьмут заявку в работу и сообщат о результате."'::jsonb)
+  ('welcome_text',     '"Опишите проблему — специалисты службы ИТ возьмут заявку в работу и сообщат о результате."'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 
 -- Задача в календаре исполнителя, созданная из заявки
 ALTER TABLE tickets ADD COLUMN IF NOT EXISTS calendar_task_id INT REFERENCES calendar.tasks(id) ON DELETE SET NULL;
+
+-- Портал службы ИТ: прежний текст приветствия по умолчанию заменяется (если его не меняли вручную)
+UPDATE settings SET value = '"Опишите проблему — специалисты службы ИТ возьмут заявку в работу и сообщат о результате."'::jsonb
+ WHERE key = 'welcome_text' AND value = '"Опишите проблему — специалисты ИТ-отдела возьмут заявку в работу и сообщат о результате."'::jsonb;
+
+-- Отдел заявителя — из справочника «Отделы» ИТ-инвентаря (department — его название на момент выбора)
+ALTER TABLE requesters ADD COLUMN IF NOT EXISTS department_id INT REFERENCES public.lookups(id) ON DELETE SET NULL;

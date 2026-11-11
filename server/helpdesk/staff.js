@@ -1,4 +1,4 @@
-// API helpdesk для сотрудников ИТ-отдела (внутри портала: /helpdesk/api)
+// API helpdesk для сотрудников службы ИТ (внутри портала: /helpdesk/api)
 //   Исполнитель    — видит все заявки, берёт свободные в работу, меняет статус своих, комментирует
 //   Администратор  — плюс назначает исполнителей и сроки, настраивает виды проблем, статусы,
 //                    управляет зарегистрированными сотрудниками и настройками регистрации
@@ -372,7 +372,11 @@ router.patch('/requesters/:id', requireAdmin, ah(async (req, res) => {
   if ('is_active' in b) set('is_active', !!b.is_active);
   if ('is_approved' in b) set('is_approved', !!b.is_approved);
   if (b.is_approved) set('email_verified', true);
-  for (const k of ['full_name', 'department', 'position', 'phone', 'room']) if (k in b) set(k, str(b[k], 200));
+  for (const k of ['full_name', 'position', 'phone', 'room']) if (k in b) set(k, str(b[k], 200));
+  if ('department' in b || 'department_id' in b) {
+    const dep = await L.resolveDepartment(b);
+    set('department', dep.name); set('department_id', dep.id);
+  }
   if (b.password) {
     if (String(b.password).length < 8) throw new HttpError(400, 'Пароль должен быть не короче 8 символов');
     set('password_hash', await bcrypt.hash(String(b.password), 10));

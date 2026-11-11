@@ -1,4 +1,4 @@
-// Заявки: рабочее место ИТ-отдела
+// Заявки: рабочее место службы ИТ
 import { h, clear, makeApi, modal, run, toast, confirmDialog, avatar, fmtDateTime, relTime, toLocalInput, statusPill, parseHash, sortHead, sortRows, savedSort } from '/shared/ui.js';
 import { thread, fileList, fileInput, historyList } from '/shared/thread.js';
 import { loadMe, portalTopbar, helpdeskUrl } from '/portal/shell.js';
@@ -49,7 +49,7 @@ function layout(active, content) {
   clear(side,
     h('div.sidebar-project',
       h('div.icon', '?'),
-      h('div', h('div.name', 'ИТ-отдел'), h('div.sub', 'Заявки сотрудников'))),
+      h('div', h('div.name', 'Служба ИТ'), h('div.sub', 'Заявки сотрудников'))),
     h('div.side-section', h('h4', 'Заявки'),
       QUICK.map(([k, label]) => link(k, '#/?view=' + k, label,
         { open: counts.open, mine: counts.mine, unassigned: counts.unassigned, overdue: counts.overdue }[k],

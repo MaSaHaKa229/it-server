@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, qs } from '../api.js';
 import { useApp } from '../context.jsx';
 import { addDays, fmtTaskPeriod, startOfDay } from '../dates.js';
-import { initials, PRIORITIES, STATUSES } from '../constants.js';
+import { initials, PRIORITIES, STATUSES, taskColor } from '../constants.js';
 import TaskModal from '../components/TaskModal.jsx';
 
 export default function Dashboard() {
@@ -27,7 +27,7 @@ export default function Dashboard() {
   const maxOpen = Math.max(1, ...stats.workload.map((w) => w.open));
 
   const TaskRow = ({ t }) => (
-    <button className="mini-task" onClick={() => setOpen(t.id)} style={{ '--c': t.category_color || '#64748b' }}>
+    <button className="mini-task" onClick={() => setOpen(t.id)} style={{ '--c': taskColor(t) }}>
       <b>{t.title}</b>
       <small>{fmtTaskPeriod(t)}</small>
       <span className="pill" style={{ '--p': PRIORITIES[t.priority].color }}>{PRIORITIES[t.priority].label}</span>
@@ -38,7 +38,7 @@ export default function Dashboard() {
     <div className="page">
       <header className="page-head">
         <h2>Добрый день, {user.name.split(' ')[0]}!</h2>
-        <p className="muted">Сводка по задачам отдела</p>
+        <p className="muted">Сводка по задачам службы ИТ</p>
       </header>
 
       <div className="stat-row">
@@ -68,7 +68,7 @@ export default function Dashboard() {
           {mine.length ? mine.map((t) => <TaskRow key={t.id} t={t} />) : <p className="muted">Открытых задач нет</p>}
         </div>
         <div className="card">
-          <h3>Просроченные задачи отдела</h3>
+          <h3>Просроченные задачи службы ИТ</h3>
           {overdue.length ? overdue.map((t) => <TaskRow key={t.id} t={t} />) : <p className="muted">Всё в срок 👍</p>}
         </div>
       </div>

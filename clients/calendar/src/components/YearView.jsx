@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ABSENCE_KINDS } from '../constants.js';
+import { ABSENCE_KINDS, absenceColor } from '../constants.js';
 import { addDays, dateKey, fmtDate, isWeekend, sameDay, startOfDay, startOfWeek, taskEndDay, WEEKDAYS } from '../dates.js';
 
 // Насыщенность дня по числу задач: один оттенок, от светлого к тёмному
@@ -65,7 +65,7 @@ export default function YearView({ year, tasks, absences = [], onDayClick, onMon
                       className={`yd ${isWeekend(d) ? 'weekend' : ''} ${sameDay(d, today) ? 'today' : ''} ${lv >= 3 ? 'dark' : ''}`}
                       style={lv >= 0 ? { background: LEVELS[lv] } : undefined}>
                       {d.getDate()}
-                      {abs.length > 0 && <i className="yd-abs" style={{ background: (ABSENCE_KINDS[abs[0].kind] || ABSENCE_KINDS.other).color }} />}
+                      {abs.length > 0 && <i className="yd-abs" style={{ background: absenceColor(abs[0]) }} />}
                     </button>
                   );
                 })}

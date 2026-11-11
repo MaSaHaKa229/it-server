@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../db.js';
+import { query, logActivity } from '../db.js';
 import { requireRole } from '../auth.js';
 import { ah } from '../validate.js';
 
@@ -31,6 +31,33 @@ r.get('/stats', ah(async (req, res) => {
     today: today.rows[0].n,
     workload: workload.rows,
   });
+}));
+
+// Цвета календаря: видят все, меняет администратор календаря.
+// { absence: {vacation: '#..', ...}, priority: {...}, status: {...} } — только заданные значения
+const HEX = /^#[0-9a-fA-F]{6}$/;
+const COLOR_GROUPS = {
+  absence: ['vacation', 'sick', 'trip', 'dayoff', 'other'],
+  priority: ['low', 'normal', 'high', 'critical'],
+  status: ['todo', 'in_progress', 'done', 'cancelled'],
+};
+r.get('/settings/colors', ah(async (req, res) => {
+  const { rows } = await query("SELECT value FROM settings WHERE key = 'colors'");
+  res.json({ colors: rows[0]?.value || {} });
+}));
+r.put('/settings/colors', requireRole('admin'), ah(async (req, res) => {
+  const src = req.body?.colors || {};
+  const out = {};
+  for (const [g, keys] of Object.entries(COLOR_GROUPS)) {
+    out[g] = {};
+    for (const k of keys) if (HEX.test(src[g]?.[k] || '')) out[g][k] = src[g][k];
+  }
+  await query(
+    `INSERT INTO settings (key, value, updated_by) VALUES ('colors', $1, $2)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+    [JSON.stringify(out), req.user.id]);
+  await logActivity({ query }, req.user.id, 'update', 'settings', null, { name: 'цвета календаря' });
+  res.json({ colors: out });
 }));
 
 // Журнал действий: редакторы и администраторы

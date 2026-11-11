@@ -26,7 +26,7 @@ export function apiRouter() {
   r.use('/tasks', requireAuth, taskRoutes);
   r.use('/series', requireAuth, seriesRoutes);
   r.use('/absences', requireAuth, absenceRoutes);
-  // Статистика по сотрудникам и отделу — только администраторы календаря
+  // Статистика по сотрудникам и службе ИТ в целом — только администраторы календаря
   r.use('/report', requireAuth, requireRole('admin'), statsRoutes);
   r.use('/', requireAuth, miscRoutes);
   r.use((req, res) => res.status(404).json({ error: 'Не найдено' }));

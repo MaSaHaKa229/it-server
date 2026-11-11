@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, qs } from '../api.js';
 import { useApp } from '../context.jsx';
-import { ABSENCE_KINDS, initials } from '../constants.js';
+import { ABSENCE_KINDS, absenceColor, initials } from '../constants.js';
 import { daysBetween, fmtShort, fromInputDate, toInputDate } from '../dates.js';
 import Icon from '../components/Icon.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
@@ -68,7 +68,7 @@ export default function AbsencesPage() {
       <header className="page-head row">
         <div>
           <h2>Отпуска и отсутствия</h2>
-          <p className="muted">График отдела на год. {canEdit ? 'Щёлкните по строке сотрудника, чтобы отметить отсутствие с этого дня.' : ''}</p>
+          <p className="muted">График службы ИТ на год. {canEdit ? 'Щёлкните по строке сотрудника, чтобы отметить отсутствие с этого дня.' : ''}</p>
         </div>
         <div className="toolbar-right">
           <span className="btn-group">
@@ -105,7 +105,7 @@ export default function AbsencesPage() {
                       const s = clamp(dayIdx(a.start_date)), e = clamp(dayIdx(a.end_date) + 1);
                       const k = ABSENCE_KINDS[a.kind] || ABSENCE_KINDS.other;
                       return (
-                        <button key={a.id} className="tl-bar" style={{ left: `${(s / total) * 100}%`, width: `${((e - s) / total) * 100}%`, '--k': k.color }}
+                        <button key={a.id} className="tl-bar" style={{ left: `${(s / total) * 100}%`, width: `${((e - s) / total) * 100}%`, '--k': absenceColor(a) }}
                           onClick={() => setModal({ absence: a })}
                           title={`${k.label}: ${fmtShort(a.start_date)} — ${fmtShort(a.end_date)} (${daysBetween(a.start_date, a.end_date)} дн.)${a.comment ? `\n${a.comment}` : ''}`} />
                       );

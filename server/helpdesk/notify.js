@@ -55,7 +55,7 @@ async function requesterCommented(id, body) {
 async function staffCommented(id, body) {
   if (!L.mailEnabled()) return;
   const t = await ticket(id);
-  await L.sendMail(t.requester_email, `Заявка #${t.id}: ответ ИТ-отдела`,
+  await L.sendMail(t.requester_email, `Заявка #${t.id}: ответ службы ИТ`,
     `Здравствуйте, ${t.requester_name}!\n\nПо заявке «${t.title}» новый комментарий:\n\n${body}\n\n${userLink(t.id)}`);
 }
 

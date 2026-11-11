@@ -65,7 +65,6 @@ export default function MonthView({ cursor, from, tasks, absences = [], zoom = 3
                 {canEdit && <button className="cell-add" onClick={() => onCreate(day)} title="Добавить задачу">+</button>}
               </div>
               <div className="cell-tasks">
-                {absVisible.map((a) => <AbsenceChip key={`a${a.id}`} a={a} onClick={onOpenAbsence} />)}
                 {visible.map((t) => (
                   <TaskChip key={t.id} task={t} day={day} draggable={canEdit} onClick={() => onOpen(t)} />
                 ))}
@@ -75,6 +74,12 @@ export default function MonthView({ cursor, from, tasks, absences = [], zoom = 3
                   </button>
                 )}
               </div>
+              {/* Отсутствия сотрудников — внизу ячейки */}
+              {absVisible.length > 0 && (
+                <div className="cell-abs">
+                  {absVisible.map((a) => <AbsenceChip key={`a${a.id}`} a={a} onClick={onOpenAbsence} />)}
+                </div>
+              )}
             </div>
           );
         })}

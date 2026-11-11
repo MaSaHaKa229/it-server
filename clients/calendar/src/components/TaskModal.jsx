@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import { useApp } from '../context.jsx';
 import { fmtTaskPeriod, relative } from '../dates.js';
-import { freqLabel, initials, isOverdue, PRIORITIES, STATUSES } from '../constants.js';
+import { freqLabel, initials, isOverdue, PRIORITIES, STATUSES, taskColor } from '../constants.js';
 import { fmtDate, fromInputDate } from '../dates.js';
 import Icon from './Icon.jsx';
 import Modal from './Modal.jsx';
@@ -102,7 +102,7 @@ export default function TaskModal({ taskId, seriesId, createDefaults, onClose, o
 
   return (
     <Modal onClose={onClose} wide
-      title={<span className="modal-title-row"><span className="dot lg" style={{ background: task.category_color || '#64748b' }} />{task.title}</span>}
+      title={<span className="modal-title-row"><span className="dot lg" style={{ background: taskColor(task) }} />{task.title}</span>}
       actions={canEdit && (
         <>
           <button className="icon-btn" title="Копировать" onClick={duplicate}><Icon name="copy" /></button>

@@ -40,12 +40,12 @@ async function main() {
     },
     a.calendar !== 'none' && {
       key: 'calendar', href: '/calendar/', title: 'Задачи и календарь', color: '#00875A',
-      text: 'Планирование работ отдела: календарь, исполнители, чек-листы, сроки.',
+      text: 'Планирование работ службы ИТ: календарь, исполнители, чек-листы, сроки.',
       stats: s.calendar && [stat(s.calendar.mine, 'мои открытые'), stat(s.calendar.today, 'на сегодня')],
     },
     a.helpdesk !== 'none' && {
       key: 'helpdesk', href: '/helpdesk/', title: 'Заявки (Helpdesk)', color: '#FF8B00',
-      text: 'Заявки сотрудников предприятия в ИТ-отдел: назначение исполнителей, сроки, статусы.',
+      text: 'Заявки сотрудников предприятия в службу ИТ: назначение исполнителей, сроки, статусы.',
       stats: s.helpdesk && [stat(s.helpdesk.open, 'открыто'), stat(s.helpdesk.mine, 'на мне'),
         stat(s.helpdesk.unassigned, 'без исполнителя', true), stat(s.helpdesk.overdue, 'просрочено', true)],
     },
@@ -79,7 +79,7 @@ async function main() {
         : h('div.empty-state', h('h3', 'Нет доступных разделов'), 'Обратитесь к администратору портала.'),
       h('div.panel.hd-banner',
         h('div', h('strong', 'Сайт заявок для сотрудников предприятия'),
-          h('div.muted.small', 'Сотрудники, не входящие в ИТ-отдел, регистрируются по рабочей почте и оставляют заявки здесь:')),
+          h('div.muted.small', 'Сотрудники, не входящие в службу ИТ, регистрируются по рабочей почте и оставляют заявки здесь:')),
         h('a.btn', { href: helpdeskUrl(me), target: '_blank', rel: 'noopener' }, helpdeskUrl(me).replace(/^https?:\/\//, '')))))));
 }
 

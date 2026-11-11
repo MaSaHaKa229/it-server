@@ -318,6 +318,97 @@
     route();
   }
   var PUBLIC = ["login", "register", "verify", "forgot", "pending"];
+  var departmentsCache = null;
+  var loadDepartments = () => {
+    if (!departmentsCache) departmentsCache = api.get("/departments").then((d) => d.departments).catch(() => {
+      departmentsCache = null;
+      return [];
+    });
+    return departmentsCache;
+  };
+  var normText = (s) => String(s || "").toLowerCase().replace(/ё/g, "\u0435").replace(/\s+/g, " ").trim();
+  function departmentPicker(cur) {
+    const input = h("input", { type: "text", value: cur.department || "", autocomplete: "off", placeholder: "\u041D\u0430\u0447\u043D\u0438\u0442\u0435 \u0432\u0432\u043E\u0434\u0438\u0442\u044C: \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435, \u043F\u043E\u043B\u043D\u043E\u0435 \u0438\u043B\u0438 \u043A\u043E\u0440\u043E\u0442\u043A\u043E\u0435" });
+    const list = h("div.dp-list.hidden");
+    const note = h("div.hint");
+    let id = cur.department_id || null;
+    let items = [];
+    let shown = [];
+    let active = -1;
+    let open = false;
+    const updateNote = () => {
+      note.textContent = id ? "\u041E\u0442\u0434\u0435\u043B \u0432\u044B\u0431\u0440\u0430\u043D \u0438\u0437 \u0441\u043F\u0438\u0441\u043A\u0430" : input.value.trim() && items.length ? "\u041E\u0442\u0434\u0435\u043B \u043D\u0435 \u0432\u044B\u0431\u0440\u0430\u043D \u0438\u0437 \u0441\u043F\u0438\u0441\u043A\u0430 \u2014 \u0431\u0443\u0434\u0435\u0442 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E, \u043A\u0430\u043A \u043D\u0430\u043F\u0438\u0441\u0430\u043D\u043E" : "";
+      note.className = "hint" + (id ? " dp-ok" : "");
+    };
+    const pick = (d) => {
+      id = d.id;
+      input.value = d.name;
+      open = false;
+      draw();
+      updateNote();
+    };
+    function draw() {
+      const q = normText(input.value);
+      shown = items.filter((d) => !q || [d.name, d.full_name, d.short_name].some((x) => normText(x).indexOf(q) !== -1)).slice(0, 60);
+      if (active >= shown.length) active = shown.length - 1;
+      clear(list, shown.length ? shown.map((d, i) => h(
+        "div.dp-item" + (i === active ? ".active" : ""),
+        {
+          onmousedown: (e) => {
+            e.preventDefault();
+            pick(d);
+          }
+        },
+        h("div", h("b", d.name), d.short_name ? h("span.muted", " \xB7 " + d.short_name) : null),
+        d.full_name ? h("div.small.muted", d.full_name) : null
+      )) : h("div.dp-empty", items.length ? "\u0422\u0430\u043A\u043E\u0433\u043E \u043E\u0442\u0434\u0435\u043B\u0430 \u043D\u0435\u0442 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u2014 \u043C\u043E\u0436\u043D\u043E \u043E\u0441\u0442\u0430\u0432\u0438\u0442\u044C \u0441\u0432\u043E\u0451 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435" : "\u0421\u043F\u0438\u0441\u043E\u043A \u043E\u0442\u0434\u0435\u043B\u043E\u0432 \u043F\u0443\u0441\u0442 \u2014 \u043D\u0430\u043F\u0438\u0448\u0438\u0442\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435"));
+      if (open && (items.length || q)) list.classList.remove("hidden");
+      else list.classList.add("hidden");
+    }
+    input.addEventListener("input", () => {
+      id = null;
+      open = true;
+      active = -1;
+      draw();
+      updateNote();
+    });
+    input.addEventListener("focus", () => {
+      open = true;
+      draw();
+    });
+    input.addEventListener("blur", () => {
+      open = false;
+      draw();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "Down") {
+        e.preventDefault();
+        open = true;
+        active = Math.min(shown.length - 1, active + 1);
+        draw();
+      } else if (e.key === "ArrowUp" || e.key === "Up") {
+        e.preventDefault();
+        active = Math.max(0, active - 1);
+        draw();
+      } else if (e.key === "Enter" && open && shown[active]) {
+        e.preventDefault();
+        pick(shown[active]);
+      } else if (e.key === "Escape" || e.key === "Esc") {
+        open = false;
+        draw();
+      }
+    });
+    loadDepartments().then((d) => {
+      items = d;
+      draw();
+      updateNote();
+    });
+    return {
+      el: h("div.dp", input, list),
+      note,
+      value: () => ({ department: input.value.trim(), department_id: id })
+    };
+  }
   async function route() {
     const { parts, params } = parseHash();
     const page = parts[0] || "";
@@ -437,13 +528,13 @@
     const f = {
       email: h("input", { type: "email", required: true, autocomplete: "email", placeholder: cfg.domains[0] ? "ivanov@" + cfg.domains[0] : "ivanov@company.local" }),
       full_name: h("input", { type: "text", required: true, autocomplete: "name", placeholder: "\u0418\u0432\u0430\u043D\u043E\u0432 \u0418\u0432\u0430\u043D \u0418\u0432\u0430\u043D\u043E\u0432\u0438\u0447" }),
-      department: h("input", { type: "text", placeholder: "\u0411\u0443\u0445\u0433\u0430\u043B\u0442\u0435\u0440\u0438\u044F" }),
       position: h("input", { type: "text", placeholder: "\u0411\u0443\u0445\u0433\u0430\u043B\u0442\u0435\u0440" }),
       room: h("input", { type: "text", placeholder: "\u041A\u0430\u0431. 101" }),
       phone: h("input", { type: "tel", placeholder: "\u0432\u043D\u0443\u0442\u0440. 123" }),
       password: h("input", { type: "password", required: true, minlength: 8, autocomplete: "new-password" })
     };
     const pass2 = h("input", { type: "password", required: true, autocomplete: "new-password" });
+    const dept = departmentPicker({});
     const err = errBox();
     const btn = h("button.btn.primary", { type: "submit" }, "\u0417\u0430\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C\u0441\u044F");
     authPage(
@@ -460,7 +551,11 @@
             }
             btn.disabled = true;
             try {
-              const res = await api.post("/register", Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value])));
+              const body = dept.value();
+              Object.keys(f).forEach((k) => {
+                body[k] = f[k].value;
+              });
+              const res = await api.post("/register", body);
               if (res.next === "verify") location.hash = "#/verify?email=" + encodeURIComponent(res.email);
               else if (res.next === "approval") location.hash = "#/pending";
               else {
@@ -479,9 +574,9 @@
         cfg.domains.length ? h("div.info-box.small", "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F \u043F\u043E \u0440\u0430\u0431\u043E\u0447\u0435\u0439 \u043F\u043E\u0447\u0442\u0435: ", cfg.domains.map((d) => "@" + d).join(", ")) : null,
         h("label.field", h("span", "\u0420\u0430\u0431\u043E\u0447\u0438\u0439 e-mail *"), f.email),
         h("label.field", h("span", "\u0424\u0418\u041E *"), f.full_name),
+        h("div.field", h("span.field-label", "\u041E\u0442\u0434\u0435\u043B"), dept.el, dept.note),
         h(
           "div.form-grid",
-          h("label.field", h("span", "\u041E\u0442\u0434\u0435\u043B"), f.department),
           h("label.field", h("span", "\u0414\u043E\u043B\u0436\u043D\u043E\u0441\u0442\u044C"), f.position),
           h("label.field", h("span", "\u041A\u0430\u0431\u0438\u043D\u0435\u0442"), f.room),
           h("label.field", h("span", "\u0422\u0435\u043B\u0435\u0444\u043E\u043D"), f.phone),
@@ -489,7 +584,7 @@
           h("label.field", h("span", "\u041F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u0435 \u043F\u0430\u0440\u043E\u043B\u044C *"), pass2)
         ),
         cfg.mailEnabled ? h("p.hint", "\u041D\u0430 \u043F\u043E\u0447\u0442\u0443 \u043F\u0440\u0438\u0434\u0451\u0442 \u043A\u043E\u0434 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F.") : null,
-        cfg.requireApproval ? h("p.hint", "\u041F\u043E\u0441\u043B\u0435 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438 \u0418\u0422-\u043E\u0442\u0434\u0435\u043B \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442 \u0432\u0430\u0448\u0443 \u0443\u0447\u0451\u0442\u043D\u0443\u044E \u0437\u0430\u043F\u0438\u0441\u044C.") : null,
+        cfg.requireApproval ? h("p.hint", "\u041F\u043E\u0441\u043B\u0435 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438 \u0441\u043B\u0443\u0436\u0431\u0430 \u0418\u0422 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442 \u0432\u0430\u0448\u0443 \u0443\u0447\u0451\u0442\u043D\u0443\u044E \u0437\u0430\u043F\u0438\u0441\u044C.") : null,
         btn,
         h("div", "\u0423\u0436\u0435 \u0437\u0430\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0438\u0440\u043E\u0432\u0430\u043D\u044B? ", h("a", { href: "#/login" }, "\u0412\u043E\u0439\u0442\u0438"))
       )
@@ -540,7 +635,7 @@
       "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F \u043F\u0440\u0438\u043D\u044F\u0442\u0430",
       h(
         "div.stack",
-        h("div.ok-box", "\u0421\u043F\u0430\u0441\u0438\u0431\u043E! \u0412\u0430\u0448\u0430 \u0443\u0447\u0451\u0442\u043D\u0430\u044F \u0437\u0430\u043F\u0438\u0441\u044C \u0436\u0434\u0451\u0442 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0418\u0422-\u043E\u0442\u0434\u0435\u043B\u043E\u043C."),
+        h("div.ok-box", "\u0421\u043F\u0430\u0441\u0438\u0431\u043E! \u0412\u0430\u0448\u0430 \u0443\u0447\u0451\u0442\u043D\u0430\u044F \u0437\u0430\u043F\u0438\u0441\u044C \u0436\u0434\u0451\u0442 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0441\u043B\u0443\u0436\u0431\u043E\u0439 \u0418\u0422."),
         h("p.muted", "\u041A\u043E\u0433\u0434\u0430 \u0435\u0451 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u044F\u0442, \u0432\u044B \u0441\u043C\u043E\u0436\u0435\u0442\u0435 \u0432\u043E\u0439\u0442\u0438 \u0441 \u0443\u043A\u0430\u0437\u0430\u043D\u043D\u044B\u043C\u0438 e-mail \u0438 \u043F\u0430\u0440\u043E\u043B\u0435\u043C."),
         h("a.btn", { href: "#/login" }, "\u041A\u043E \u0432\u0445\u043E\u0434\u0443")
       )
@@ -550,7 +645,7 @@
     if (!cfg.mailEnabled) {
       authPage("\u0412\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u0435 \u043F\u0430\u0440\u043E\u043B\u044F", h(
         "div.stack",
-        h("div.info-box", "\u0427\u0442\u043E\u0431\u044B \u0441\u043C\u0435\u043D\u0438\u0442\u044C \u043F\u0430\u0440\u043E\u043B\u044C, \u043E\u0431\u0440\u0430\u0442\u0438\u0442\u0435\u0441\u044C \u0432 \u0418\u0422-\u043E\u0442\u0434\u0435\u043B \u2014 \u0432\u0430\u043C \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u044F\u0442 \u043D\u043E\u0432\u044B\u0439."),
+        h("div.info-box", "\u0427\u0442\u043E\u0431\u044B \u0441\u043C\u0435\u043D\u0438\u0442\u044C \u043F\u0430\u0440\u043E\u043B\u044C, \u043E\u0431\u0440\u0430\u0442\u0438\u0442\u0435\u0441\u044C \u0432 \u0441\u043B\u0443\u0436\u0431\u0443 \u0418\u0422 \u2014 \u0432\u0430\u043C \u0443\u0441\u0442\u0430\u043D\u043E\u0432\u044F\u0442 \u043D\u043E\u0432\u044B\u0439."),
         h("a.btn", { href: "#/login" }, "\u041A\u043E \u0432\u0445\u043E\u0434\u0443")
       ));
       return;
@@ -682,7 +777,7 @@
         h(
           "div.form-grid",
           h("label.field", h("span", "\u0413\u0434\u0435 \u043D\u0430\u0445\u043E\u0434\u0438\u0442\u0441\u044F (\u043A\u0430\u0431\u0438\u043D\u0435\u0442, \u0440\u0430\u0431\u043E\u0447\u0435\u0435 \u043C\u0435\u0441\u0442\u043E)"), location_),
-          h("label.field", h("span", "\u0421\u0440\u043E\u0447\u043D\u043E\u0441\u0442\u044C"), prio, h("span.hint", "\u0421\u0440\u043E\u043A \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F \u043D\u0430\u0437\u043D\u0430\u0447\u0438\u0442 \u0418\u0422-\u043E\u0442\u0434\u0435\u043B"))
+          h("label.field", h("span", "\u0421\u0440\u043E\u0447\u043D\u043E\u0441\u0442\u044C"), prio, h("span.hint", "\u0421\u0440\u043E\u043A \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F \u043D\u0430\u0437\u043D\u0430\u0447\u0438\u0442 \u0441\u043B\u0443\u0436\u0431\u0430 \u0418\u0422"))
         ),
         files.el,
         h("p.hint", "\u041F\u0440\u0438\u043B\u043E\u0436\u0438\u0442\u0435 \u0444\u043E\u0442\u043E \u0438\u043B\u0438 \u0441\u043A\u0440\u0438\u043D\u0448\u043E\u0442 \u043E\u0448\u0438\u0431\u043A\u0438 \u2014 \u0442\u0430\u043A \u043F\u0440\u043E\u0431\u043B\u0435\u043C\u0443 \u0440\u0435\u0448\u0430\u0442 \u0431\u044B\u0441\u0442\u0440\u0435\u0435."),
@@ -693,7 +788,7 @@
   async function renderTicket(id) {
     const [t, sts] = await Promise.all([api.get("/tickets/" + id), statuses.length ? statuses : api.get("/statuses")]);
     statuses = sts;
-    const body = h("textarea", { placeholder: t.is_closed ? "\u0417\u0430\u044F\u0432\u043A\u0430 \u0437\u0430\u043A\u0440\u044B\u0442\u0430. \u0415\u0441\u043B\u0438 \u043F\u0440\u043E\u0431\u043B\u0435\u043C\u0430 \u043E\u0441\u0442\u0430\u043B\u0430\u0441\u044C \u2014 \u043D\u0430\u043F\u0438\u0448\u0438\u0442\u0435, \u0418\u0422-\u043E\u0442\u0434\u0435\u043B \u0443\u0432\u0438\u0434\u0438\u0442 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435." : "\u0423\u0442\u043E\u0447\u043D\u0435\u043D\u0438\u0435, \u043E\u0442\u0432\u0435\u0442 \u043D\u0430 \u0432\u043E\u043F\u0440\u043E\u0441 \u0418\u0422-\u043E\u0442\u0434\u0435\u043B\u0430\u2026" });
+    const body = h("textarea", { placeholder: t.is_closed ? "\u0417\u0430\u044F\u0432\u043A\u0430 \u0437\u0430\u043A\u0440\u044B\u0442\u0430. \u0415\u0441\u043B\u0438 \u043F\u0440\u043E\u0431\u043B\u0435\u043C\u0430 \u043E\u0441\u0442\u0430\u043B\u0430\u0441\u044C \u2014 \u043D\u0430\u043F\u0438\u0448\u0438\u0442\u0435, \u0441\u043B\u0443\u0436\u0431\u0430 \u0418\u0422 \u0443\u0432\u0438\u0434\u0438\u0442 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435." : "\u0423\u0442\u043E\u0447\u043D\u0435\u043D\u0438\u0435, \u043E\u0442\u0432\u0435\u0442 \u043D\u0430 \u0432\u043E\u043F\u0440\u043E\u0441 \u0441\u043B\u0443\u0436\u0431\u044B \u0418\u0422\u2026" });
     const files = fileInput();
     const send = h("button.btn.primary", {
       onclick: () => run(async () => {
@@ -732,7 +827,7 @@
         ),
         h(
           "div.panel",
-          h("h3", "\u041F\u0435\u0440\u0435\u043F\u0438\u0441\u043A\u0430 \u0441 \u0418\u0422-\u043E\u0442\u0434\u0435\u043B\u043E\u043C"),
+          h("h3", "\u041F\u0435\u0440\u0435\u043F\u0438\u0441\u043A\u0430 \u0441\u043E \u0441\u043B\u0443\u0436\u0431\u043E\u0439 \u0418\u0422"),
           thread(t.comments, t.attachments, { urlFor: fileUrl }),
           h("div.reply", body, files.el, h("div.row", h("span.spacer"), send))
         )
@@ -752,7 +847,7 @@
             h("dt", "\u0418\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C"),
             h("dd", t.assignee_name || h("span.muted", "\u0435\u0449\u0451 \u043D\u0435 \u043D\u0430\u0437\u043D\u0430\u0447\u0435\u043D")),
             h("dt", "\u0421\u0440\u043E\u043A \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u044F"),
-            h("dd" + (t.is_overdue ? ".overdue" : ""), t.due_at ? fmtDateTime(t.due_at) : h("span.muted", "\u043D\u0430\u0437\u043D\u0430\u0447\u0438\u0442 \u0418\u0422-\u043E\u0442\u0434\u0435\u043B")),
+            h("dd" + (t.is_overdue ? ".overdue" : ""), t.due_at ? fmtDateTime(t.due_at) : h("span.muted", "\u043D\u0430\u0437\u043D\u0430\u0447\u0438\u0442 \u0441\u043B\u0443\u0436\u0431\u0430 \u0418\u0422")),
             h("dt", "\u041C\u0435\u0441\u0442\u043E"),
             h("dd", t.location || "\u2014"),
             h("dt", "\u0421\u043E\u0437\u0434\u0430\u043D\u0430"),
@@ -770,9 +865,14 @@
       f[k] = h("input", { type, value: me[k] || "" });
       return h("label.field", h("span", label), f[k]);
     };
+    const dept = departmentPicker(me);
     const save = h("button.btn.primary", {
       onclick: () => run(async () => {
-        me = __spreadValues(__spreadValues({}, me), await api.patch("/me", Object.fromEntries(Object.entries(f).map(([k, el]) => [k, el.value]))));
+        const body = dept.value();
+        Object.keys(f).forEach((k) => {
+          body[k] = f[k].value;
+        });
+        me = __spreadValues(__spreadValues({}, me), await api.patch("/me", body));
         toast("\u041F\u0440\u043E\u0444\u0438\u043B\u044C \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D");
         renderProfile();
       }, save)
@@ -796,7 +896,8 @@
         "div.panel.stack",
         h("div.muted", "E-mail: ", h("strong", me.email)),
         field("full_name", "\u0424\u0418\u041E"),
-        h("div.form-grid", field("department", "\u041E\u0442\u0434\u0435\u043B"), field("position", "\u0414\u043E\u043B\u0436\u043D\u043E\u0441\u0442\u044C"), field("room", "\u041A\u0430\u0431\u0438\u043D\u0435\u0442"), field("phone", "\u0422\u0435\u043B\u0435\u0444\u043E\u043D", "tel")),
+        h("div.field", h("span.field-label", "\u041E\u0442\u0434\u0435\u043B"), dept.el, dept.note),
+        h("div.form-grid", field("position", "\u0414\u043E\u043B\u0436\u043D\u043E\u0441\u0442\u044C"), field("room", "\u041A\u0430\u0431\u0438\u043D\u0435\u0442"), field("phone", "\u0422\u0435\u043B\u0435\u0444\u043E\u043D", "tel")),
         h("div", save)
       ),
       h(

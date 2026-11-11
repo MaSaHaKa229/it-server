@@ -40,6 +40,8 @@ function newKind() {
 }
 
 const fieldKeyForKind = (code) => state.meta.coreFields.find((f) => f.lookup === code)?.key;
+// Справочники с полным и коротким названием (сейчас — «Отделы»; их видят сотрудники при регистрации на сайте заявок)
+const NAMED_KINDS = ['department'];
 
 async function renderKind(box, kind) {
   const rows = await api.get(`/api/lookups?kind=${encodeURIComponent(kind.code)}&usage=1&limit=5000`);
@@ -48,13 +50,17 @@ async function renderKind(box, kind) {
   const tbody = h('tbody');
   const addVal = h('input', { type: 'text', placeholder: 'Новое значение' });
   const addNote = h('input', { type: 'text', placeholder: 'Примечание (необязательно)' });
+  const named = NAMED_KINDS.includes(kind.code);
+  const addFull = h('input', { type: 'text', placeholder: 'Полное название (необязательно)' });
+  const addShort = h('input', { type: 'text', placeholder: 'Короткое' });
   const addBtn = h('button.btn.primary', { onclick: add }, 'Добавить');
   addVal.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
 
   async function add() {
     await run(async () => {
       if (!addVal.value.trim()) throw new Error('Введите значение');
-      await api.post('/api/lookups', { kind: kind.code, value: addVal.value, note: addNote.value });
+      await api.post('/api/lookups', { kind: kind.code, value: addVal.value, note: addNote.value,
+        ...(named ? { full_name: addFull.value, short_name: addShort.value } : {}) });
       invalidateLookups(kind.code);
       toast('Добавлено');
       renderKind(box, kind);
@@ -63,9 +69,11 @@ async function renderKind(box, kind) {
 
   const draw = () => {
     const q = search.value.trim().toLowerCase();
-    const list = rows.filter((r) => !q || r.value.toLowerCase().includes(q) || (r.note || '').toLowerCase().includes(q));
+    const list = rows.filter((r) => !q || [r.value, r.note, r.full_name, r.short_name].some((x) => (x || '').toLowerCase().includes(q)));
     clear(tbody, list.length ? list.map((r) => h('tr',
       h('td', h('strong', r.value)),
+      named ? h('td', r.full_name || h('span.muted', '—')) : null,
+      named ? h('td', r.short_name || h('span.muted', '—')) : null,
       h('td.muted', r.note || ''),
       h('td', r.usage && fkey
         ? h('a', { href: `#/devices?f=${encodeURIComponent(JSON.stringify({ [fkey]: [r.id] }))}` }, r.usage)
@@ -83,7 +91,7 @@ async function renderKind(box, kind) {
             run(async () => { await api.del('/api/lookups/' + r.id); invalidateLookups(kind.code); toast('Удалено'); renderKind(box, kind); });
           },
         }, icon('trash', 14)))))
-      : h('tr.empty', h('td', { colspan: 4 }, q ? 'Ничего не найдено' : 'Справочник пуст')));
+      : h('tr.empty', h('td', { colspan: named ? 6 : 4 }, q ? 'Ничего не найдено' : 'Справочник пуст')));
   };
   search.addEventListener('input', draw);
 
@@ -98,27 +106,39 @@ async function renderKind(box, kind) {
       }, icon('trash'), 'Удалить') : null),
     h('div.toolbar',
       h('div', { style: { flex: '2', minWidth: '200px' } }, addVal),
+      named ? h('div', { style: { flex: '3', minWidth: '220px' } }, addFull) : null,
+      named ? h('div', { style: { flex: '1', minWidth: '120px' } }, addShort) : null,
       h('div', { style: { flex: '2', minWidth: '200px' } }, addNote),
       addBtn),
+    named ? h('p.hint', { style: { margin: '-4px 0 12px' } },
+      'Отделы видят сотрудники при регистрации на сайте заявок и ищут свой по значению, полному или короткому названию.') : null,
     h('div.toolbar', h('div.search-box', icon('search'), search)),
     h('div.table-wrap', h('table.list',
-      h('thead', h('tr', h('th', 'Значение'), h('th', 'Примечание'), h('th', 'Устройств'), h('th', ''))),
+      h('thead', h('tr', h('th', 'Значение'), named ? h('th', 'Полное название') : null, named ? h('th', 'Короткое') : null,
+        h('th', 'Примечание'), h('th', 'Устройств'), h('th', ''))),
       tbody)));
   draw();
 }
 
 function editValue(kind, r, done) {
+  const named = NAMED_KINDS.includes(kind.code);
   const value = h('input', { type: 'text', value: r.value });
   const note = h('input', { type: 'text', value: r.note || '' });
+  const full = h('input', { type: 'text', value: r.full_name || '', placeholder: 'Например: Отдел бухгалтерского учёта и отчётности' });
+  const short = h('input', { type: 'text', value: r.short_name || '', placeholder: 'Например: ОБУиО' });
   const save = h('button.btn.primary', {
     onclick: () => run(async () => {
-      await api.put('/api/lookups/' + r.id, { value: value.value, note: note.value });
+      await api.put('/api/lookups/' + r.id, { value: value.value, note: note.value,
+        ...(named ? { full_name: full.value, short_name: short.value } : {}) });
       invalidateLookups(kind.code); m.close(); toast('Сохранено'); done();
     }, save),
   }, 'Сохранить');
   const m = modal({
     title: 'Изменить значение', size: 'narrow',
-    body: h('div.stack', { style: { gap: '12px' } }, h('label.field', h('span', 'Значение'), value), h('label.field', h('span', 'Примечание'), note),
+    body: h('div.stack', { style: { gap: '12px' } }, h('label.field', h('span', 'Значение'), value),
+      named ? h('label.field', h('span', 'Полное название'), full) : null,
+      named ? h('label.field', h('span', 'Короткое название'), short) : null,
+      h('label.field', h('span', 'Примечание'), note),
       h('p.hint', 'Изменение сразу отразится во всех устройствах, где используется это значение.')),
     footer: [h('button.btn.subtle', { onclick: () => m.close() }, 'Отмена'), save],
   });
