@@ -70,3 +70,17 @@
 table.list.ns-table td { white-space: normal; overflow: visible; text-overflow: clip; max-width: none; }
 table.list.ns-table td.nowrap { white-space: nowrap; }
 table.list.ns-table td:nth-child(6) { max-width: 260px; }
+
+/* Формат данных из сети */
+.nf-row { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.nf-row:last-of-type { border-bottom: 0; }
+.nf-label { font-weight: 600; padding-top: 8px; }
+.nf-main input { max-width: 520px; }
+.nf-vars { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.nf-var { border: 1px solid var(--border); background: var(--n20, #F4F5F7); border-radius: 3px; padding: 1px 6px; font-size: 12px; cursor: pointer; font-family: inherit; }
+.nf-var:hover { background: var(--b50, #DEEBFF); border-color: #4C9AFF; }
+.nf-add { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.nf-add select { width: 150px; }
+.nf-add input { width: 280px; }
+.ni-val { width: 100%; min-width: 200px; }
+.ni-remember { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-subtle); margin-top: 4px; cursor: pointer; }

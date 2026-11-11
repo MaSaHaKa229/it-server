@@ -152,32 +152,61 @@ export function renderSection(key, sec) {
 }
 
 // ---------- Сравнение с карточкой ----------
+/**
+ * Сравнение с карточкой. Значение «Из сети» можно исправить (для справочников — выбрать из уже имеющихся);
+ * исправленное можно «запомнить» — это замена, она применится сама при следующих опросах и сканированиях.
+ * onApply(keys, values) — values: итоговые значения по полям.
+ */
 export function renderCompare(device, suggest, onApply) {
   const fields = state.meta.coreFields.filter((f) => APPLY_FIELDS.includes(f.key) && suggest[f.key]);
   if (!fields.length) return h('div.ni-note', 'Пока нечего сравнивать: нет данных WMI или SNMP.');
-  const checks = {};
+  const rowsState = {};
   const rows = fields.map((f) => {
     const cur = device[f.key] ?? '';
     const val = suggest[f.key];
     const same = norm(cur) === norm(val);
-    const cb = h('input', { type: 'checkbox', checked: !same && !cur ? true : !same && f.key !== 'hostname' });
-    if (!same) checks[f.key] = cb;
-    return h('tr' + (same ? '.same' : '.diff'),
+    if (same) {
+      return h('tr.same', h('td', f.label), h('td', cur), h('td', val), h('td.nowrap', h('span.ni-ok', '✓ совпадает')));
+    }
+    const cb = h('input', { type: 'checkbox', checked: !cur || f.key !== 'hostname' });
+    const listId = `ni-list-${f.key}`;
+    const inp = h('input.ni-val', { type: 'text', value: val, list: f.kind === 'lookup' ? listId : null });
+    const remember = h('input', { type: 'checkbox' });
+    const rememberBox = h('label.ni-remember.hidden', remember, h('span', ''));
+    const dl = f.kind === 'lookup' ? h('datalist', { id: listId }) : null;
+    if (dl) lookupItems(f.lookup).then((items) => clear(dl, items.map((x) => h('option', { value: x.label })))).catch(() => {});
+    inp.addEventListener('input', () => {
+      const changed = inp.value.trim() && inp.value.trim() !== val;
+      rememberBox.classList.toggle('hidden', !changed);
+      rememberBox.lastChild.textContent = ` запомнить: «${val}» → «${inp.value.trim()}»`;
+      if (changed) cb.checked = true;
+    });
+    rowsState[f.key] = { cb, inp, remember, val };
+    return h('tr.diff',
       h('td', f.label),
       h('td', cur || h('span.muted', 'не заполнено')),
-      h('td', val),
-      h('td.nowrap', same ? h('span.ni-ok', '✓ совпадает') : h('label.ni-take', cb, ' перенести')));
+      h('td', inp, dl, rememberBox),
+      h('td.nowrap', h('label.ni-take', cb, ' перенести')));
   });
-  const diffs = Object.keys(checks).length;
+  const diffs = Object.keys(rowsState).length;
   const btn = h('button.btn.primary', { disabled: !diffs }, 'Перенести отмеченное в карточку');
   btn.addEventListener('click', () => run(async () => {
-    const keys = Object.keys(checks).filter((k) => checks[k].checked);
+    const keys = Object.keys(rowsState).filter((k) => rowsState[k].cb.checked && rowsState[k].inp.value.trim());
     if (!keys.length) return toast('Ничего не отмечено', 'warn');
-    await onApply(keys);
+    const values = { ...suggest };
+    for (const k of keys) values[k] = rowsState[k].inp.value.trim();
+    // Запомненные исправления — замены для следующих раз
+    for (const [k, st] of Object.entries(rowsState)) {
+      if (st.remember.checked && st.inp.value.trim() && st.inp.value.trim() !== st.val) {
+        await api.post('/api/netinfo/replacements', { field: k, src: st.val, dst: st.inp.value.trim() });
+      }
+    }
+    await onApply(keys, values);
   }, btn));
   return h('div',
     h('p.muted', diffs
-      ? 'Отмеченные значения будут записаны в карточку (в истории изменений будет видно, что поменялось). Новые значения справочников добавятся сами.'
+      ? 'Отмеченные значения будут записаны в карточку (в истории изменений будет видно, что поменялось). Значение «Из сети» можно исправить; '
+        + 'для справочников подсказываются уже имеющиеся значения. Новые значения справочников добавятся сами.'
       : 'Все сведения совпадают с карточкой.'),
     h('div.table-wrap', h('table.list.ni-table.ni-compare',
       h('thead', h('tr', h('th', 'Поле'), h('th', 'В карточке'), h('th', 'Из сети'), h('th', ''))),
@@ -253,8 +282,8 @@ export async function openNetInfo(device, onChanged) {
         : [h('span.ni-dot' + dot(sections[k])), SECTIONS[k]])));
 
     const content = tab === 'compare'
-      ? renderCompare(device, suggest, async (keys) => {
-        await applyToDevice(device, suggest, keys);
+      ? renderCompare(device, suggest, async (keys, values) => {
+        await applyToDevice(device, values, keys);
         toast(`В карточку перенесено полей: ${keys.length}`);
         m.close();
         onChanged && onChanged();

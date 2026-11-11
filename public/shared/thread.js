@@ -41,7 +41,8 @@ const ACTION = {
   due: (d) => (d.to ? ['срок: ', h('b', fmtDateTime(d.to))] : 'срок снят'),
   priority: (d) => ['приоритет: ', h('b', d.to)],
   category: (d) => ['вид проблемы: ', h('b', d.to || '—')],
-  device: (d) => (d.to ? 'привязана техника из инвентаря' : 'отвязана техника'),
+  device: (d) => (d.added ? `привязана техника ${d.added}` : d.removed ? `отвязана техника ${d.removed}`
+    : d.to ? 'привязана техника из инвентаря' : 'отвязана техника'),
 };
 export function historyList(items) {
   if (!items.length) return null;

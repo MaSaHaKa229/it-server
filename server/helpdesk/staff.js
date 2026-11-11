@@ -117,18 +117,19 @@ router.get('/tickets/:id', ah(async (req, res) => {
              LEFT JOIN requesters r ON r.id = h.requester_id
              LEFT JOIN public.users u ON u.id = h.user_id
             WHERE h.ticket_id = $1 ORDER BY h.created_at, h.id`, [t.id]),
-    t.device_id ? query(
-      `SELECT d.id, dt.code || '-' || d.id AS key, dt.name AS type_name, d.hostname, d.inv_number,
+    query(
+      `SELECT d.id, dt.code || '-' || d.id AS key, dt.name AS type_name, d.hostname, d.inv_number, d.ip_address,
               m.value AS model, e.value AS employee
          FROM public.devices d JOIN public.device_types dt ON dt.id = d.type_id
          LEFT JOIN public.lookups m ON m.id = d.model_id
          LEFT JOIN public.lookups e ON e.id = d.employee_id
-        WHERE d.id = $1`, [t.device_id]) : { rows: [] },
+         JOIN ticket_devices td ON td.device_id = d.id
+        WHERE td.ticket_id = $1 ORDER BY td.added_at, d.id`, [t.id]),
     query(`SELECT count(*)::int AS total FROM tickets WHERE requester_id = $1`, [t.requester_id]),
   ]);
   res.json({
     ...t, comments: comments.rows, attachments: files.rows, history: history.rows,
-    device: device.rows[0] || null, requester_ticket_count: reqStats.rows[0].total,
+    devices: device.rows, device: device.rows[0] || null, requester_ticket_count: reqStats.rows[0].total,
   });
 }));
 
@@ -209,14 +210,6 @@ router.patch('/tickets/:id', ah(async (req, res) => {
         await L.addHistory(db, id, me(req), 'category', { from: nm(cur.category_id), to: nm(to) });
       }
     }
-    if ('device_id' in b) {
-      const to = b.device_id ? Number(b.device_id) : null;
-      if (to !== cur.device_id) {
-        if (to && !(await db.query('SELECT 1 FROM public.devices WHERE id = $1', [to])).rows[0]) throw new HttpError(400, 'Устройство не найдено');
-        set('device_id', to);
-        await L.addHistory(db, id, me(req), 'device', { to });
-      }
-    }
     if ('title' in b) {
       if (!admin) throw new HttpError(403, 'Недостаточно прав');
       const title = str(b.title, 200);
@@ -260,9 +253,58 @@ router.get('/attachments/:id', ah(async (req, res) => {
   L.sendAttachment(res, rows[0]);
 }));
 
-// Поиск техники в инвентаре для привязки к заявке
+// ---------- техника из инвентаря, привязанная к заявке ----------
+// Привязывать и отвязывать может исполнитель заявки (или берущий свободную) и администратор helpdesk —
+// доступ к разделу «ИТ-инвентарь» для этого не нужен. Каждое действие пишется в историю заявки и техники.
+const deviceLabel = (d) => `${d.code}-${d.id}${d.hostname ? ' ' + d.hostname : d.inv_number ? ' ' + d.inv_number : ''}`;
+
+async function linkDevice(req, ticketId, deviceId, add) {
+  const admin = isAdmin(req);
+  return tx(async (db) => {
+    const t = (await db.query('SELECT id, title, assignee_id, device_id FROM tickets WHERE id = $1 FOR UPDATE', [ticketId])).rows[0];
+    if (!t) throw new HttpError(404, 'Заявка не найдена');
+    if (!admin && t.assignee_id !== null && t.assignee_id !== req.user.id) {
+      throw new HttpError(403, 'Технику привязывает исполнитель заявки или администратор helpdesk');
+    }
+    const d = (await db.query(
+      `SELECT d.id, d.hostname, d.inv_number, dt.code FROM public.devices d JOIN public.device_types dt ON dt.id = d.type_id WHERE d.id = $1`,
+      [deviceId])).rows[0];
+    if (!d) throw new HttpError(404, 'Устройство не найдено');
+    const label = deviceLabel(d);
+    const ticketText = `#${t.id} ${t.title}`.slice(0, 300);
+    if (add) {
+      const r = await db.query(
+        'INSERT INTO ticket_devices (ticket_id, device_id, added_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [t.id, d.id, req.user.id]);
+      if (!r.rowCount) return false;
+      if (!t.device_id) await db.query('UPDATE tickets SET device_id = $2 WHERE id = $1', [t.id, d.id]);
+      await L.addHistory(db, t.id, me(req), 'device', { added: label });
+      await db.query(`INSERT INTO public.device_history (device_id, user_id, action, changes) VALUES ($1, $2, 'ticket_linked', $3)`,
+        [d.id, req.user.id, JSON.stringify({ 'Заявка': [null, ticketText] })]);
+    } else {
+      const r = await db.query('DELETE FROM ticket_devices WHERE ticket_id = $1 AND device_id = $2', [t.id, d.id]);
+      if (!r.rowCount) return false;
+      if (t.device_id === d.id) {
+        await db.query('UPDATE tickets SET device_id = (SELECT device_id FROM ticket_devices WHERE ticket_id = $1 ORDER BY added_at LIMIT 1) WHERE id = $1', [t.id]);
+      }
+      await L.addHistory(db, t.id, me(req), 'device', { removed: label });
+      await db.query(`INSERT INTO public.device_history (device_id, user_id, action, changes) VALUES ($1, $2, 'ticket_unlinked', $3)`,
+        [d.id, req.user.id, JSON.stringify({ 'Заявка': [ticketText, null] })]);
+    }
+    return true;
+  });
+}
+
+router.post('/tickets/:id/devices', ah(async (req, res) => {
+  const ok = await linkDevice(req, intOrNull(req.params.id), intOrNull(req.body.device_id), true);
+  res.json({ ok, already: !ok });
+}));
+router.delete('/tickets/:id/devices/:deviceId', ah(async (req, res) => {
+  await linkDevice(req, intOrNull(req.params.id), intOrNull(req.params.deviceId), false);
+  res.json({ ok: true });
+}));
+
+// Поиск техники в инвентаре для привязки к заявке (исполнителям — без доступа к инвентарю)
 router.get('/devices', ah(async (req, res) => {
-  if (!atLeast(req.user, 'inventory', 'view')) return res.json([]);
   const term = `%${String(req.query.q || '').trim()}%`;
   const { rows } = await query(
     `SELECT d.id, dt.code || '-' || d.id AS key, dt.name AS type_name, d.hostname, d.inv_number,

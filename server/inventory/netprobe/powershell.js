@@ -100,7 +100,7 @@ $r=[ordered]@{
  ram_gb=if($cs){[math]::Round($cs.TotalPhysicalMemory/1GB,1)}else{$null}
  ram_free_gb=if($os){[math]::Round($os.FreePhysicalMemory/1MB,1)}else{$null}
  cpu=@($cpu|%{ [ordered]@{name=S $_.Name; cores=$_.NumberOfCores; threads=$_.NumberOfLogicalProcessors; mhz=$_.MaxClockSpeed} })
- memory_modules=@($mem|%{ [ordered]@{slot=S $_.DeviceLocator; gb=[math]::Round($_.Capacity/1GB,1); mhz=$_.Speed; maker=S $_.Manufacturer; part=S $_.PartNumber} })
+ memory_modules=@($mem|%{ [ordered]@{slot=S $_.DeviceLocator; gb=[math]::Round($_.Capacity/1GB,1); mhz=$_.Speed; type=$_.SMBIOSMemoryType; maker=S $_.Manufacturer; part=S $_.PartNumber} })
  disks=@($dd|%{ $d=$_; $m=$pd | Where-Object { (S $_.SerialNumber) -and (S $_.SerialNumber) -eq (S $d.SerialNumber) } | Select-Object -First 1
    [ordered]@{model=S $d.Model; bytes=[double]$d.Size; iface=S $d.InterfaceType; serial=S $d.SerialNumber; media=if($m){[int]$m.MediaType}else{$null}; bus=if($m){[int]$m.BusType}else{$null}} })
  volumes=@($ld|%{ [ordered]@{name=S $_.DeviceID; label=S $_.VolumeName; fs=S $_.FileSystem; size_gb=[math]::Round($_.Size/1GB,1); free_gb=[math]::Round($_.FreeSpace/1GB,1)} })

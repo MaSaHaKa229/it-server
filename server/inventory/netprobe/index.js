@@ -8,6 +8,7 @@ const { HttpError, ah, intOrNull, str } = require('../util');
 const { encrypt, decrypt } = require('../crypto');
 const P = require('./probes');
 const { adLookup, wmiCollect } = require('./powershell');
+const F = require('./format');
 
 const router = express.Router();
 const MAX_JOBS = 4;
@@ -187,39 +188,9 @@ function normalizeWmi(d) {
 }
 
 // Значения для сравнения с карточкой и переноса в неё
-function suggestions(sections) {
-  // Нет свежих данных — берём прошлые
-  const pick = (x) => (x?.state === 'done' ? x.data : x?.previous?.data || null);
-  const w = pick(sections.wmi);
-  const sn = pick(sections.snmp);
-  const n = sections.network?.data;
-  const out = {};
-  if (w) {
-    let maker = (w.manufacturer || '').replace(/,?\s*\b(Inc|Corporation|Corp|Co|Ltd|LLC|GmbH|Technology|Computer)\b\.?/gi, '').replace(/\s+/g, ' ').trim();
-    maker = { LENOVO: 'Lenovo', 'HEWLETT-PACKARD': 'HP', 'ASUSTEK': 'ASUS', 'MICRO-STAR INTERNATIONAL': 'MSI', 'GIGA-BYTE': 'Gigabyte' }[maker.toUpperCase()] || maker;
-    const generic = /system product name|to be filled|default string|^$/i;
-    // У Lenovo в модели — код (11JN0042RU), понятное название — в версии продукта (ThinkCentre M70q)
-    let model = maker === 'Lenovo' && w.product_version && !generic.test(w.product_version) && !/^lenovo$/i.test(w.product_version) ? w.product_version : w.model;
-    model = String(model || '').replace(/^lenovo\s+/i, '');
-    if (model && !generic.test(model)) out.model = maker && !model.toLowerCase().startsWith(maker.toLowerCase().split(' ')[0]) ? `${maker} ${model}` : model;
-    if (w.serial && !/to be filled|default string|^0+$|^none$/i.test(w.serial)) out.serial_number = w.serial;
-    if (w.cpu[0]?.name) out.cpu = w.cpu[0].name.replace(/\((R|TM|tm)\)/g, '').replace(/^\s*\d+(st|nd|rd|th)\s+Gen\s+/i, '').replace(/\s+CPU\s+@.*$|\s+@.*$/i, '').replace(/\s+/g, ' ').trim();
-    const modules = w.memory_modules.reduce((a, m) => a + (Number(m.gb) || 0), 0);
-    const ram = modules || Math.round(Number(w.ram_gb) || 0);
-    if (ram) out.ram = `${Math.round(ram)} ГБ`;
-    const disks = w.disks.filter((x) => !x.usb && x.gb);
-    if (disks.length) out.storage = disks.map((x) => `${x.kind ? x.kind + ' ' : ''}${fmtSize(x.gb)}`).join(' + ');
-    if (w.os) out.os = w.os.replace(/^(Microsoft|Майкрософт)\s+/i, '').replace(/\s+/g, ' ').trim();
-    if (w.hostname) out.hostname = w.hostname;
-    const nic = w.nics.find((x) => n?.used_ip && String(x.ip).split(/,\s*/).includes(n.used_ip)) || w.nics[0];
-    if (nic?.mac) out.mac_address = nic.mac.toUpperCase();
-  } else if (sn) {
-    if (sn.model) out.model = sn.model;
-    if (sn.serial) out.serial_number = sn.serial;
-  }
-  if (n?.used_ip) out.ip_address = n.used_ip;
-  if (!out.mac_address && n?.mac) out.mac_address = n.mac;
-  return out;
+/** Значения для карточки — по шаблонам и заменам службы ИТ (format.js) */
+function suggestions(sections, opts) {
+  return F.suggest(sections, opts);
 }
 
 /** Слить новые данные с прошлыми: раздел с ошибкой показывает прошлые данные с пометкой */
@@ -284,7 +255,8 @@ router.get('/device/:id', requireStaff, ah(async (req, res) => {
             CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE u.username END AS username FROM device_netinfo n
        LEFT JOIN users u ON u.id = n.collected_by WHERE n.device_id = $1`, [id]);
   // Предложения для карточки пересчитываются при каждом открытии
-  const saved = rows[0] ? { ...rows[0].data, suggest: suggestions(rows[0].data.sections || {}), collected_at: rows[0].collected_at, collected_by: rows[0].full_name || rows[0].username } : null;
+  const fopts = await F.loadFormatOpts();
+  const saved = rows[0] ? { ...rows[0].data, suggest: suggestions(rows[0].data.sections || {}, fopts), collected_at: rows[0].collected_at, collected_by: rows[0].full_name || rows[0].username } : null;
   const t = targetOf(d);
   res.json({
     target: { hostname: d.hostname, ip: d.ip_address, kind: t.kind, usable: !!(t.hostname || t.ip), bad: t.bad },
@@ -324,11 +296,53 @@ router.post('/test', requireSuperadmin, ah(async (req, res) => {
 router.get('/test', requireSuperadmin, ah(async (req, res) => {
   const job = jobs.get(String(req.query.key || ''));
   if (!job) throw new HttpError(404, 'Проверка не найдена — запустите ещё раз');
-  res.json({ job: { ...publicJob(job), suggest: job.done ? suggestions(job.sections) : null } });
+  res.json({ job: { ...publicJob(job), suggest: job.done ? suggestions(job.sections, await F.loadFormatOpts()) : null } });
+}));
+
+// ---------------- Шаблоны значений и замены (редакторы и администратор) ----------------
+router.get('/formats', requireStaff, ah(async (req, res) => {
+  const o = await F.loadFormatOpts();
+  res.json({
+    fields: F.FIELDS, vars: F.VARS, defaults: F.DEFAULT_FORMATS, formats: { ...F.DEFAULT_FORMATS, ...o.formats },
+    replacements: o.replacements, preview: F.suggest(F.SAMPLE, o),
+  });
+}));
+const cleanFormats = (b) => {
+  const out = {};
+  for (const k of Object.keys(F.FIELDS)) {
+    const v = str(b?.[k], 300);
+    if (v && v !== F.DEFAULT_FORMATS[k]) out[k] = v;
+  }
+  return out;
+};
+router.post('/formats/preview', requireStaff, ah(async (req, res) => {
+  res.json({ preview: F.suggest(F.SAMPLE, { formats: cleanFormats(req.body.formats) }) });
+}));
+router.put('/formats', requireStaff, ah(async (req, res) => {
+  const formats = cleanFormats(req.body.formats);
+  await query(`INSERT INTO netprobe_settings (id) VALUES (1) ON CONFLICT DO NOTHING`);
+  await query('UPDATE netprobe_settings SET formats = $1 WHERE id = 1', [JSON.stringify(formats)]);
+  res.json({ ok: true });
+}));
+const REPL_FIELDS = ['model', 'cpu', 'ram', 'storage', 'os', 'hostname', 'serial_number', 'mac_address'];
+router.post('/replacements', requireStaff, ah(async (req, res) => {
+  const field = String(req.body.field || '');
+  const src = str(req.body.src, 300), dst = str(req.body.dst, 300);
+  if (!REPL_FIELDS.includes(field)) throw new HttpError(400, 'Неизвестное поле');
+  if (!src || !dst) throw new HttpError(400, 'Укажите оба значения');
+  const { rows } = await query(
+    `INSERT INTO netprobe_replacements (field, src, dst, created_by) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (field, lower(src)) DO UPDATE SET dst = EXCLUDED.dst RETURNING id`, [field, src, dst, req.user.id]);
+  res.json({ id: rows[0].id });
+}));
+router.delete('/replacements/:id', requireStaff, ah(async (req, res) => {
+  await query('DELETE FROM netprobe_replacements WHERE id = $1', [intOrNull(req.params.id)]);
+  res.json({ ok: true });
 }));
 
 module.exports = router;
 module.exports.suggestions = suggestions;
+module.exports.loadFormatOpts = F.loadFormatOpts;
 module.exports.loadSettings = loadSettings;
 module.exports.normalizeWmi = normalizeWmi;
 module.exports.communities = communities;

@@ -190,6 +190,7 @@ export async function renderDevice(root, id) {
     const tabs = [];
     if (P.software) tabs.push(['software', `Установленное ПО (${data.software.length})`, renderSoftware]);
     if (P.passwords) tabs.push(['passwords', `Пароли (${data.credentials.length})`, renderCredentials]);
+    if (data.tickets) tabs.push(['tickets', `Заявки (${data.tickets.length})`, renderTickets]);
     if (P.history) tabs.push(['history', 'История', renderHistory]);
     if (!tabs.length) return null;
     if (!tabs.find((t) => t[0] === activeTab)) activeTab = tabs[0][0];
@@ -285,7 +286,22 @@ export async function renderDevice(root, id) {
     created: 'добавил(а) устройство', updated: 'изменил(а) данные', software_added: 'добавил(а) ПО',
     software_updated: 'изменил(а) ПО', software_removed: 'удалил(а) ПО', password_added: 'добавил(а) пароль',
     password_updated: 'изменил(а) пароль', password_removed: 'удалил(а) пароль', password_viewed: 'просмотрел(а) пароль',
+    ticket_linked: 'привязал(а) к заявке', ticket_unlinked: 'отвязал(а) от заявки',
   };
+  // Заявки helpdesk, к которым привязана эта техника
+  function renderTickets() {
+    if (!data.tickets.length) return h('p.muted', 'Эта техника не привязана ни к одной заявке. Привязать можно в самой заявке.');
+    return h('div.table-wrap', h('table.list.ns-table',
+      h('thead', h('tr', h('th', '№'), h('th', 'Тема'), h('th', 'Статус'), h('th', 'Заявитель'), h('th', 'Исполнитель'), h('th', 'Создана'))),
+      h('tbody', data.tickets.map((t) => h('tr',
+        h('td', h('a', { href: `/helpdesk/#/tickets/${t.id}` }, `#${t.id}`)),
+        h('td', h('a', { href: `/helpdesk/#/tickets/${t.id}` }, t.title)),
+        h('td', h('span.lozenge', { style: { background: t.status_color + '22', color: t.status_color } }, t.status_name)),
+        h('td', [t.requester_name, t.requester_department].filter(Boolean).join(', ')),
+        h('td', t.assignee_name || h('span.muted', '—')),
+        h('td.nowrap', fmtDate(t.created_at)))))));
+  }
+
   function renderHistory() {
     if (!data.history.length) return h('p.muted', 'Нет записей');
     return h('div', data.history.map((e) => {

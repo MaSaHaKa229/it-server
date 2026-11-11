@@ -305,3 +305,30 @@ CREATE TABLE IF NOT EXISTS netscan_ignore (
   created_by INT REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Шаблоны значений для карточки (процессор, память…) и замены «из сети → как в базе»
+ALTER TABLE netprobe_settings ADD COLUMN IF NOT EXISTS formats JSONB NOT NULL DEFAULT '{}'::jsonb;
+CREATE TABLE IF NOT EXISTS netprobe_replacements (
+  id         SERIAL PRIMARY KEY,
+  field      TEXT NOT NULL,
+  src        TEXT NOT NULL,
+  dst        TEXT NOT NULL,
+  created_by INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS netprobe_replacements_uq ON netprobe_replacements (field, lower(src));
+
+-- Найденная при сканировании техника, по которой ещё не принято решение (новая или с отличиями от карточки).
+-- Копится между сканированиями; решённое (state = 'done') возвращается, только если изменились отличия (handled_sig).
+CREATE TABLE IF NOT EXISTS netscan_hosts (
+  key            TEXT PRIMARY KEY,
+  host           JSONB NOT NULL,
+  state          TEXT NOT NULL DEFAULT 'pending',
+  first_seen     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  handled_sig    TEXT,
+  handled_action TEXT,
+  handled_by     INT REFERENCES users(id) ON DELETE SET NULL,
+  handled_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS netscan_hosts_state_idx ON netscan_hosts (state);

@@ -15,7 +15,10 @@ const KIND = {
 const STRENGTH = { strong: 'точно', name: 'вероятно', ip: 'только по IP — проверьте' };
 const norm = (v) => String(v ?? '').toLowerCase().replace(/[\s()®™]+/g, ' ').trim();
 
-let filter = 'new';
+let filter = 'pending';
+
+/** Отметить устройство из «Ждут решения» решённым */
+const markHandled = (key, action) => api.post('/api/netscan/handled', { key, action }).catch(() => {});
 let timer = null;
 
 /** Тип техники для нового устройства по тому, что нашли в сети */
@@ -112,14 +115,16 @@ export async function renderNetscan(root) {
   }
 
   function renderResult() {
-    const r = data.result;
-    if (!r) {
+    const r = data.result || { hosts: [], missing: [] };
+    const pending = data.pending || [];
+    if (!data.result && !pending.length) {
       clear(body, h('div.ni-note', 'Сканирование ещё не проводилось. Проверьте список сетей и нажмите «Сканировать».'));
       return;
     }
     const count = (s) => r.hosts.filter((x) => x.status === s).length;
-    const tabs = [['new', 'Новые'], ['diff', 'С отличиями'], ['match', 'Совпадают'], ['all', 'Все'], ['ignored', 'Скрытые']];
-    const list = r.hosts.filter((x) => (filter === 'all' ? x.status !== 'ignored' : x.status === filter));
+    const tabs = [['pending', 'Ждут решения'], ['new', 'Новые'], ['diff', 'С отличиями'], ['match', 'Совпадают'], ['all', 'Все'], ['ignored', 'Скрытые']];
+    const list = filter === 'pending' ? pending : r.hosts.filter((x) => (filter === 'all' ? x.status !== 'ignored' : x.status === filter));
+    const bulk = (filter === 'new' || filter === 'pending');
     const types = state.meta.types;
 
     const checks = new Map(); // ip → { cb, sel }
@@ -131,17 +136,24 @@ export async function renderNetscan(root) {
       const what = [KIND[x.kind] || '', x.suggest.model, x.wmi?.os?.replace(/^(Microsoft|Майкрософт)\s+/i, '')].filter(Boolean).join(' · ');
       const actions = [];
       if (x.status === 'new') {
-        actions.push(sel, h('button.btn.sm.primary', { onclick: (e) => run(async () => { const id = await createDevice(x, Number(sel.value)); toast(`Добавлено: ${name || x.ip}`); invalidateLookups(); afterChange(id); }, e.currentTarget) }, 'Добавить'));
+        actions.push(sel, h('button.btn.sm.primary', { onclick: (e) => run(async () => { const id = await createDevice(x, Number(sel.value)); await markHandled(x.ignore_key, 'added'); toast(`Добавлено: ${name || x.ip}`); invalidateLookups(); afterChange(id); }, e.currentTarget) }, 'Добавить'));
       }
       if (x.status === 'diff') actions.push(h('button.btn.sm.primary', { onclick: () => openCompare(x) }, `Дополнить (${x.diff.length})`));
       if (x.device) actions.push(h('a.btn.sm', { href: `#/devices/${x.device.id}` }, 'Открыть'));
+      if (filter === 'pending') {
+        actions.push(h('button.btn.sm.subtle', {
+          title: 'Ничего не менять: убрать из «Ждут решения» (вернётся, если при следующих сканированиях изменятся данные)',
+          onclick: (e) => run(async () => { await markHandled(x.ignore_key, 'skipped'); toast('Оставлено как есть'); await load(); }, e.currentTarget),
+        }, 'Оставить как есть'));
+      }
       actions.push(x.status === 'ignored'
         ? h('button.btn.sm.subtle', { onclick: (e) => run(async () => { await api.post('/api/netscan/ignore', { key: x.ignore_key, ignore: false }); await load(); }, e.currentTarget) }, 'Вернуть')
         : h('button.btn.sm.subtle', { title: 'Больше не предлагать (телефон, гостевой ноутбук…)', onclick: (e) => run(async () => { await api.post('/api/netscan/ignore', { key: x.ignore_key }); toast('Устройство скрыто'); await load(); }, e.currentTarget) }, 'Скрыть'));
       return h('tr',
         h('td', cb),
         h('td', h(`span.lozenge${STATUS[x.status][1] ? '.' + STATUS[x.status][1] : ''}`, STATUS[x.status][0])),
-        h('td.nowrap', h('b', x.ip), x.arp_only ? h('div.small.muted', 'виден только в ARP') : null),
+        h('td.nowrap', h('b', x.ip), x.arp_only ? h('div.small.muted', 'виден только в ARP') : null,
+          x.first_seen ? h('div.small.muted', { title: `Последний раз в сети: ${fmtDate(x.last_seen)}` }, `найдено ${fmtDate(x.first_seen, false)}`) : null),
         h('td.nowrap', name || h('span.muted', '—'), x.netbios?.user ? h('div.small.muted', `вошёл: ${x.netbios.user}`) : null),
         h('td.nowrap.small', x.mac || x.suggest.mac_address || h('span.muted', '—')),
         h('td', what || h('span.muted', '—'), x.wmi_error ? h('div.small.danger-text', { title: x.wmi_error }, 'WMI: нет доступа') : null),
@@ -160,7 +172,7 @@ export async function renderNetscan(root) {
       const items = [...checks.values()].filter((c) => c.cb.checked);
       if (!items.length) throw new Error('Отметьте устройства галочками');
       let n = 0;
-      for (const c of items) { await createDevice(c.host, Number(c.sel.value)); n++; }
+      for (const c of items) { await createDevice(c.host, Number(c.sel.value)); await markHandled(c.host.ignore_key, 'added'); n++; }
       invalidateLookups();
       toast(`Добавлено устройств: ${n}`);
       afterChange();
@@ -168,18 +180,21 @@ export async function renderNetscan(root) {
     const all = h('input', { type: 'checkbox', title: 'Отметить все', onchange: (e) => checks.forEach((c) => { c.cb.checked = e.target.checked; }) });
 
     clear(body,
-      h('div.ns-summary',
-        h('span', 'Сканирование ', h('b', fmtDate(r.finished_at || r.started_at)), r.scanned_by ? ` (${r.scanned_by})` : '', ` · сети: ${r.networks}`),
-        h('span.muted', ` · найдено устройств: ${r.hosts.length}`)),
-      h('div.tabs', tabs.map(([k, l]) => h('button.tab' + (filter === k ? '.active' : ''), { onclick: () => { filter = k; renderResult(); } },
-        l, ' ', h('span.badge', k === 'all' ? r.hosts.length - count('ignored') : count(k))))),
-      filter === 'new' && checks.size ? h('div.ns-bulk', addSel, h('span.muted.small', 'Тип техники подобран автоматически — проверьте перед добавлением.')) : null,
+      data.result ? h('div.ns-summary',
+        h('span', 'Последнее сканирование ', h('b', fmtDate(r.finished_at || r.started_at)), r.scanned_by ? ` (${r.scanned_by})` : '', ` · сети: ${r.networks}`),
+        h('span.muted', ` · найдено устройств: ${r.hosts.length}`)) : null,
+      h('div.tabs', tabs.map(([k, l]) => h('button.tab' + (filter === k ? '.active' : '') + (k === 'pending' ? '.ns-pending-tab' : ''), { onclick: () => { filter = k; renderResult(); } },
+        l, ' ', h('span.badge', k === 'pending' ? pending.length : k === 'all' ? r.hosts.length - count('ignored') : count(k))))),
+      filter === 'pending' ? h('p.muted.small', { style: { margin: '0 0 10px' } },
+        'Техника со всех сканирований, по которой ещё ничего не сделано: новая или с отличиями от карточки. Список сохраняется — ',
+        'к нему можно вернуться в любой момент; новые сканирования его пополняют. Решённое («Добавить», «Дополнить», «Оставить как есть», «Скрыть») из списка уходит.') : null,
+      bulk && checks.size ? h('div.ns-bulk', addSel, h('span.muted.small', 'Тип техники подобран автоматически — проверьте перед добавлением.')) : null,
       list.length ? h('div.table-wrap', h('table.list.ns-table',
-        h('thead', h('tr', h('th', filter === 'new' && checks.size ? all : ''), h('th', 'Статус'), h('th', 'IP'), h('th', 'Имя'), h('th', 'MAC'),
+        h('thead', h('tr', h('th', bulk && checks.size ? all : ''), h('th', 'Статус'), h('th', 'IP'), h('th', 'Имя'), h('th', 'MAC'),
           h('th', 'Что это'), h('th', 'Службы'), h('th', 'В базе'), h('th', ''))),
         h('tbody', rows)))
-        : h('div.ni-note', { style: { marginTop: '12px' } }, { new: 'Новых устройств нет — всё найденное уже есть в базе.', diff: 'Отличий нет.', match: 'Совпадений нет.', all: 'Ничего не найдено.', ignored: 'Скрытых устройств нет.' }[filter]),
-      r.missing.length ? h('details.ns-missing',
+        : h('div.ni-note', { style: { marginTop: '12px' } }, { pending: 'Всё найденное разобрано — решения ждать нечему.', new: 'Новых устройств нет — всё найденное уже есть в базе.', diff: 'Отличий нет.', match: 'Совпадений нет.', all: 'Ничего не найдено.', ignored: 'Скрытых устройств нет.' }[filter]),
+      filter !== 'pending' && r.missing.length ? h('details.ns-missing',
         h('summary', `Есть в базе, но не ответили при сканировании: ${r.missing.length}`),
         h('p.muted.small', 'Техника с IP-адресом из просканированных сетей. Возможно, выключена, переехала или списана.'),
         h('div.table-wrap', h('table.list.ns-table',
@@ -196,8 +211,9 @@ export async function renderNetscan(root) {
     const box = h('div');
     const m = modal({ title: `Дополнить карточку ${x.device.key} ${device.hostname || ''}`, body: box, size: 'wide' });
     clear(box, h('p.muted', `Найдено в сети: ${x.ip}${x.suggest.hostname ? ' · ' + x.suggest.hostname : ''}. Совпадение по: ${x.reason.join(', ')}.`),
-      renderCompare(device, x.suggest, async (keys) => {
-        await applyToDevice(device, x.suggest, keys);
+      renderCompare(device, x.suggest, async (keys, values) => {
+        await applyToDevice(device, values, keys);
+        await markHandled(x.ignore_key, 'updated');
         invalidateLookups();
         toast(`Карточка дополнена: ${keys.length} пол.`);
         m.close();

@@ -224,15 +224,21 @@ async function renderTicket(id) {
     h('option', { value: '' }, '— не указан —'), meta.categories.map((c) => h('option', { value: c.id }, `${c.icon} ${c.name}`)));
   cat.value = t.category_id || '';
 
-  // --- техника ---
+  // --- техника (несколько устройств; привязывает исполнитель или администратор) ---
   const deviceBox = h('div');
+  const canLink = admin || mineOrFree;
+  const unlink = (d) => run(async () => { await api.del(`/tickets/${id}/devices/${d.id}`); toast('Техника отвязана'); reload(); });
   function renderDevice() {
-    clear(deviceBox, t.device
-      ? h('div.stack', { style: { gap: '4px' } },
-        h('a', { href: '/inventory/#/devices/' + t.device.id, target: '_blank' }, `${t.device.key} · ${t.device.hostname || t.device.inv_number || t.device.type_name}`),
-        h('div.muted.small', [t.device.type_name, t.device.model, t.device.employee].filter(Boolean).join(' · ')),
-        h('button.btn.sm.subtle', { style: { alignSelf: 'flex-start' }, onclick: () => patch({ device_id: null }) }, 'Отвязать'))
-      : meta.me.inventory ? h('button.btn.sm', { onclick: pickDevice }, 'Привязать технику') : h('span.muted', '—'));
+    const devs = t.devices || [];
+    clear(deviceBox, h('div.stack', { style: { gap: '8px' } },
+      devs.map((d) => h('div.stack', { style: { gap: '2px' } },
+        meta.me.inventory
+          ? h('a', { href: '/inventory/#/devices/' + d.id, target: '_blank' }, `${d.key} · ${d.hostname || d.inv_number || d.type_name}`)
+          : h('b', `${d.key} · ${d.hostname || d.inv_number || d.type_name}`),
+        h('div.muted.small', [d.type_name, d.model, d.employee, d.ip_address].filter(Boolean).join(' · ')),
+        canLink ? h('button.btn.sm.subtle', { style: { alignSelf: 'flex-start' }, onclick: () => unlink(d) }, 'Отвязать') : null)),
+      !devs.length && !canLink ? h('span.muted', '—') : null,
+      canLink ? h('button.btn.sm', { style: { alignSelf: 'flex-start' }, onclick: pickDevice }, devs.length ? 'Привязать ещё' : 'Привязать технику') : null));
   }
   function pickDevice() {
     const q = h('input', { type: 'search', placeholder: 'Сетевое имя, инв. номер, модель, сотрудник, кабинет', value: t.location || '' });
@@ -240,7 +246,12 @@ async function renderTicket(id) {
     let timer;
     const search = async () => {
       const rows = await api.get('/devices?q=' + encodeURIComponent(q.value));
-      clear(list, rows.length ? rows.map((d) => h('button.cat-opt', { onclick: () => { m.close(); patch({ device_id: d.id }, 'Техника привязана'); } },
+      clear(list, rows.length ? rows.map((d) => h('button.cat-opt', { onclick: () => run(async () => {
+        m.close();
+        const r = await api.post(`/tickets/${id}/devices`, { device_id: d.id });
+        toast(r.already ? 'Эта техника уже привязана' : 'Техника привязана');
+        reload();
+      }) },
         h('div', h('div.t', `${d.key} · ${d.hostname || d.inv_number || ''}`),
           h('div.d', [d.type_name, d.model, d.employee, d.location].filter(Boolean).join(' · '))))) : h('p.muted', 'Ничего не найдено'));
     };

@@ -46,7 +46,8 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
 
 **Связи между модулями:**
 - заявка helpdesk ↔ задача календаря (`server/helpdesk/calendar-sync.js`, односторонняя синхронизация из заявки);
-- заявка → техника инвентаря (`tickets.device_id`);
+- заявка → техника инвентаря: `helpdesk.ticket_devices` (несколько устройств; `tickets.device_id` — первое, для совместимости);
+  привязка/отвязка — исполнитель или админ helpdesk, пишется в `history` заявки и `public.device_history` (ticket_linked/unlinked);
 - срок заявки выставляет только администратор helpdesk при назначении исполнителя.
 
 **Регулярные задачи календаря** — `calendar.task_series` (шаблон, `every_months`, `until`, `tz`); повторы — обычные
@@ -62,7 +63,9 @@ NetBIOS, ARP, SNMP — на чистом Node.js (`probes.js`); AD и WMI — в
 Кнопка — только редакторам, настройки — только суперадмину.
 **Сканирование сети** — `server/inventory/netprobe/scan.js` (+ `public/inventory/js/pages/netscan.js`): поиск (порты → ping → ARP),
 опознание, по желанию WMI; результат — `netscan_last` (одна строка), скрытые — `netscan_ignore`; совпадения с базой
-считаются при каждом GET (MAC/серийный → имя → IP); «Дополнить» использует `renderCompare`/`applyToDevice` из netinfo.js. Поиск в AD: база из настроек → домен контроллера → GC:// леса
+считаются при каждом GET (MAC/серийный → имя → IP); «Дополнить» использует `renderCompare`/`applyToDevice` из netinfo.js.
+«Ждут решения» — `netscan_hosts` (state pending/done, handled_sig — подпись отличий на момент решения).
+Значения для карточки — `netprobe/format.js`: шаблоны (`netprobe_settings.formats`) и замены (`netprobe_replacements`). Поиск в AD: база из настроек → домен контроллера → GC:// леса
 (ReferralChasing=All; у пользователя была ошибка «A referral was returned from the server»). Без Windows AD/WMI не работают: для проверки
 `NETPROBE_FAKE_DIR=<папка>` подставляет ответы из `<ad|wmi>[-ИМЯ].json`. На реальной Windows/AD не проверялось.
 

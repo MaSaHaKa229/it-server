@@ -1,4 +1,5 @@
 const express = require('express');
+const { level } = require('../../portal/modules');
 const { query, tx } = require('../db');
 const { CORE_FIELDS, requireStaff, perms } = require('../access');
 const { loadStatuses, resolveStatus, labelMap } = require('../statuses');
@@ -162,6 +163,19 @@ router.get('/:id', ah(async (req, res) => {
       `SELECT c.id, c.title, c.login, c.note, c.updated_at, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE u.username END AS updated_by
          FROM device_credentials c LEFT JOIN users u ON u.id = c.updated_by
         WHERE c.device_id = $1 ORDER BY c.id`, [id])).rows;
+  }
+  // Заявки helpdesk, к которым привязана техника — тем, у кого есть доступ к заявкам
+  if (level(req.user, 'helpdesk') !== 'none') {
+    out.tickets = (await query(
+      `SELECT t.id, t.title, t.created_at, t.closed_at, s.name AS status_name, s.color AS status_color, s.is_closed,
+              r.full_name AS requester_name, r.department AS requester_department,
+              CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS assignee_name
+         FROM helpdesk.ticket_devices td
+         JOIN helpdesk.tickets t ON t.id = td.ticket_id
+         JOIN helpdesk.statuses s ON s.id = t.status_id
+         JOIN helpdesk.requesters r ON r.id = t.requester_id
+         LEFT JOIN users u ON u.id = t.assignee_id
+        WHERE td.device_id = $1 ORDER BY t.created_at DESC LIMIT 200`, [id])).rows;
   }
   if (P.history) {
     out.history = (await query(

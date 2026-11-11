@@ -156,3 +156,16 @@ UPDATE settings SET value = '"Опишите проблему — специал
 
 -- Отдел заявителя — из справочника «Отделы» ИТ-инвентаря (department — его название на момент выбора)
 ALTER TABLE requesters ADD COLUMN IF NOT EXISTS department_id INT REFERENCES public.lookups(id) ON DELETE SET NULL;
+
+-- Техника из инвентаря, привязанная к заявке (несколько устройств). tickets.device_id — прежняя одиночная привязка,
+-- переносится сюда; в нём остаётся первое привязанное устройство.
+CREATE TABLE IF NOT EXISTS ticket_devices (
+  ticket_id  INT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  device_id  INT NOT NULL REFERENCES public.devices(id) ON DELETE CASCADE,
+  added_by   INT REFERENCES public.users(id) ON DELETE SET NULL,
+  added_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (ticket_id, device_id)
+);
+CREATE INDEX IF NOT EXISTS ticket_devices_device_idx ON ticket_devices (device_id);
+INSERT INTO ticket_devices (ticket_id, device_id)
+SELECT id, device_id FROM tickets WHERE device_id IS NOT NULL ON CONFLICT DO NOTHING;

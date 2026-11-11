@@ -168,7 +168,43 @@ async function runScan(networks, ranges, { wmi }, userId) {
      ON CONFLICT (id) DO UPDATE SET started_at = EXCLUDED.started_at, finished_at = now(), networks = EXCLUDED.networks,
        ranges = EXCLUDED.ranges, hosts = EXCLUDED.hosts, scanned_by = EXCLUDED.scanned_by`,
     [job.started_at, networks, JSON.stringify(ranges), JSON.stringify(hosts), userId]);
+  await updatePending(hosts);
 }
+
+// ---------------- «Ждут решения» ----------------
+const hostKey = (h) => (normMac(h.mac) ? `mac:${normMac(h.mac)}` : `ip:${h.ip}`);
+// Подпись состояния: новое устройство или какие поля и как отличаются — чтобы понять, изменилось ли что-то с момента решения
+const sigOf = (m) => (m.status === 'new' ? 'new' : m.status === 'diff' ? 'diff:' + m.diff.map((f) => `${f}=${m.suggest[f]}`).sort().join('|') : m.status);
+
+async function matchContext() {
+  const [devices, ign, fopts] = await Promise.all([loadDevices(), query('SELECT key FROM netscan_ignore'), NP.loadFormatOpts()]);
+  return { devices, ignored: new Set(ign.rows.map((r) => r.key)), fopts };
+}
+
+/** После сканирования: новые и отличающиеся — в «Ждут решения»; ставшие совпадающими — снимаются */
+async function updatePending(hosts) {
+  const ctx = await matchContext();
+  const { hosts: matched } = matchAll(hosts, ctx.devices, ctx.ignored, [], ctx.fopts);
+  for (const m of matched) {
+    const key = hostKey(m);
+    const sig = sigOf(m);
+    const raw = hosts.find((x) => x.ip === m.ip);
+    if (m.status === 'new' || m.status === 'diff') {
+      await query(
+        `INSERT INTO netscan_hosts (key, host, state) VALUES ($1, $2, 'pending')
+         ON CONFLICT (key) DO UPDATE SET host = EXCLUDED.host, last_seen = now(),
+           state = CASE WHEN netscan_hosts.state = 'done' AND netscan_hosts.handled_sig = $3 THEN 'done' ELSE 'pending' END`,
+        [key, JSON.stringify(raw), sig]);
+    } else {
+      await query(`UPDATE netscan_hosts SET host = $2, last_seen = now(),
+                     state = CASE WHEN state = 'pending' THEN 'done' ELSE state END,
+                     handled_action = CASE WHEN state = 'pending' THEN 'auto' ELSE handled_action END,
+                     handled_at = CASE WHEN state = 'pending' THEN now() ELSE handled_at END
+                   WHERE key = $1`, [key, JSON.stringify(raw)]);
+    }
+  }
+}
+
 
 // ---------------- Совпадения с базой ----------------
 const normMac = (m) => { const x = String(m || '').replace(/[^0-9a-f]/gi, '').toUpperCase(); return x.length === 12 ? x : ''; };
@@ -179,13 +215,13 @@ const normText = (v) => String(v ?? '').toLowerCase().replace(/[\s()®™]+/g, '
 const FIELDS = ['hostname', 'model', 'serial_number', 'cpu', 'ram', 'storage', 'os', 'ip_address', 'mac_address'];
 
 /** Что известно об устройстве из сканирования — в виде полей карточки (как в «Сведениях из сети») */
-function hostSuggest(h) {
+function hostSuggest(h, fopts) {
   const sections = {
     network: { state: 'done', data: { used_ip: h.ip, mac: h.mac } },
     wmi: h.wmi ? { state: 'done', data: h.wmi } : { state: 'off' },
     snmp: h.snmp ? { state: 'done', data: h.snmp } : { state: 'off' },
   };
-  const out = NP.suggestions(sections);
+  const out = NP.suggestions(sections, fopts);
   if (!out.hostname) {
     const name = h.netbios?.computer || (h.dns_name ? h.dns_name.split('.')[0].toUpperCase() : '') || h.snmp?.name || '';
     if (name) out.hostname = name;
@@ -205,7 +241,7 @@ async function loadDevices() {
   return rows;
 }
 
-function matchAll(hosts, devices, ignored, ranges) {
+function matchAll(hosts, devices, ignored, ranges, fopts) {
   const by = { mac: new Map(), serial: new Map(), host: new Map(), ip: new Map() };
   const add = (m, k, d) => { if (!k) return; if (!m.has(k)) m.set(k, []); m.get(k).push(d); };
   for (const d of devices) {
@@ -216,7 +252,7 @@ function matchAll(hosts, devices, ignored, ranges) {
   }
   const used = new Set();
   const out = hosts.map((h) => {
-    const sug = hostSuggest(h);
+    const sug = hostSuggest(h, fopts);
     const tries = [
       ['mac', 'MAC-адрес', by.mac.get(normMac(h.mac))],
       ['serial', 'серийный номер', by.serial.get(normSerial(sug.serial_number))],
@@ -238,7 +274,7 @@ function matchAll(hosts, devices, ignored, ranges) {
       used.add(match.id);
       diff = FIELDS.filter((f) => sug[f] && normText(sug[f]) !== normText(f === 'mac_address' ? (normMac(match[f]) ? normMac(match[f]).match(/../g).join(':') : match[f]) : match[f]));
     }
-    const key = h.mac ? `mac:${normMac(h.mac)}` : `ip:${h.ip}`;
+    const key = hostKey(h);
     const isIgnored = ignored.has(key) || ignored.has(`ip:${h.ip}`);
     const status = isIgnored ? 'ignored' : !match ? 'new' : diff.length ? 'diff' : 'match';
     return {
@@ -263,15 +299,29 @@ router.get('/', ah(async (req, res) => {
              FROM netscan_last l LEFT JOIN users u ON u.id = l.scanned_by WHERE l.id = 1`),
     query('SELECT key FROM netscan_ignore'),
   ]);
+  const ctx = await matchContext();
   let result = null;
   if (last) {
-    const m = matchAll(last.hosts, await loadDevices(), new Set(ign.map((r) => r.key)), last.ranges);
+    const m = matchAll(last.hosts, ctx.devices, ctx.ignored, last.ranges, ctx.fopts);
     result = { started_at: last.started_at, finished_at: last.finished_at, networks: last.networks, scanned_by: last.scanned_by, ...m };
+  }
+  // Ждут решения: сохранённые сведения сравниваются с базой заново; то, что уже совпадает или скрыто, снимается
+  const { rows: pend } = await query(`SELECT key, host, first_seen, last_seen FROM netscan_hosts WHERE state = 'pending' ORDER BY first_seen, key`);
+  const pm = matchAll(pend.map((r) => r.host), ctx.devices, ctx.ignored, [], ctx.fopts).hosts;
+  const pending = [];
+  for (let i = 0; i < pm.length; i++) {
+    const m = pm[i];
+    if (m.status === 'new' || m.status === 'diff') pending.push({ ...m, first_seen: pend[i].first_seen, last_seen: pend[i].last_seen });
+    else {
+      await query(`UPDATE netscan_hosts SET state = 'done', handled_action = $2, handled_at = now(), handled_sig = $3 WHERE key = $1`,
+        [pend[i].key, m.status === 'ignored' ? 'ignored' : 'auto', sigOf(m)]);
+    }
   }
   res.json({
     defaults: { networks: s.scan_networks || localNetworks(), from_settings: !!s.scan_networks, wmi_enabled: s.wmi_enabled, has_account: !!s.username },
     job: job ? { ...job } : null,
     result,
+    pending,
   });
 }));
 
@@ -285,6 +335,19 @@ router.post('/', ah(async (req, res) => {
     .catch((e) => { j.error = e.message; console.error('Сканирование сети:', e); })
     .finally(() => { j.finished_at = new Date().toISOString(); });
   res.status(202).json({ job });
+}));
+
+// Отметить решённым: добавлено, дополнено или «оставить как есть». Вернётся, только если изменятся отличия
+router.post('/handled', ah(async (req, res) => {
+  const key = String(req.body.key || '');
+  const action = ['added', 'updated', 'skipped'].includes(req.body.action) ? req.body.action : 'skipped';
+  const { rows } = await query('SELECT host FROM netscan_hosts WHERE key = $1', [key]);
+  if (!rows[0]) return res.json({ ok: true }); // устройства нет в списке (например, из последнего сканирования до обновления)
+  const ctx = await matchContext();
+  const [m] = matchAll([rows[0].host], ctx.devices, ctx.ignored, [], ctx.fopts).hosts;
+  await query(`UPDATE netscan_hosts SET state = 'done', handled_sig = $2, handled_action = $3, handled_by = $4, handled_at = now() WHERE key = $1`,
+    [key, sigOf(m), action, req.user.id]);
+  res.json({ ok: true });
 }));
 
 // Скрыть / вернуть устройство в списке
