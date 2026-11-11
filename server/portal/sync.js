@@ -23,15 +23,18 @@ async function syncDocs(u) {
 }
 
 async function syncCalendar(u) {
-  const active = !!u.is_active && level(u, 'calendar') !== 'none';
+  // Активен — учётная запись портала включена (можно назначать исполнителем задач);
+  // доступ к разделу — отдельно
+  const active = !!u.is_active;
+  const access = level(u, 'calendar') !== 'none';
   const fallback = `${String(u.username).toLowerCase()}.${u.id}@portal.local`;
   const email = u.email && EMAIL_RE.test(u.email) ? u.email.trim().toLowerCase() : fallback;
   const upsert = (mail) => db().query(
-    `INSERT INTO calendar.users (id, email, name, password_hash, role, is_active)
-     VALUES ($1, $2, $3, '!', $4, $5)
+    `INSERT INTO calendar.users (id, email, name, password_hash, role, is_active, has_access)
+     VALUES ($1, $2, $3, '!', $4, $5, $6)
      ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name,
-       role = EXCLUDED.role, is_active = EXCLUDED.is_active`,
-    [u.id, mail, displayName(u), calRole(u), active]);
+       role = EXCLUDED.role, is_active = EXCLUDED.is_active, has_access = EXCLUDED.has_access`,
+    [u.id, mail, displayName(u), calRole(u), active, access]);
   try {
     await upsert(email);
   } catch (e) {
