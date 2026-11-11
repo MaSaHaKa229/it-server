@@ -65,10 +65,18 @@ function renderNetwork(d) {
 }
 
 function renderAD(d) {
-  if (!d.found) return h('div.ni-note', `Компьютер «${d.name || ''}» не найден в Active Directory.`);
+  if (!d.found) {
+    return h('div', h('div.ni-note', `Компьютер «${d.name || ''}» не найден в Active Directory (искали: ${d.naming_context || 'весь домен'}).`),
+      d.base_error ? h('div.ni-note.err', `Место поиска из настроек не подошло: ${d.base_error}. Проверьте поле «Где искать (корневой DN)» — обычно его можно оставить пустым.`) : null);
+  }
   const ou = (d.dn || '').split(',').filter((p) => /^OU=/i.test(p)).map((p) => p.slice(3)).reverse().join(' / ');
   const ago = days(d.last_logon);
-  return h('div',
+  // Найден не там, где указано в настройках, — подсказываем поправить настройку
+  const where = d.configured_base && d.via && d.via !== 'base'
+    ? h('div.ni-note', `Компьютер найден ${d.via === 'gc' ? 'через глобальный каталог' : 'в домене контроллера'} (${d.naming_context}), а не в «${d.configured_base}», указанном в настройках. `
+      + 'Проверьте поле «Где искать (корневой DN)» — обычно его можно оставить пустым.')
+    : null;
+  return h('div', where,
     kv([
       ['Имя', d.name], ['DNS-имя', d.dns],
       ['Состояние', d.disabled ? h('span.lozenge.red', 'отключён в домене') : h('span.lozenge.green', 'включён')],

@@ -21,23 +21,40 @@ try {
   function E($p){ if($env:NM_USER){ New-Object DirectoryServices.DirectoryEntry($p,$env:NM_USER,$env:NM_PASS) } else { New-Object DirectoryServices.DirectoryEntry($p) } }
   function X($s){ ($s -replace '\\\\','\\5c' -replace '\\*','\\2a' -replace '\\(','\\28' -replace '\\)','\\29' -replace [char]0,'') }
   $root=E ($pfx+'RootDSE')
-  $nc=$env:NM_BASE; if(-not $nc){ $nc=[string]$root.Properties['defaultNamingContext'][0] }
+  $def=[string]$root.Properties['defaultNamingContext'][0]
+  $forest=[string]$root.Properties['rootDomainNamingContext'][0]
   $short=X $env:NM_NAME; $fqdn=X $env:NM_FQDN
   $f='(&(objectCategory=computer)(|(name='+$short+')(sAMAccountName='+$short+'$)'
   if($fqdn){ $f+='(dNSHostName='+$fqdn+')' }
   $f+='))'
-  $ds=New-Object DirectoryServices.DirectorySearcher((E ($pfx+$nc)))
-  $ds.Filter=$f; $ds.SizeLimit=2
-  foreach($a in 'name','dnshostname','operatingsystem','operatingsystemversion','operatingsystemservicepack','lastlogontimestamp','whencreated','whenchanged','pwdlastset','description','distinguishedname','useraccountcontrol','location','managedby','memberof'){ [void]$ds.PropertiesToLoad.Add($a) }
-  $r=$ds.FindOne()
-  if(-not $r){ @{ok=$true; found=$false; naming_context=$nc} | ConvertTo-Json -Compress; exit }
+  # Где искать по очереди: место из настроек, домен контроллера, глобальный каталог леса.
+  # Ответ «A referral was returned» (компьютер или место поиска в другом домене) — переходим к следующему.
+  $tries=@()
+  if($env:NM_BASE){ $tries+=,@($pfx,$env:NM_BASE,'base') }
+  if($def -and $def -ne $env:NM_BASE){ $tries+=,@($pfx,$def,'domain') }
+  if($forest){ $gc= if($srv){"GC://$srv/"} else {'GC://'}; $tries+=,@($gc,$forest,'gc') }
+  $r=$null; $nc=''; $via=''; $okAny=$false; $lastErr=''; $baseErr=''
+  foreach($t in $tries){
+    try {
+      $ds=New-Object DirectoryServices.DirectorySearcher((E ($t[0]+$t[1])))
+      $ds.Filter=$f; $ds.SizeLimit=2
+      $ds.ReferralChasing=[DirectoryServices.ReferralChasingOption]::All
+      foreach($a in 'name','dnshostname','operatingsystem','operatingsystemversion','operatingsystemservicepack','lastlogontimestamp','whencreated','whenchanged','pwdlastset','description','distinguishedname','useraccountcontrol','location','managedby','memberof'){ [void]$ds.PropertiesToLoad.Add($a) }
+      $r=$ds.FindOne(); $okAny=$true
+      if($r){ $nc=$t[1]; $via=$t[2]; break }
+    } catch { $lastErr=$_.Exception.Message; if($t[2] -eq 'base'){ $baseErr=$lastErr } }
+  }
+  if(-not $r){
+    if(-not $okAny){ @{ok=$false; error=$lastErr} | ConvertTo-Json -Compress; exit }
+    @{ok=$true; found=$false; naming_context=($tries | ForEach-Object { $_[1] }) -join '; '; base_error=$baseErr} | ConvertTo-Json -Compress; exit
+  }
   $pp=$r.Properties
   function G($n){ if($pp[$n].Count){ $pp[$n][0] } else { $null } }
   function FT($v){ if($v -and [int64]$v -gt 0){ [DateTime]::FromFileTime([int64]$v).ToString('s') } else { $null } }
   function DT($v){ if($v -is [datetime]){ $v.ToLocalTime().ToString('s') } else { $null } }
   $uac=[int](G 'useraccountcontrol')
   $groups=@($pp['memberof'] | ForEach-Object { ([string]$_) -replace '^CN=([^,]+).*','$1' })
-  [ordered]@{ ok=$true; found=$true; naming_context=$nc
+  [ordered]@{ ok=$true; found=$true; naming_context=$nc; via=$via; base_error=$baseErr; configured_base=[string]$env:NM_BASE
     name=[string](G 'name'); dns=[string](G 'dnshostname'); os=[string](G 'operatingsystem')
     os_version=[string](G 'operatingsystemversion'); service_pack=[string](G 'operatingsystemservicepack')
     last_logon=FT (G 'lastlogontimestamp'); pwd_last_set=FT (G 'pwdlastset')
