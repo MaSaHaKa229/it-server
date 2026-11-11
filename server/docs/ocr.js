@@ -17,14 +17,53 @@ const MIN_PIXELS = 120000;   // меньшие картинки (логотип�
 const MAX_IMAGES_PER_PAGE = 6;
 const IDLE_MS = 3 * 60 * 1000; // распознаватель выгружается из памяти после простоя
 
+// Поиск компонентов распознавания. Обычное место — C:\it-portal\node_modules. Но при ручной распаковке архива
+// Windows часто создаёт лишнюю папку (node_modules\node_modules, it-portal-node_modules\node_modules) —
+// такие места тоже проверяем, чтобы распознавание заработало без повторного копирования.
+const { createRequire } = require('module');
+const ROOT = path.resolve(__dirname, '..', '..');
 let tesseract = null;
+let req = require; // через него же ищутся словари
 let unavailableReason = null;
-try {
-  tesseract = require('tesseract.js');
-  for (const l of LANGS) require.resolve(`@tesseract.js-data/${l}/package.json`);
-} catch (e) {
-  tesseract = null;
-  unavailableReason = 'на сервере не установлены компоненты распознавания (папка node_modules из архива зависимостей)';
+let foundAt = null;
+
+function candidates() {
+  const list = [path.join(ROOT, 'node_modules')];
+  list.push(path.join(ROOT, 'node_modules', 'node_modules'));
+  try {
+    for (const e of fs.readdirSync(ROOT, { withFileTypes: true })) {
+      if (!e.isDirectory() || e.name === 'node_modules') continue;
+      const d = path.join(ROOT, e.name);
+      list.push(path.join(d, 'node_modules'), path.join(d, 'node_modules', 'node_modules'));
+    }
+  } catch { /* папку не прочитать — остаётся обычное место */ }
+  return list.filter((d) => fs.existsSync(path.join(d, 'tesseract.js', 'package.json')));
+}
+
+(function loadOcr() {
+  const errors = [];
+  const places = candidates();
+  for (const dir of places) {
+    try {
+      const r = createRequire(path.join(dir, '..', 'ocr-loader.js'));
+      const t = r(path.join(dir, 'tesseract.js'));
+      for (const l of LANGS) {
+        const f = path.join(dir, '@tesseract.js-data', l, '4.0.0_best_int', `${l}.traineddata.gz`);
+        if (!fs.existsSync(f)) throw new Error(`нет файла словаря ${f}`);
+      }
+      tesseract = t; req = r; foundAt = dir;
+      return;
+    } catch (e) {
+      errors.push(`${dir}: ${e.message}`);
+    }
+  }
+  const expected = path.join(ROOT, 'node_modules', 'tesseract.js');
+  unavailableReason = places.length
+    ? `компоненты распознавания найдены, но не загружаются (${errors.join('; ').slice(0, 400)})`
+    : `на сервере не установлены компоненты распознавания — нет папки ${expected} (распакуйте папку node_modules из архива it-portal-node_modules.zip прямо в ${ROOT})`;
+})();
+if (foundAt && foundAt !== path.join(ROOT, 'node_modules')) {
+  console.warn(`Распознавание сканов: компоненты найдены в ${foundAt} — работает, но лучше перенести эту папку node_modules в ${ROOT}`);
 }
 
 const progressMap = new Map(); // id документа → { page, total }
@@ -41,7 +80,7 @@ function langDir() {
   const dir = path.join(os.tmpdir(), 'it-portal-tessdata');
   fs.mkdirSync(dir, { recursive: true });
   for (const l of LANGS) {
-    const src = require.resolve(`@tesseract.js-data/${l}/4.0.0_best_int/${l}.traineddata.gz`);
+    const src = path.join(foundAt, '@tesseract.js-data', l, '4.0.0_best_int', `${l}.traineddata.gz`);
     const dst = path.join(dir, `${l}.traineddata.gz`);
     if (!fs.existsSync(dst) || fs.statSync(dst).size !== fs.statSync(src).size) fs.copyFileSync(src, dst);
   }

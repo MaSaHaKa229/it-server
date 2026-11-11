@@ -26,7 +26,10 @@
 3а. Только если прислан архив it-portal-node_modules.zip (новые компоненты):
    переименуйте C:\it-portal\node_modules  ->  node_modules.bak
    и распакуйте из архива папку node_modules в C:\it-portal
-   (должна получиться C:\it-portal\node_modules\tesseract.js и т. д.).
+   Проверьте, что существует папка C:\it-portal\node_modules\tesseract.js
+   (а не C:\it-portal\node_modules\node_modules\... или
+   C:\it-portal\it-portal-node_modules\node_modules\... — так бывает,
+   если распаковать архив «Извлечь всё» прямо в папку портала).
 
 4. Проверьте: в C:\it-portal\public должно быть 7 папок:
    calendar, docs, helpdesk, helpdesk-staff, inventory, portal, shared
