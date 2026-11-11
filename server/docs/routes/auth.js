@@ -6,8 +6,8 @@ const { changePassword } = require('../../portal/auth');
 const router = express.Router();
 
 router.get('/me', requireAuth, (req, res) => {
-  const { id, username, full_name, role, docTypes } = req.user;
-  res.json({ user: { id, username, full_name, role, docTypes } });
+  const { id, username, full_name, role, docTypes, folderIds } = req.user;
+  res.json({ user: { id, username, full_name, role, docTypes, restrictedFolders: folderIds !== null } });
 });
 
 router.post('/change-password', requireAuth, ah(async (req, res) => {

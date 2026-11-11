@@ -1,0 +1,7 @@
+{
+  "name": "helpdesk-legacy-build",
+  "private": true,
+  "description": "Совместимая сборка сайта заявок для старых браузеров (Firefox 52 ESR на Windows XP)",
+  "scripts": { "build": "node build.mjs" },
+  "devDependencies": { "esbuild": "0.24.2" }
+}

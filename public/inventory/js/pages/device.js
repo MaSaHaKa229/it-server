@@ -153,6 +153,9 @@ export async function renderDevice(root, id) {
         h('div.d-head', 'Сведения'),
         h('div.d-body',
           h('div.drow', h('div.dl', 'Тип'), h('div.dv', typeEditable(type))),
+          h('div.drow', h('div.dl', 'Рабочее место'), h('div.dv', h('div.editable.readonly',
+            d.workplace_id ? h('a', { href: '#/workplaces/' + d.workplace_id }, d.workplace)
+              : h('span.ph', 'не привязано — см. «Рабочие места»')))),
           detailRows)),
       h('div.details', { style: { marginTop: '16px' } },
         h('div.d-head', 'Дополнительные поля', h('span.spacer'),

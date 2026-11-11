@@ -1,6 +1,6 @@
 // Администрирование портала: пользователи и доступ к разделам
-import { h, clear, modal, run, toast, confirmDialog, avatar, fmtDateTime } from '/shared/ui.js';
-import { api, loadMe, topbar } from './shell.js';
+import { h, clear, modal, run, toast, confirmDialog, avatar, fmtDateTime, sortHead, sortRows, savedSort } from '/shared/ui.js';
+import { api, loadMe, portalTopbar } from './shell.js';
 
 let me, meta, users = [];
 const filter = { q: '', inactive: false };
@@ -24,70 +24,91 @@ async function main() {
   await render();
 }
 
+// Сортировка: запоминается в браузере
+const sort = savedSort('admin-users', { key: 'name', dir: 1 });
+// Порядок уровней доступа для сортировки по разделу: «нет» < «просмотр» < … < «администратор»
+const rank = (u, m) => (u.role === 'superadmin' ? 99 : Object.keys(meta.modules[m].levels).indexOf((u.modules || {})[m] || 'none'));
+
+function columns() {
+  return [
+    { key: 'name', label: 'Пользователь', value: (u) => u.full_name || u.username },
+    { key: 'username', label: 'Логин' },
+    { key: 'email', label: 'E-mail' },
+    ...MOD_ORDER.map((m) => ({ key: 'mod_' + m, label: meta.modules[m].label, value: (u) => rank(u, m) })),
+    { key: 'last_login', label: 'Последний вход', value: (u) => (u.last_login ? new Date(u.last_login).getTime() : null) },
+    { key: 'status', label: 'Статус', value: (u) => (u.is_active ? 0 : 1) },
+    { label: '', sortable: false },
+  ];
+}
+
 async function render() {
   users = await api.get('/api/admin/users');
   const app = document.getElementById('app');
-  const tbody = h('tbody');
+  const table = h('table.list');
+  const info = h('span.badge');
   const search = h('input', { type: 'search', placeholder: 'Поиск по имени, логину, e-mail', value: filter.q,
     oninput: () => { filter.q = search.value; fill(); } });
   const showInactive = h('input', { type: 'checkbox', checked: filter.inactive, onchange: () => { filter.inactive = showInactive.checked; fill(); } });
 
   function fill() {
     const q = filter.q.trim().toLowerCase();
-    const list = users.filter((u) => (filter.inactive || u.is_active)
-      && (!q || [u.full_name, u.username, u.email].some((v) => (v || '').toLowerCase().includes(q))));
-    clear(tbody, list.length ? list.map(row) : h('tr', h('td.empty', { colspan: 8 }, 'Никого не найдено')));
+    const cols = columns();
+    const list = sortRows(users.filter((u) => (filter.inactive || u.is_active)
+      && (!q || [u.full_name, u.username, u.email].some((v) => (v || '').toLowerCase().includes(q)))), cols, sort);
+    info.textContent = String(list.length);
+    clear(table, sortHead(cols, sort, fill),
+      h('tbody', list.length ? list.map(row) : h('tr.empty', h('td', { colspan: cols.length }, 'Никого не найдено'))));
   }
 
   clear(app,
-    topbar(me, 'admin'),
-    h('main.page',
+    portalTopbar(me, 'admin'),
+    h('div.layout', h('main.main.full', h('div',
+      h('div.breadcrumbs', h('a', { href: '/' }, 'ИТ-портал'), h('span.sep', '/'), h('span', 'Администрирование')),
       h('div.page-head',
-        h('div', h('h1', 'Пользователи и доступ'),
-          h('div.muted', 'Учётные записи сотрудников ИТ-отдела и права на разделы портала')),
+        h('h1', 'Пользователи и доступ'), info,
         h('span.spacer'),
         h('button.btn.primary', { onclick: () => userDialog(null) }, '+ Создать пользователя')),
-      h('div.filters', search, h('label.check.small', showInactive, 'Показывать отключённых')),
-      h('div.table-wrap', h('table.list',
-        h('thead', h('tr', h('th', 'Пользователь'), MOD_ORDER.map((m) => h('th', meta.modules[m].label)),
-          h('th', 'Последний вход'), h('th', 'Статус'), h('th', ''))),
-        tbody)),
+      h('p.muted', { style: { margin: '-8px 0 16px' } }, 'Учётные записи сотрудников ИТ-отдела и права на разделы портала. Нажмите на заголовок столбца, чтобы отсортировать.'),
+      h('div.toolbar', h('div.search-box', search), h('label.check', showInactive, 'Показывать отключённых')),
+      h('div.table-wrap', table),
       h('p.hint', { style: { marginTop: '12px' } },
         'Сотрудники предприятия, которые подают заявки в ИТ-отдел, регистрируются сами на сайте заявок — ',
-        'их список в разделе «Заявки» → «Сотрудники».')));
+        'их список в разделе «Заявки» → «Сотрудники».')))));
   fill();
 }
 
 function levelCell(u, mod) {
-  if (u.role === 'superadmin') return h('td.access-cell', h('span.lozenge.blue', 'полный'));
+  if (u.role === 'superadmin') return h('td.access-cell', h('span.lozenge.purple', 'полный'));
   const lv = (u.modules || {})[mod] || 'none';
   const label = meta.modules[mod].levels[lv];
   const extra = [];
   if (mod === 'docs' && lv !== 'none' && Array.isArray(u.modules.docs_types) && u.modules.docs_types.length) extra.push('часть видов');
+  if (mod === 'docs' && lv !== 'none' && Array.isArray(u.modules.docs_folders)) extra.push(`папок: ${u.modules.docs_folders.length}`);
   if (mod === 'calendar' && lv !== 'none' && lv !== 'admin' && u.modules.calendar_own_only) extra.push('только свои');
   if (mod === 'inventory' && lv === 'view') extra.push('по настройкам читателя');
-  const cls = { none: '.none', view: '', edit: '.green', admin: '.blue', executor: '.green' }[lv] || '';
-  return h('td.access-cell', lv === 'none' ? h('span.none', '—') : h('span.lozenge' + cls, label),
-    extra.length ? h('div.muted.small', extra.join(', ')) : null);
+  const cls = { view: '', edit: '.green', admin: '.purple', executor: '.blue' }[lv] ?? '';
+  return h('td.access-cell', lv === 'none' ? h('span.muted', '—') : h('span.lozenge' + cls, label),
+    extra.length ? h('span.muted.small', { style: { marginLeft: '6px' } }, extra.join(', ')) : null);
 }
 
 function row(u) {
   const name = u.full_name || u.username;
   return h('tr.clickable', { onclick: (e) => { if (!e.target.closest('button')) userDialog(u); } },
-    h('td', h('div.row', avatar(name, 'sm'), h('div',
-      h('div', h('strong', name), u.role === 'superadmin' ? h('span.lozenge.blue', { style: { marginLeft: '6px' } }, 'админ') : null),
-      h('div.muted.small', u.username + (u.email ? ' · ' + u.email : ''))))),
+    h('td', h('span.row', avatar(name, 'sm'), h('strong', name),
+      u.role === 'superadmin' ? h('span.lozenge.purple', 'админ') : null)),
+    h('td.mono', u.username),
+    h('td.muted', u.email || '—'),
     MOD_ORDER.map((m) => levelCell(u, m)),
     h('td.muted.small', u.last_login ? fmtDateTime(u.last_login) : 'никогда'),
     h('td', u.is_active ? h('span.lozenge.green', 'активен') : h('span.lozenge.red', 'отключён')),
-    h('td', { style: { textAlign: 'right' } }, u.id !== me.user.id ? h('button.btn.subtle.sm', {
+    h('td.nowrap', { style: { textAlign: 'right' } }, u.id !== me.user.id ? h('button.btn.subtle.sm', {
       title: 'Удалить',
       onclick: async () => {
         if (!await confirmDialog(`Удалить пользователя ${u.username}?`,
           'Учётная запись будет удалена. Созданные им записи сохранятся без автора. Чтобы временно закрыть доступ, лучше отключите пользователя.')) return;
         run(async () => { await api.del('/api/admin/users/' + u.id); toast('Пользователь удалён'); render(); });
       },
-    }, '🗑') : null));
+    }, 'Удалить') : null));
 }
 
 function userDialog(u) {
@@ -113,6 +134,29 @@ function userDialog(u) {
   docAll.addEventListener('change', () => docBoxes.forEach((l) => {
     const cb = l.querySelector('input'); cb.disabled = docAll.checked; if (docAll.checked) cb.checked = true;
   }));
+  // Доступ по папкам документов: «все» или отмеченные (вложенные открываются вместе с папкой)
+  const folderSel = new Set(Array.isArray(mods.docs_folders) ? mods.docs_folders : []);
+  const folderAll = h('input', { type: 'checkbox', checked: !Array.isArray(mods.docs_folders) });
+  const folderBoxes = (meta.docFolders || []).map((f) => {
+    const cb = h('input', { type: 'checkbox', value: f.id, checked: folderSel.has(f.id) });
+    return { f, cb, el: h('label.check', { style: { paddingLeft: (f.depth * 20) + 'px', display: 'flex' }, title: f.path }, cb, '📁 ' + f.name) };
+  });
+  // Отмеченная папка открывает вложенные: показываем их отмеченными и недоступными для снятия
+  function syncFolders() {
+    const on = new Set(folderBoxes.filter((x) => x.cb.dataset.own === '1').map((x) => x.f.id));
+    for (const x of folderBoxes) {
+      const inherited = !folderAll.checked && x.f.parent_id && (on.has(x.f.parent_id) || folderBoxes.find((y) => y.f.id === x.f.parent_id)?.cb.dataset.inh === '1');
+      x.cb.dataset.inh = inherited ? '1' : '';
+      x.cb.disabled = folderAll.checked || !!inherited;
+      x.cb.checked = folderAll.checked || !!inherited || x.cb.dataset.own === '1';
+    }
+  }
+  for (const x of folderBoxes) {
+    x.cb.dataset.own = folderSel.has(x.f.id) ? '1' : '';
+    x.cb.addEventListener('change', () => { x.cb.dataset.own = x.cb.checked ? '1' : ''; syncFolders(); });
+  }
+  folderAll.addEventListener('change', syncFolders);
+  syncFolders();
   const ownOnly = h('input', { type: 'checkbox', checked: !!mods.calendar_own_only });
 
   function renderMods() {
@@ -141,8 +185,14 @@ function userDialog(u) {
                 ? h('div.mod-extra.small', 'По умолчанию читатель видит всю технику, кроме паролей. Ограничить можно после создания в «ИТ-инвентарь → Пользователи».')
                 : null,
               m === 'docs' && mods.docs !== 'none'
-                ? h('div.mod-extra', h('div.row.wrap', h('strong.small', 'Виды документов:'), h('label.check.small', docAll, 'все')),
-                  h('div.row.wrap', { style: { marginTop: '6px', gap: '12px' } }, docBoxes))
+                ? [h('div.mod-extra',
+                  h('div.row', h('strong.small', 'Папки:'), h('label.check.small', folderAll, 'все папки и документы без папки')),
+                  folderBoxes.length
+                    ? h('div.stack', { style: { marginTop: '8px', gap: '4px', maxHeight: '220px', overflowY: 'auto' } }, folderBoxes.map((x) => x.el))
+                    : h('p.hint', 'Папок пока нет — их создают в разделе «Документы → Папки и теги».'),
+                  h('p.hint', 'Сотрудник видит только документы в отмеченных папках. Отметка папки открывает и все вложенные в неё.')),
+                h('div.mod-extra', h('div.row.wrap', h('strong.small', 'Виды документов:'), h('label.check.small', docAll, 'все')),
+                  h('div.row.wrap', { style: { marginTop: '6px', gap: '12px' } }, docBoxes))]
                 : null,
               m === 'calendar' && ['view', 'edit'].includes(mods.calendar)
                 ? h('div.mod-extra', h('label.check.small', ownOnly, 'Видит только свои задачи (где он автор или исполнитель)'))
@@ -156,10 +206,12 @@ function userDialog(u) {
     onclick: () => run(async () => {
       const types = docAll.checked ? null : docBoxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value);
       if (types && !types.length && mods.docs !== 'none') throw new Error('Отметьте хотя бы один вид документов или выберите «Нет доступа»');
+      const folderIds = folderAll.checked ? null : folderBoxes.filter((x) => x.cb.dataset.own === '1' && x.cb.dataset.inh !== '1').map((x) => x.f.id);
+      if (folderIds && !folderIds.length && mods.docs !== 'none') throw new Error('Отметьте хотя бы одну папку документов, «все папки» или выберите «Нет доступа»');
       const body = {
         username: username.value.trim(), password: password.value || undefined,
         full_name: fullName.value, email: email.value, is_active: active.checked, is_admin: isAdmin.checked,
-        modules: { ...mods, docs_types: types, calendar_own_only: ownOnly.checked },
+        modules: { ...mods, docs_types: types, docs_folders: folderIds, calendar_own_only: ownOnly.checked },
       };
       if (isNew) await api.post('/api/admin/users', body); else await api.put('/api/admin/users/' + u.id, body);
       m.close(); toast(isNew ? 'Пользователь создан' : 'Сохранено'); render();
@@ -168,8 +220,8 @@ function userDialog(u) {
 
   const m = modal({
     title: isNew ? 'Новый пользователь' : `Пользователь ${u.username}`, wide: true,
-    body: h('div.stack',
-      h('div.grid2',
+    body: h('div.stack', { style: { gap: '16px' } },
+      h('div.form-grid',
         h('label.field', h('span', 'Логин'), username),
         h('label.field', h('span', isNew ? 'Пароль' : 'Новый пароль'), password),
         h('label.field', h('span', 'ФИО'), fullName),
@@ -178,7 +230,7 @@ function userDialog(u) {
         h('label.check', active, 'Учётная запись активна'),
         h('label.check', isAdmin, h('span', h('strong', 'Администратор портала'), h('span.muted', ' — полный доступ и управление пользователями')))),
       modsBox),
-    footer: [h('button.btn', { onclick: () => m.close() }, 'Отмена'), save],
+    footer: [h('button.btn.subtle', { onclick: () => m.close() }, 'Отмена'), save],
   });
 }
 

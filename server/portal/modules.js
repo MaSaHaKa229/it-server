@@ -20,10 +20,6 @@ const MODULES = {
   },
 };
 
-// Виды документов реестра (для ограничения просмотра)
-const DOC_TYPES = {
-  law: 'Закон', gost: 'ГОСТ', decree: 'Указ', regulation: 'Регламент', other: 'Прочее',
-};
 
 const order = (mod) => Object.keys(MODULES[mod].levels);
 const top = (mod) => order(mod)[order(mod).length - 1];
@@ -48,7 +44,11 @@ function normalizeModules(m) {
   for (const mod of Object.keys(MODULES)) out[mod] = order(mod).includes(m[mod]) ? m[mod] : 'none';
   // Ограничения внутри модулей
   out.docs_types = Array.isArray(m.docs_types)
-    ? m.docs_types.filter((t) => Object.prototype.hasOwnProperty.call(DOC_TYPES, t))
+    ? m.docs_types.map(String).filter((t) => /^[\w-]{1,40}$/.test(t)).slice(0, 200)
+    : null;
+  // Папки документов: null — все, иначе список id выданных папок
+  out.docs_folders = Array.isArray(m.docs_folders)
+    ? [...new Set(m.docs_folders.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2000)
     : null;
   out.calendar_own_only = !!m.calendar_own_only;
   return out;
@@ -69,4 +69,4 @@ const requireModule = (mod, min = order(mod)[1]) => (req, res, next) => {
   next();
 };
 
-module.exports = { MODULES, DOC_TYPES, level, atLeast, normalizeModules, summary, requireModule };
+module.exports = { MODULES, level, atLeast, normalizeModules, summary, requireModule };

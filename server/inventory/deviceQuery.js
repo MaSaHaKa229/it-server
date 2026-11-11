@@ -49,6 +49,7 @@ function buildDeviceQuery(o) {
     ...TEXT_FIELDS.map((f) => `d.${f.key}`),
     ...LOOKUP_FIELDS.flatMap((f) => [`d.${f.col}`, `l_${f.key}.value AS ${f.key}`]),
     'd.extra', 'd.created_at', 'd.updated_at',
+    'd.workplace_id', 'wp.name AS workplace',
   ];
   if (P.software) select.push(`${softwareExpr} AS software`);
 
@@ -60,6 +61,8 @@ function buildDeviceQuery(o) {
   if (P.departments !== null) where.push(`d.department_id = ANY(${p(P.departments)}::int[])`);
 
   if (o.id != null) where.push(`d.id = ${p(Number(o.id))}`);
+  // Техника одного рабочего места
+  if (o.workplaceId != null) where.push(`d.workplace_id = ${p(Number(o.workplaceId))}`);
 
   // Полнотекстовый (по подстроке) поиск по всем видимым полям
   const q = (o.q || '').trim();
@@ -68,6 +71,7 @@ function buildDeviceQuery(o) {
       `t.code || '-' || d.id`,
       't.name',
       'st.label',
+      'wp.name',
     ];
     for (const f of TEXT_FIELDS) if (canSeeField(P, f.key)) parts.push(`d.${f.key}`);
     for (const f of LOOKUP_FIELDS) if (canSeeField(P, f.key)) parts.push(`l_${f.key}.value`);
@@ -108,6 +112,14 @@ function buildDeviceQuery(o) {
     if (ids.includes(0)) conds.push(`d.${f.col} IS NULL`);
     where.push(`(${conds.join(' OR ')})`);
   }
+  if (F.workplace && toIds(F.workplace).length) {
+    const ids = toIds(F.workplace);
+    const real = ids.filter((i) => i > 0);
+    const conds = [];
+    if (real.length) conds.push(`d.workplace_id = ANY(${p(real)}::int[])`);
+    if (ids.includes(0)) conds.push('d.workplace_id IS NULL');
+    where.push(`(${conds.join(' OR ')})`);
+  }
   if (P.software && F.software && toIds(F.software).length) {
     where.push(`EXISTS (SELECT 1 FROM device_software ds WHERE ds.device_id = d.id
                  AND ds.software_id = ANY(${p(toIds(F.software))}::int[]))`);
@@ -130,7 +142,7 @@ function buildDeviceQuery(o) {
   // ---------- ORDER BY ----------
   const sortMap = {
     key: 'd.id', type: 't.name', status: 'st.sort',
-    created_at: 'd.created_at', updated_at: 'd.updated_at',
+    created_at: 'd.created_at', updated_at: 'd.updated_at', workplace: 'wp.name',
   };
   for (const f of TEXT_FIELDS) if (canSeeField(P, f.key)) sortMap[f.key] = `d.${f.key}`;
   for (const f of LOOKUP_FIELDS) if (canSeeField(P, f.key)) sortMap[f.key] = `l_${f.key}.value`;
@@ -147,6 +159,7 @@ function buildDeviceQuery(o) {
   const from = `FROM devices d
     JOIN device_types t ON t.id = d.type_id
     LEFT JOIN device_statuses st ON st.key = d.status
+    LEFT JOIN workplaces wp ON wp.id = d.workplace_id
     ${lookupJoins}`;
   const whereSql = where.length ? 'WHERE ' + where.join('\n  AND ') : '';
 

@@ -9,6 +9,7 @@ import { renderSettings } from './pages/settings.js';
 import { renderUsers } from './pages/users.js';
 import { openCreateDevice } from './pages/create.js';
 import { renderImport } from './pages/import.js';
+import { renderWorkplaces, renderWorkplace } from './pages/workplaces.js';
 
 const app = document.getElementById('app');
 let mainEl, sidebarEl, navEl;
@@ -36,6 +37,8 @@ async function route() {
     if (!section) await renderDashboard(mainEl);
     else if (section === 'devices' && sub) await renderDevice(mainEl, Number(sub));
     else if (section === 'devices') await renderDevices(mainEl, params);
+    else if (section === 'workplaces' && sub) await renderWorkplace(mainEl, Number(sub));
+    else if (section === 'workplaces') await renderWorkplaces(mainEl);
     else if (section === 'import' && isStaff()) await renderImport(mainEl);
     else if (section === 'catalog' && isStaff()) await renderCatalog(mainEl, sub);
     else if (section === 'settings' && isStaff()) await renderSettings(mainEl, sub);
@@ -61,6 +64,7 @@ function renderShell() {
   const links = [
     ['dashboard', '#/', 'Панель'],
     ['devices', '#/devices', 'Техника'],
+    ['workplaces', '#/workplaces', 'Рабочие места'],
     isStaff() && ['import', '#/import', 'Импорт'],
     isStaff() && ['catalog', '#/catalog', 'Справочники'],
     isStaff() && ['settings', '#/settings', 'Настройки'],
@@ -74,10 +78,13 @@ function renderShell() {
     if (e.key === 'Enter') { navigate('/devices?q=' + encodeURIComponent(gsearch.value.trim())); gsearch.value = ''; gsearch.blur(); }
   });
 
+  const userName = h('span', { style: { color: 'var(--n500)', fontWeight: 500, marginRight: '4px', whiteSpace: 'nowrap' } }, me.full_name || me.username);
   const avatarBtn = avatar(me.full_name || me.username);
   avatarBtn.addEventListener('click', () => menu(avatarBtn, [
     { head: (me.full_name || me.username) + ' · ' + ROLE_LABEL[me.role] },
-    { label: 'Главная страница портала', icon: 'dashboard', onClick: () => { location.href = '/'; } },
+    { head: 'Разделы' },
+    ...portalSections().map(([href, label]) => ({ label, onClick: () => { location.href = href; } })),
+    '-',
     { label: 'Сменить пароль', icon: 'lock', onClick: changePassword },
     '-',
     { label: 'Выйти', onClick: async () => { await api.post(location.origin + '/api/auth/logout'); location.href = '/login'; } },
@@ -91,6 +98,7 @@ function renderShell() {
     isStaff() ? h('button.btn.primary', { style: { marginLeft: '8px' }, onclick: () => openCreateDevice() }, icon('plus'), 'Создать') : null,
     h('div.search-global', icon('search'), gsearch),
     h('span', { style: { width: '8px' } }),
+    userName,
     avatarBtn);
 
   sidebarEl = h('aside.sidebar');
@@ -127,6 +135,7 @@ const refreshSidebar = debounce(async () => {
       h('div', h('div.name', 'ИТ-служба'), h('div.sub', 'База данных техники'))),
     link('#/', [icon('dashboard'), 'Панель']),
     link('#/devices', [icon('list'), 'Вся техника'], total),
+    link('#/workplaces', [icon('users'), 'Рабочие места']),
     h('div.side-section', h('h4', 'Типы техники'),
       state.meta.types.map((t) => link(`#/devices?f=${encodeURIComponent(JSON.stringify({ type: [t.id] }))}`,
         [h('span.type-dot', { style: { background: t.color } }, t.code.slice(0, 2)), t.name], counts[t.id] || 0))),
@@ -186,7 +195,22 @@ function changePassword() {
 }
 
 // ---------------- Запуск ----------------
+// Разделы портала для меню пользователя (как в остальных разделах)
+let portalMe = null;
+function portalSections() {
+  const a = portalMe?.access || {};
+  return [
+    ['/', 'Главная'],
+    a.inventory && a.inventory !== 'none' && ['/inventory/', 'ИТ-инвентарь'],
+    a.docs && a.docs !== 'none' && ['/docs/', 'Документы'],
+    a.calendar && a.calendar !== 'none' && ['/calendar/', 'Задачи'],
+    a.helpdesk && a.helpdesk !== 'none' && ['/helpdesk/', 'Заявки'],
+    portalMe?.user?.isAdmin && ['/admin', 'Администрирование'],
+  ].filter(Boolean);
+}
+
 async function boot() {
+  portalMe = await fetch('/api/auth/me', { credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   try {
     const me = await api.get('/api/auth/me');
     state.me = me.user; state.perms = me.perms;

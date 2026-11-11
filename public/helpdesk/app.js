@@ -1,5 +1,5 @@
 // Сайт заявок в ИТ-отдел для сотрудников предприятия
-import { h, clear, makeApi, run, toast, avatar, fmtDateTime, relTime, statusPill, parseHash } from '/shared/ui.js';
+import { h, clear, makeApi, run, toast, fmtDateTime, relTime, statusPill, parseHash, topbar } from '/shared/ui.js';
 import { thread, fileList, fileInput, historyList } from '/shared/thread.js';
 
 const api = makeApi('/api', { csrf: 'helpdesk', onUnauthorized: () => { if (me) { me = null; location.hash = '#/login'; } } });
@@ -35,7 +35,7 @@ async function route() {
     else if (page === 'profile') renderProfile();
     else await renderList(params.get('state') || 'open');
   } catch (e) {
-    shell(h('div.card.empty', 'Не удалось загрузить: ' + e.message));
+    shell(h('div.empty-state', 'Не удалось загрузить: ' + e.message));
   }
 }
 
@@ -44,31 +44,23 @@ function shell(...content) {
   const nav = [['', '#/', 'Мои заявки'], ['new', '#/new', 'Новая заявка'], ['profile', '#/profile', 'Профиль']];
   const cur = parseHash().parts[0] || '';
   clear(app,
-    h('header.topbar',
-      h('a.brand', { href: '#/' }, h('span.brand-logo.hd', '?'), h('span.brand-text', 'Заявки в ИТ-отдел')),
-      h('nav.topnav', nav.map(([k, href, label]) => h('a' + (cur === k || (k === '' && cur === 'tickets') ? '.active' : ''), { href }, label))),
-      h('span.spacer'),
-      h('span.row', avatar(me.full_name, 'sm'), h('span.small.brand-text', me.full_name)),
-      h('button.btn.subtle.sm', { onclick: logout }, 'Выйти')),
-    h('main.page', content));
+    topbar({
+      brandText: 'HelpDesk', brandHref: '#/', logo: 'hd',
+      nav, active: cur === 'tickets' ? '' : cur,
+      actions: cur === 'new' ? [] : [h('a.btn.primary', { href: '#/new' }, '+ Новая заявка')],
+      userName: me.full_name, userSub: me.department || me.email,
+      menu: [{ label: 'Профиль', href: '#/profile' }, '-', { label: 'Выйти', onClick: logout }],
+    }),
+    h('div.layout', h('main.main.full', h('div.page', content))));
 }
 
 function authPage(title, ...content) {
-  clear(app, h('div.auth-page',
-    h('div.auth-brand', h('span.brand-logo.hd', '?'), 'Заявки в ИТ-отдел'),
-    h('div.card.auth-card', { style: { maxWidth: title === 'Регистрация' ? '560px' : '400px' } },
-      h('h2', { style: { marginBottom: '16px' } }, title), content),
-    cfg.portalUrl ? h('p.muted.small', { style: { marginTop: '20px' } }, 'Сотрудникам ИТ-отдела: ',
-      h('a', { href: portalLink() }, 'вход в ИТ-портал')) : null));
+  clear(app, h('div.login-page',
+    h('div.login-brand', h('span.brand-logo.hd', '?'), 'HelpDesk'),
+    h('div.login-card', { style: title === 'Регистрация' ? { width: '560px' } : {} },
+      h('h1', title), content),
+  ));
   setTimeout(() => app.querySelector('input')?.focus(), 30);
-}
-// Ссылка на портал: если адрес в .env не задан, берём имя компьютера из адресной строки
-function portalLink() {
-  try {
-    const u = new URL(cfg.portalUrl);
-    if (u.hostname === 'localhost' && location.hostname !== 'localhost') u.hostname = location.hostname;
-    return u.toString();
-  } catch { return cfg.portalUrl; }
 }
 
 async function logout() {
@@ -138,7 +130,7 @@ function renderRegister() {
     cfg.domains.length ? h('div.info-box.small', 'Регистрация по рабочей почте: ', cfg.domains.map((d) => '@' + d).join(', ')) : null,
     h('label.field', h('span', 'Рабочий e-mail *'), f.email),
     h('label.field', h('span', 'ФИО *'), f.full_name),
-    h('div.grid2',
+    h('div.form-grid',
       h('label.field', h('span', 'Отдел'), f.department),
       h('label.field', h('span', 'Должность'), f.position),
       h('label.field', h('span', 'Кабинет'), f.room),
@@ -216,10 +208,9 @@ async function renderList(state) {
   const [tickets] = await Promise.all([api.get('/tickets?state=' + state)]);
   const tabs = [['open', 'Открытые'], ['closed', 'Закрытые'], ['all', 'Все']];
   shell(
-    h('div.hero',
-      h('div', h('h1', 'Мои заявки'), cfg.welcome ? h('p', cfg.welcome) : null),
-      h('a.btn.primary', { href: '#/new' }, '+ Новая заявка')),
-    h('div.tabs', tabs.map(([k, l]) => h('a' + (k === state ? '.active' : ''), { href: '#/?state=' + k }, l))),
+    h('div.page-head', h('h1', 'Мои заявки'), h('span.badge', String(tickets.length))),
+    cfg.welcome ? h('p.muted', { style: { margin: '-8px 0 16px' } }, cfg.welcome) : null,
+    h('div.tabs', tabs.map(([k, l]) => h('a.tab' + (k === state ? '.active' : ''), { href: '#/?state=' + k }, l))),
     tickets.length ? tickets.map((t) => h('a.tcard', { href: '#/tickets/' + t.id },
       h('div.tcard-top', h('span.ticket-key', '#' + t.id), statusPill(t.status_name, t.status_color),
         t.is_overdue ? h('span.lozenge.red', 'срок прошёл') : null),
@@ -230,7 +221,7 @@ async function renderList(state) {
         h('span', 'Исполнитель: ', t.assignee_name || 'ещё не назначен'),
         t.due_at ? h('span', 'Срок: ', fmtDateTime(t.due_at)) : null,
         h('span', 'Обновлена ', relTime(t.updated_at)))))
-      : h('div.card.empty', state === 'open' ? 'Открытых заявок нет. ' : 'Заявок нет. ', h('a', { href: '#/new' }, 'Создать заявку')));
+      : h('div.empty-state', state === 'open' ? 'Открытых заявок нет. ' : 'Заявок нет. ', h('a', { href: '#/new' }, 'Создать заявку')));
 }
 
 // ---------------- Новая заявка ----------------
@@ -254,7 +245,7 @@ async function renderNew() {
   const btn = h('button.btn.primary', { type: 'submit' }, 'Отправить заявку');
   shell(h('div.page.narrow', { style: { padding: 0 } },
     h('h1', { style: { marginBottom: '16px' } }, 'Новая заявка'),
-    h('form.card.stack', {
+    h('form.panel.stack', {
       onsubmit: async (e) => {
         e.preventDefault(); err.classList.add('hidden');
         if (cats.length && !catId) { showErr(err, new Error('Выберите, что случилось')); window.scrollTo(0, 0); return; }
@@ -276,9 +267,9 @@ async function renderNew() {
     cats.length ? [h('div.field', h('span', 'Что случилось? *')), h('div.cat-grid', catBtns)] : null,
     h('label.field', h('span', 'Тема *'), title),
     h('label.field', h('span', 'Подробное описание'), desc),
-    h('div.grid2',
+    h('div.form-grid',
       h('label.field', h('span', 'Где находится (кабинет, рабочее место)'), location_),
-      h('label.field', h('span', 'Срочность'), prio)),
+      h('label.field', h('span', 'Срочность'), prio, h('span.hint', 'Срок выполнения назначит ИТ-отдел'))),
     files.el,
     h('p.hint', 'Приложите фото или скриншот ошибки — так проблему решат быстрее.'),
     h('div.row', btn, h('a.btn.subtle', { href: '#/' }, 'Отмена')))));
@@ -308,32 +299,32 @@ async function renderTicket(id) {
     { label: t.is_closed ? t.status_name : 'Закрыта', done: false, cur: t.is_closed }];
 
   const topFiles = t.attachments.filter((a) => !a.comment_id);
-  shell(h('div.ticket-page',
+  shell(h('div.issue',
     h('div.stack',
       h('div', h('a', { href: '#/' }, '← Мои заявки')),
-      h('div.card',
+      h('div.panel',
         h('div.row.wrap', h('span.ticket-key', 'Заявка #' + t.id), statusPill(t.status_name, t.status_color),
           t.is_overdue ? h('span.lozenge.red', 'срок прошёл') : null),
         h('h1', { style: { marginTop: '8px' } }, t.title),
-        h('div.steps', steps.map((s) => h('div.step' + (s.done ? '.done' : '') + (s.cur ? '.cur' : ''), s.label))),
+        h('div.pstep-line', steps.map((s) => h('div.pstep' + (s.done ? '.done' : '') + (s.cur ? '.cur' : ''), s.label))),
         h('div.ticket-desc', t.description || h('span.muted', 'Без описания')),
         fileList(topFiles, fileUrl)),
-      h('div.card',
+      h('div.panel',
         h('h3', 'Переписка с ИТ-отделом'),
         thread(t.comments, t.attachments, { urlFor: fileUrl }),
         h('div.reply', body, files.el, h('div.row', h('span.spacer'), send)))),
     h('div.side-panel',
-      h('div.card',
+      h('div.panel',
         h('dl.kv',
           h('dt', 'Статус'), h('dd', statusPill(t.status_name, t.status_color)),
           h('dt', 'Вид проблемы'), h('dd', (t.category_icon || '') + ' ' + (t.category_name || '—')),
           h('dt', 'Срочность'), h('dd', cfg.priorities[t.priority]),
           h('dt', 'Исполнитель'), h('dd', t.assignee_name || h('span.muted', 'ещё не назначен')),
-          h('dt', 'Срок выполнения'), h('dd' + (t.is_overdue ? '.overdue' : ''), t.due_at ? fmtDateTime(t.due_at) : h('span.muted', 'не установлен')),
+          h('dt', 'Срок выполнения'), h('dd' + (t.is_overdue ? '.overdue' : ''), t.due_at ? fmtDateTime(t.due_at) : h('span.muted', 'назначит ИТ-отдел')),
           h('dt', 'Место'), h('dd', t.location || '—'),
           h('dt', 'Создана'), h('dd', fmtDateTime(t.created_at)),
           t.closed_at ? [h('dt', 'Закрыта'), h('dd', fmtDateTime(t.closed_at))] : null)),
-      t.history.length ? h('div.card', h('h3', 'Ход выполнения'), historyList(t.history)) : null)));
+      t.history.length ? h('div.panel', h('h3', 'Ход выполнения'), historyList(t.history)) : null)));
 }
 
 // ---------------- Профиль ----------------
@@ -359,15 +350,15 @@ function renderProfile() {
   }, 'Сменить пароль');
   shell(h('div.page.narrow.stack', { style: { padding: 0 } },
     h('h1', 'Профиль'),
-    h('div.card.stack',
+    h('div.panel.stack',
       h('div.muted', 'E-mail: ', h('strong', me.email)),
       field('full_name', 'ФИО'),
-      h('div.grid2', field('department', 'Отдел'), field('position', 'Должность'), field('room', 'Кабинет'), field('phone', 'Телефон', 'tel')),
+      h('div.form-grid', field('department', 'Отдел'), field('position', 'Должность'), field('room', 'Кабинет'), field('phone', 'Телефон', 'tel')),
       h('div', save)),
-    h('div.card.stack',
+    h('div.panel.stack',
       h('h3', 'Смена пароля'),
       h('label.field', h('span', 'Текущий пароль'), cur),
-      h('div.grid2', h('label.field', h('span', 'Новый пароль (от 8 символов)'), next), h('label.field', h('span', 'Повторите'), next2)),
+      h('div.form-grid', h('label.field', h('span', 'Новый пароль (от 8 символов)'), next), h('label.field', h('span', 'Повторите'), next2)),
       h('div', savePw))));
 }
 

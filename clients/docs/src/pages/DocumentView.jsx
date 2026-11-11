@@ -3,12 +3,15 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, downloadFile } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import {
-  DOC_STATUSES, DOC_TYPES, canEdit, formatDate, formatDateTime, formatSize,
+  DOC_STATUSES, canEdit, formatDate, formatDateTime, formatSize,
 } from '../constants.js';
 import MarkdownView from '../components/MarkdownView.jsx';
 import Modal from '../components/Modal.jsx';
+import TypeBadge from '../components/TypeBadge.jsx';
+import { TagList } from '../components/Tags.jsx';
 
 function DocList({ title, items, empty }) {
+  const { typeName } = useAuth();
   return (
     <section className="side-block">
       <h4>{title}</h4>
@@ -17,7 +20,7 @@ function DocList({ title, items, empty }) {
           {items.map((d) => (
             <li key={d.id}>
               <Link to={`/documents/${d.id}`}>{d.title}</Link>
-              <span className="muted small"> {DOC_TYPES[d.doc_type]}{d.number ? ` № ${d.number}` : ''}</span>
+              <span className="muted small"> {typeName(d.doc_type)}{d.number ? ` № ${d.number}` : ''}</span>
             </li>
           ))}
         </ul>
@@ -30,7 +33,7 @@ function DocList({ title, items, empty }) {
 
 export default function DocumentView() {
   const { id } = useParams();
-  const { user } = useAuth();
+  const { user, reloadTypes, folderMap } = useAuth();
   const navigate = useNavigate();
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState('');
@@ -54,6 +57,7 @@ export default function DocumentView() {
     if (!window.confirm(`Удалить документ «${doc.title}»? Действие необратимо.`)) return;
     try {
       await api(`/documents/${id}`, { method: 'DELETE' });
+      reloadTypes();
       navigate('/');
     } catch (e) {
       alert(e.message);
@@ -82,19 +86,30 @@ export default function DocumentView() {
 
   return (
     <div>
-      <button className="btn btn-ghost btn-sm back" onClick={() => navigate(-1)}>← Назад</button>
+      <div className="breadcrumbs">
+        <a href="/">ИТ-портал</a><span className="sep">/</span><Link to="/">Документы</Link>
+        {doc.folder_id && folderMap[doc.folder_id] && (
+          <><span className="sep">/</span><Link to={`/?folder=${doc.folder_id}`}>📁 {folderMap[doc.folder_id].path}</Link></>
+        )}
+      </div>
 
       <div className="doc-layout">
         <article className="card doc-main">
           <div className="result-meta">
-            <span className={`badge type-${doc.doc_type}`}>{DOC_TYPES[doc.doc_type]}</span>
+            <TypeBadge code={doc.doc_type} />
             {doc.number && <span>№ {doc.number}</span>}
             {doc.adopted_at && <span>от {formatDate(doc.adopted_at)}</span>}
             <span className={`status status-${doc.status}`}>{DOC_STATUSES[doc.status]}</span>
+            <TagList tags={doc.tags} />
           </div>
           <h1 className="doc-title">{doc.title}</h1>
 
           <div className="doc-actions">
+            {doc.file_name && /\.(pdf|txt|md)$/i.test(doc.file_name) && (
+              <a className="btn btn-primary" href={`/docs/api/documents/${id}/file?inline=1`} target="_blank" rel="noopener">
+                Открыть оригинал{doc.file_pages ? ` (${doc.file_pages} стр.)` : ''}
+              </a>
+            )}
             {doc.file_name && (
               <button
                 className="btn"
@@ -105,12 +120,20 @@ export default function DocumentView() {
             )}
             {canEdit(user) && (
               <>
-                <Link to={`/documents/${id}/edit`} className="btn btn-primary">Редактировать</Link>
+                <Link to={`/documents/${id}/edit`} className="btn">Редактировать</Link>
                 <button className="btn btn-danger" onClick={remove}>Удалить</button>
               </>
             )}
           </div>
 
+          {doc.file_pages > 0 && doc.file_text_pages < doc.file_pages && (
+            <div className="alert alert-warn">
+              {doc.file_text_pages === 0
+                ? `Файл — скан (${doc.file_pages} стр. без текста): ниже показан только введённый вручную текст. `
+                : `Текст ниже получен с ${doc.file_text_pages} из ${doc.file_pages} стр. файла — остальные страницы являются сканами. `}
+              Весь документ целиком — кнопка «Открыть оригинал».
+            </div>
+          )}
           <MarkdownView content={doc.content} links={knownLinks} />
         </article>
 

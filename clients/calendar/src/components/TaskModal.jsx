@@ -91,6 +91,12 @@ export default function TaskModal({ taskId, createDefaults, onClose, onChanged }
           </div>
         </div>
 
+        {task.helpdesk_ticket_id && (
+          <div className="helpdesk-note">
+            <a href={`/helpdesk/#/tickets/${task.helpdesk_ticket_id}`}>Открыть заявку #{task.helpdesk_ticket_id} в helpdesk →</a>
+            <div className="muted">Задача создана из заявки. Срок, исполнитель, приоритет и статус меняются в заявке — здесь они обновятся сами.</div>
+          </div>
+        )}
         {task.description && <div className="task-desc">{task.description}</div>}
 
         {task.checklist.length > 0 && (

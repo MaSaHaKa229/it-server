@@ -360,3 +360,9 @@ table.difftable td { padding: 2px 8px 2px 0; vertical-align: top; }
 table.difftable .old { text-decoration: line-through; color: var(--text-subtle); }
 .chip-link { display: inline-flex; gap: 4px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 3px; font-weight: 500; }
 .chip-link:hover { background: var(--n20); text-decoration: none; }
+
+/* Пункты шапки не переносятся на две строки */
+.topnav a, .topbar .brand { white-space: nowrap; }
+/* Карточка рабочего места: таблице техники нужно больше ширины */
+.issue.wp-issue { grid-template-columns: minmax(0, 1fr) 320px; }
+@media (max-width: 1100px) { .issue.wp-issue { grid-template-columns: 1fr; } }

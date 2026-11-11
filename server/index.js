@@ -93,6 +93,7 @@ async function main() {
   inv.use('/devices', requireAuth, require('./inventory/routes/devices'));
   inv.use('/export', requireAuth, require('./inventory/routes/export'));
   inv.use('/import', requireStaff, require('./inventory/routes/import'));
+  inv.use('/workplaces', requireAuth, require('./inventory/routes/workplaces'));
   inv.use('/', requireAuth, require('./inventory/routes/catalog'));
   app.use('/inventory/api', inv);
 
@@ -105,10 +106,22 @@ async function main() {
   app.use((req, res, next) => (API_ONLY.test(req.path) ? res.status(404).json({ error: 'Не найдено' }) : next()));
 
   // ---------- Страницы ----------
-  const staticOpts = { index: false, maxAge: isProd ? '1h' : 0 };
+  const staticOpts = { index: false, setHeaders: cacheHeaders };
   const sendPage = (file) => (req, res) => {
     res.set('Cache-Control', 'no-cache');
-    res.sendFile(file);
+    res.sendFile(file, (err) => {
+      if (!err || res.headersSent) return;
+      // Файл страницы не найден — почти всегда это неполная папка public после обновления
+      const rel = path.relative(path.join(__dirname, '..'), file);
+      console.error(`Не найден файл ${rel}. Проверьте папку public (см. сообщение при запуске).`);
+      res.status(500).type('html').send(
+        '<!doctype html><meta charset="utf-8"><title>Ошибка установки</title>' +
+        '<div style="font:15px/1.5 sans-serif;max-width:640px;margin:60px auto;color:#172B4D">' +
+        '<h2>Портал установлен не полностью</h2>' +
+        `<p>Не найден файл <code>${rel}</code>.</p>` +
+        '<p>В папке портала в <code>public</code> должны быть папки: ' + PUBLIC_DIRS.join(', ') + '. ' +
+        'Скопируйте недостающие из полного архива обновления и перезапустите портал.</p></div>');
+    });
   };
   /** Страница доступна только вошедшим пользователям с доступом к модулю */
   const guard = (mod, min) => (req, res, next) => {
@@ -145,12 +158,43 @@ async function main() {
   });
 
   app.listen(PORT, () => console.log(`ИТ-портал запущен: http://localhost:${PORT}`));
+  checkPublic();
 
   if (HELPDESK_PORT) {
     const { createHelpdeskApp } = require('./helpdesk/public');
     createHelpdeskApp().listen(HELPDESK_PORT, () =>
       console.log(`Сайт заявок (helpdesk) запущен: http://localhost:${HELPDESK_PORT}`));
   }
+}
+
+/**
+ * Кэширование статики.
+ * Скрипты и стили портала подключаются по постоянным адресам (/shared/ui.js и т.п.), поэтому браузер
+ * должен перепроверять их при каждом открытии (no-cache + ETag: если файл не менялся — ответ 304).
+ * Иначе после обновления сервера браузер смешивает старые и новые модули и страница не открывается.
+ * Долго кэшируются только собранные файлы «Документов» и «Календаря» — у них хэш в имени.
+ */
+function cacheHeaders(res, filePath) {
+  if (/[\\/]assets[\\/][^\\/]+-[\w-]{8,}\.(js|css)$/.test(filePath)) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  } else {
+    res.setHeader('Cache-Control', 'no-cache');
+  }
+}
+
+// Папки интерфейса, без которых портал не работает
+const PUBLIC_DIRS = ['portal', 'shared', 'inventory', 'docs', 'calendar', 'helpdesk-staff', 'helpdesk'];
+
+/** Проверка при запуске: все ли папки интерфейса на месте (частая ошибка при ручном обновлении) */
+function checkPublic() {
+  const fs = require('fs');
+  // В shared нет страниц — только общие стили и скрипты
+  const marker = (d) => (d === 'shared' ? 'ui.js' : 'index.html');
+  const missing = PUBLIC_DIRS.filter((d) => !fs.existsSync(path.join(PUB, d, marker(d))));
+  if (!missing.length) return;
+  console.error('\n  ВНИМАНИЕ: папка public неполная. Нет: ' + missing.map((d) => `public\\${d}`).join(', '));
+  console.error(`  Папка: ${PUB}`);
+  console.error('  Скопируйте недостающие папки из полного архива обновления и перезапустите портал.\n');
 }
 
 /** Переход после входа — только на страницы этого же сайта */

@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const { query } = require('../inventory/db');
 const { requireSuperadmin } = require('../inventory/access');
 const { HttpError, ah, str, intOrNull } = require('../inventory/util');
-const { MODULES, DOC_TYPES, normalizeModules } = require('./modules');
+const { MODULES, normalizeModules } = require('./modules');
 const { syncUser, removeUser } = require('./sync');
 
 const router = express.Router();
@@ -16,12 +16,17 @@ const DEFAULT_READER = { types: null, departments: null, fields: null, passwords
 
 const roleFor = (isAdmin, modules) => (isAdmin ? 'superadmin' : modules.inventory === 'edit' ? 'editor' : 'reader');
 
-router.get('/meta', (req, res) => {
+router.get('/meta', ah(async (req, res) => {
+  // Виды документов — из справочника реестра документов
+  const { rows } = await query('SELECT code, name FROM docs.doc_types ORDER BY sort, name');
+  // Папки документов (дерево) — для выдачи доступа по папкам
+  const folders = (await require('../docs/routes/folders').loadTree()).map((f) => ({ id: f.id, name: f.name, path: f.path, depth: f.depth, parent_id: f.parent_id }));
   res.json({
     modules: Object.fromEntries(Object.entries(MODULES).map(([k, m]) => [k, { label: m.label, levels: m.levels }])),
-    docTypes: DOC_TYPES,
+    docTypes: Object.fromEntries(rows.map((r) => [r.code, r.name])),
+    docFolders: folders,
   });
-});
+}));
 
 router.get('/users', ah(async (req, res) => {
   const { rows } = await query(

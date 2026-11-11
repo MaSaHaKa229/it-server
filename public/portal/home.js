@@ -1,6 +1,6 @@
 // Главная страница портала: плитки разделов, доступных пользователю
 import { h, clear } from '/shared/ui.js';
-import { api, loadMe, topbar, helpdeskUrl } from './shell.js';
+import { api, loadMe, portalTopbar, helpdeskUrl } from './shell.js';
 
 const ICONS = {
   inventory: '<svg viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-5v2h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2H6a2 2 0 0 1-2-2zm2 0v9h12V5z"/></svg>',
@@ -15,7 +15,7 @@ const LEVEL = {
 };
 
 // Старые закладки ИТ-инвентаря (http://сервер:3000/#/devices/5) ведут теперь в /inventory/
-if (/^#\/(devices|catalog|settings|users|import)/.test(location.hash)) location.replace('/inventory/' + location.hash);
+if (/^#\/(devices|workplaces|catalog|settings|users|import)/.test(location.hash)) location.replace('/inventory/' + location.hash);
 
 async function main() {
   const app = document.getElementById('app');
@@ -59,26 +59,28 @@ async function main() {
   const hour = new Date().getHours();
   const greet = hour < 5 ? 'Доброй ночи' : hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер';
 
+  const LZ = { view: '', edit: '.green', admin: '.purple', executor: '.blue' };
   clear(app,
-    topbar(me, 'home'),
-    h('main.page',
+    portalTopbar(me, 'home'),
+    h('div.layout', h('main.main.full', h('div.page',
       deniedLabel ? h('div.error-box', { style: { marginBottom: '16px' } }, `Нет доступа к разделу «${deniedLabel}». Обратитесь к администратору портала.`) : null,
+      h('div.breadcrumbs', h('span', 'ИТ-портал')),
       h('div.page-head', h('div',
         h('h1', `${greet}, ${(me.user.full_name || me.user.username).split(' ').slice(-2).join(' ')}`),
-        h('div.muted', 'Выберите раздел'))),
+        h('div.muted', { style: { marginTop: '4px' } }, 'Выберите раздел'))),
       tiles.length
         ? h('div.tiles', tiles.map((t) => h('a.tile', { href: t.href, style: { '--tile': t.color } },
           h('div.tile-icon', { html: ICONS[t.key] }),
           h('div.tile-body',
             h('div.tile-title', t.title),
-            a[t.key] ? h('div.tile-level', LEVEL[a[t.key]] || '') : null,
+            a[t.key] ? h('div.tile-level', h('span.lozenge' + (LZ[a[t.key]] || ''), LEVEL[a[t.key]] || '')) : null,
             h('p', t.text),
             t.stats ? h('div.stats', t.stats) : null))))
-        : h('div.card.empty', 'Вам пока не открыт ни один раздел. Обратитесь к администратору портала.'),
-      h('div.card.hd-card',
+        : h('div.empty-state', h('h3', 'Нет доступных разделов'), 'Обратитесь к администратору портала.'),
+      h('div.panel.hd-banner',
         h('div', h('strong', 'Сайт заявок для сотрудников предприятия'),
           h('div.muted.small', 'Сотрудники, не входящие в ИТ-отдел, регистрируются по рабочей почте и оставляют заявки здесь:')),
-        h('a.btn', { href: helpdeskUrl(me), target: '_blank', rel: 'noopener' }, helpdeskUrl(me).replace(/^https?:\/\//, '')))));
+        h('a.btn', { href: helpdeskUrl(me), target: '_blank', rel: 'noopener' }, helpdeskUrl(me).replace(/^https?:\/\//, '')))))));
 }
 
 main().catch((e) => {

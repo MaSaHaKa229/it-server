@@ -9,6 +9,7 @@ const { HttpError, ah, str, intOrNull } = require('../inventory/util');
 const { level, atLeast } = require('../portal/modules');
 const L = require('./lib');
 const notify = require('./notify');
+const calendarSync = require('./calendar-sync');
 
 const { query, tx } = L;
 const router = express.Router();
@@ -224,6 +225,7 @@ router.patch('/tickets/:id', ah(async (req, res) => {
     }
     if (sets.length) await db.query(`UPDATE tickets SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`, vals);
   });
+  await calendarSync.syncTicket(id, req.user.id);
   if (events.includes('status')) notify.statusChanged(id).catch(() => {});
   if (events.includes('assigned')) notify.assigned(id).catch(() => {});
   res.json(await loadTicket(id));
@@ -246,6 +248,7 @@ router.post('/tickets/:id/comments', L.upload.array('files', 5), ah(async (req, 
 }));
 
 router.delete('/tickets/:id', requireAdmin, ah(async (req, res) => {
+  await calendarSync.removeTicketTask(intOrNull(req.params.id));
   const { rowCount } = await query('DELETE FROM tickets WHERE id = $1', [intOrNull(req.params.id)]);
   if (!rowCount) throw new HttpError(404, 'Заявка не найдена');
   res.json({ ok: true });
@@ -278,21 +281,19 @@ router.get('/devices', ah(async (req, res) => {
 function categoryBody(b) {
   const name = str(b.name, 100);
   if (!name) throw new HttpError(400, 'Укажите название');
-  const sla = b.sla_hours === '' || b.sla_hours == null ? null : Number(b.sla_hours);
-  if (sla !== null && (!Number.isInteger(sla) || sla <= 0)) throw new HttpError(400, 'Срок — целое число часов');
   return [name, str(b.description, 500), str(b.icon, 8) || '🛠', Number(b.sort) || 0, b.is_active !== false,
-    b.default_assignee_id ? Number(b.default_assignee_id) : null, sla];
+    b.default_assignee_id ? Number(b.default_assignee_id) : null];
 }
 router.post('/categories', requireAdmin, ah(async (req, res) => {
   const { rows } = await query(
-    `INSERT INTO categories (name, description, icon, sort, is_active, default_assignee_id, sla_hours)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`, categoryBody(req.body || {}));
+    `INSERT INTO categories (name, description, icon, sort, is_active, default_assignee_id)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`, categoryBody(req.body || {}));
   res.status(201).json(rows[0]);
 }));
 router.put('/categories/:id', requireAdmin, ah(async (req, res) => {
   const { rows } = await query(
     `UPDATE categories SET name = $1, description = $2, icon = $3, sort = $4, is_active = $5,
-            default_assignee_id = $6, sla_hours = $7 WHERE id = $8 RETURNING *`,
+            default_assignee_id = $6 WHERE id = $7 RETURNING *`,
     [...categoryBody(req.body || {}), intOrNull(req.params.id)]);
   if (!rows[0]) throw new HttpError(404, 'Не найдено');
   res.json(rows[0]);

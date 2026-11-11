@@ -2,8 +2,9 @@ const express = require('express');
 const multer = require('multer');
 const { query, withTx } = require('../db');
 const { requireAuth, requireRole } = require('../auth');
-const { extractText, fixFilename, ALLOWED_EXT } = require('../extract');
-const { ah, httpError, parseId, TYPES, STATUSES, EDITORS } = require('../utils');
+const { extractFile, fixFilename, ALLOWED_EXT } = require('../extract');
+const { visibleConds, canSeeDoc } = require('../access');
+const { ah, httpError, parseId, STATUSES, EDITORS } = require('../utils');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -32,26 +33,72 @@ function parseDocFields(body) {
   }
   return {
     title,
-    doc_type: TYPES.includes(body.doc_type) ? body.doc_type : 'other',
+    doc_type: String(body.doc_type || 'other').slice(0, 40),
     number: String(body.number || '').trim().slice(0, 100),
     adopted_at,
     status: STATUSES.includes(body.status) ? body.status : 'active',
     content: String(body.content ?? '').replace(/\u0000/g, '').replace(/\r\n?/g, '\n'),
+    folder_id: body.folder_id && Number(body.folder_id) > 0 ? Number(body.folder_id) : null,
+    tags: parseTags(body.tags),
   };
 }
 
 /* ---------- Ограничение по видам документов (задаётся администратором портала) ---------- */
-const typeAllowed = (req, t) => !req.user.docTypes || req.user.docTypes.includes(t);
-
+/* ---------- Доступ: виды документов и папки (задаёт администратор портала) ---------- */
 async function assertVisible(req, id) {
-  if (!req.user.docTypes) return;
-  const { rows } = await query('SELECT doc_type FROM documents WHERE id = $1', [id]);
-  if (!rows[0] || !typeAllowed(req, rows[0].doc_type)) throw httpError(404, 'Документ не найден');
+  if (!req.user.docTypes && !req.user.folderIds) return;
+  const { rows } = await query('SELECT doc_type, folder_id FROM documents WHERE id = $1', [id]);
+  if (!rows[0] || !canSeeDoc(req.user, rows[0])) throw httpError(404, 'Документ не найден');
 }
 
-function assertTypeAllowed(req, t) {
-  if (!typeAllowed(req, t)) throw httpError(403, 'Нет доступа к документам этого вида');
+// Можно ли сохранить документ с таким видом и в такую папку
+async function assertPlacement(req, f) {
+  if (req.user.docTypes && !req.user.docTypes.includes(f.doc_type)) throw httpError(403, 'Нет доступа к документам этого вида');
+  if (!(await query('SELECT 1 FROM doc_types WHERE code = $1', [f.doc_type])).rows[0]) throw httpError(400, 'Неизвестный вид документа');
+  if (f.folder_id === null) {
+    if (req.user.folderIds) throw httpError(400, 'Выберите папку: вам доступны только документы в выданных папках');
+    return;
+  }
+  if (!(await query('SELECT 1 FROM folders WHERE id = $1', [f.folder_id])).rows[0]) throw httpError(400, 'Папка не найдена');
+  if (req.user.folderIds && !req.user.folderIds.includes(f.folder_id)) throw httpError(403, 'Нет доступа к этой папке');
 }
+
+// Теги приходят списком названий (JSON или через запятую)
+function parseTags(v) {
+  if (v === undefined || v === null) return null;
+  let list = v;
+  if (typeof v === 'string') {
+    try { list = JSON.parse(v); } catch { list = v.split(','); }
+  }
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  return list.map((t) => String(t).trim().slice(0, 60)).filter((t) => {
+    const k = t.toLowerCase();
+    if (!t || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 30);
+}
+
+const TAG_COLORS = ['#0052CC', '#00875A', '#FF8B00', '#5243AA', '#DE350B', '#00A3BF', '#6554C0', '#36B37E'];
+
+// Записать теги документа; новые названия создаются на лету
+async function saveTags(client, id, names) {
+  if (names === null) return;
+  await client.query('DELETE FROM document_tags WHERE document_id = $1', [id]);
+  for (const name of names) {
+    let tag = (await client.query('SELECT id FROM tags WHERE lower(name) = lower($1)', [name])).rows[0];
+    if (!tag) {
+      const n = (await client.query('SELECT count(*)::int AS n FROM tags')).rows[0].n;
+      tag = (await client.query('INSERT INTO tags (name, color) VALUES ($1, $2) RETURNING id',
+        [name, TAG_COLORS[n % TAG_COLORS.length]])).rows[0];
+    }
+    await client.query('INSERT INTO document_tags (document_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, tag.id]);
+  }
+}
+
+const TAGS_JSON = (alias) => `COALESCE((SELECT json_agg(json_build_object('id', tg.id, 'name', tg.name, 'color', tg.color) ORDER BY tg.name)
+      FROM document_tags dt JOIN tags tg ON tg.id = dt.tag_id WHERE dt.document_id = ${alias}.id), '[]')`;
 
 async function syncLinks(client, id, content) {
   const ids = [...new Set([...content.matchAll(LINK_RE)].map((m) => Number(m[1])))]
@@ -67,13 +114,19 @@ async function syncLinks(client, id, content) {
 }
 
 async function saveFile(client, id, file) {
+  // Сколько страниц в PDF и со скольких получен текст — чтобы показать, если часть документа — скан
+  let info = { pages: null, textPages: null };
+  if (file.originalname.toLowerCase().endsWith('.pdf')) {
+    try { info = file.extracted || await extractFile(file); } catch { /* файл всё равно сохраняем */ }
+  }
   await client.query(
-    `INSERT INTO document_files (document_id, filename, mime_type, size, data)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO document_files (document_id, filename, mime_type, size, data, pages, text_pages)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (document_id) DO UPDATE SET
        filename = EXCLUDED.filename, mime_type = EXCLUDED.mime_type,
-       size = EXCLUDED.size, data = EXCLUDED.data, uploaded_at = now()`,
-    [id, file.originalname, file.mimetype || 'application/octet-stream', file.size, file.buffer]
+       size = EXCLUDED.size, data = EXCLUDED.data, uploaded_at = now(),
+       pages = EXCLUDED.pages, text_pages = EXCLUDED.text_pages`,
+    [id, file.originalname, file.mimetype || 'application/octet-stream', file.size, file.buffer, info.pages, info.textPages]
   );
 }
 
@@ -95,8 +148,22 @@ router.get('/', ah(async (req, res) => {
   const p = (v) => { params.push(v); return `$${params.length}`; };
   const where = [];
 
-  if (TYPES.includes(req.query.type)) where.push(`d.doc_type = ${p(req.query.type)}`);
-  if (req.user.docTypes) where.push(`d.doc_type = ANY(${p(req.user.docTypes)}::text[])`);
+  if (req.query.type) where.push(`d.doc_type = ${p(String(req.query.type))}`);
+  where.push(...visibleConds(req.user, p));
+  // Папка: вместе с вложенными; folder=0 — документы без папки
+  if (req.query.folder !== undefined && req.query.folder !== '') {
+    const fid = Number(req.query.folder);
+    if (fid === 0) where.push('d.folder_id IS NULL');
+    else if (Number.isInteger(fid)) {
+      where.push(`d.folder_id IN (WITH RECURSIVE t AS (SELECT id FROM folders WHERE id = ${p(fid)}
+        UNION SELECT f.id FROM folders f JOIN t ON f.parent_id = t.id) SELECT id FROM t)`);
+    }
+  }
+  if (req.query.tag) {
+    const tags = String(req.query.tag).split(',').map(Number).filter(Number.isInteger);
+    // Несколько тегов — документ должен иметь все
+    for (const t of tags) where.push(`EXISTS (SELECT 1 FROM document_tags x WHERE x.document_id = d.id AND x.tag_id = ${p(t)})`);
+  }
   if (STATUSES.includes(req.query.status)) where.push(`d.status = ${p(req.query.status)}`);
 
   let rank = '0';
@@ -135,10 +202,10 @@ router.get('/', ah(async (req, res) => {
 
   // Внутренний запрос выбирает страницу, фрагменты считаются только для неё
   const sql = `
-    SELECT p.id, p.title, p.doc_type, p.number, p.adopted_at, p.status, p.updated_at,
-           p.rank, p.total, ${snippet} AS snippet
+    SELECT p.id, p.title, p.doc_type, p.number, p.adopted_at, p.status, p.updated_at, p.folder_id,
+           p.rank, p.total, ${snippet} AS snippet, ${TAGS_JSON('p')} AS tags
     FROM (
-      SELECT d.id, d.title, d.doc_type, d.number, d.adopted_at, d.status, d.updated_at, d.content,
+      SELECT d.id, d.title, d.doc_type, d.number, d.adopted_at, d.status, d.updated_at, d.content, d.folder_id,
              ${rank} AS rank, COUNT(*) OVER () AS total
       FROM documents d
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
@@ -159,7 +226,8 @@ router.get('/', ah(async (req, res) => {
 /* ---------- Извлечение текста из файла (для предпросмотра в редакторе) ---------- */
 router.post('/extract', requireRole(...EDITORS), upload.single('file'), ah(async (req, res) => {
   if (!req.file) throw httpError(400, 'Файл не передан');
-  res.json({ text: await extractText(req.file), filename: req.file.originalname });
+  const r = await extractFile(req.file);
+  res.json({ text: r.text, filename: req.file.originalname, pages: r.pages, textPages: r.textPages, warning: r.warning });
 }));
 
 /* ---------- Документ ---------- */
@@ -167,7 +235,8 @@ router.get('/:id', ah(async (req, res) => {
   const id = parseId(req.params.id);
   const { rows } = await query(
     `SELECT d.id, d.title, d.doc_type, d.number, d.adopted_at, d.status, d.content,
-            d.created_at, d.updated_at,
+            d.created_at, d.updated_at, d.folder_id, ${TAGS_JSON('d')} AS tags,
+            f.pages AS file_pages, f.text_pages AS file_text_pages, f.mime_type AS file_mime,
             COALESCE(NULLIF(cu.full_name, ''), cu.username) AS created_by_name,
             COALESCE(NULLIF(uu.full_name, ''), uu.username) AS updated_by_name,
             f.filename AS file_name, f.size AS file_size
@@ -178,10 +247,11 @@ router.get('/:id', ah(async (req, res) => {
      WHERE d.id = $1`,
     [id]
   );
-  if (!rows[0] || !typeAllowed(req, rows[0].doc_type)) throw httpError(404, 'Документ не найден');
+  if (!rows[0] || !canSeeDoc(req.user, rows[0])) throw httpError(404, 'Документ не найден');
 
-  const vis = req.user.docTypes ? 'AND d.doc_type = ANY($2::text[])' : '';
-  const lp = req.user.docTypes ? [id, req.user.docTypes] : [id];
+  const lp = [id];
+  const conds = visibleConds(req.user, (v) => { lp.push(v); return `$${lp.length}`; });
+  const vis = conds.length ? 'AND ' + conds.join(' AND ') : '';
   const [links, backlinks] = await Promise.all([
     query(
       `SELECT d.id, d.title, d.doc_type, d.number, d.status FROM document_links l
@@ -206,10 +276,17 @@ router.get('/:id/file', ah(async (req, res) => {
     [id]
   );
   if (!rows[0]) throw httpError(404, 'Файл не найден');
-  res.set('Content-Type', rows[0].mime_type);
+  // ?inline=1 — открыть PDF/текст прямо в браузере (весь документ целиком, включая сканы)
+  const isPdf = rows[0].filename.toLowerCase().endsWith('.pdf');
+  const isText = /\.(txt|md)$/i.test(rows[0].filename);
+  const inline = req.query.inline === '1' && (isPdf || isText);
+  res.set('Content-Type', isPdf ? 'application/pdf' : isText && inline ? 'text/plain; charset=utf-8' : rows[0].mime_type);
+  res.set('X-Content-Type-Options', 'nosniff');
+  // Встроенный просмотрщик PDF в некоторых браузерах не работает при строгой политике содержимого
+  if (inline && isPdf) res.removeHeader('Content-Security-Policy');
   res.set(
     'Content-Disposition',
-    `attachment; filename*=UTF-8''${encodeURIComponent(rows[0].filename)}`
+    `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(rows[0].filename)}`
   );
   res.send(rows[0].data);
 }));
@@ -244,17 +321,19 @@ router.get('/:id/versions/:vid', ah(async (req, res) => {
 /* ---------- Создание ---------- */
 router.post('/', requireRole(...EDITORS), upload.single('file'), ah(async (req, res) => {
   const f = parseDocFields(req.body);
-  assertTypeAllowed(req, f.doc_type);
-  if (req.file && !f.content.trim()) f.content = await extractText(req.file);
+  await assertPlacement(req, f);
+  if (req.file && req.file.originalname.toLowerCase().endsWith('.pdf')) req.file.extracted = await extractFile(req.file);
+  if (req.file && !f.content.trim()) f.content = (req.file.extracted || await extractFile(req.file)).text;
 
   try {
     const id = await withTx(async (c) => {
       const { rows } = await c.query(
-        `INSERT INTO documents (title, doc_type, number, adopted_at, status, content, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $7) RETURNING id`,
-        [f.title, f.doc_type, f.number, f.adopted_at, f.status, f.content, req.user.id]
+        `INSERT INTO documents (title, doc_type, number, adopted_at, status, content, folder_id, created_by, updated_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) RETURNING id`,
+        [f.title, f.doc_type, f.number, f.adopted_at, f.status, f.content, f.folder_id, req.user.id]
       );
       const newId = rows[0].id;
+      await saveTags(c, newId, f.tags || []);
       if (req.file) await saveFile(c, newId, req.file);
       await syncLinks(c, newId, f.content);
       return newId;
@@ -269,9 +348,10 @@ router.post('/', requireRole(...EDITORS), upload.single('file'), ah(async (req, 
 router.put('/:id', requireRole(...EDITORS), upload.single('file'), ah(async (req, res) => {
   const id = parseId(req.params.id);
   const f = parseDocFields(req.body);
-  assertTypeAllowed(req, f.doc_type);
   await assertVisible(req, id);
-  if (req.file && !f.content.trim()) f.content = await extractText(req.file);
+  await assertPlacement(req, f);
+  if (req.file && req.file.originalname.toLowerCase().endsWith('.pdf')) req.file.extracted = await extractFile(req.file);
+  if (req.file && !f.content.trim()) f.content = (req.file.extracted || await extractFile(req.file)).text;
 
   try {
     await withTx(async (c) => {
@@ -294,10 +374,11 @@ router.put('/:id', requireRole(...EDITORS), upload.single('file'), ah(async (req
       );
       await c.query(
         `UPDATE documents SET title = $1, doc_type = $2, number = $3, adopted_at = $4,
-           status = $5, content = $6, updated_by = $7, updated_at = now()
+           status = $5, content = $6, updated_by = $7, updated_at = now(), folder_id = $9
          WHERE id = $8`,
-        [f.title, f.doc_type, f.number, f.adopted_at, f.status, f.content, req.user.id, id]
+        [f.title, f.doc_type, f.number, f.adopted_at, f.status, f.content, req.user.id, id, f.folder_id]
       );
+      await saveTags(c, id, f.tags);
       if (req.file) await saveFile(c, id, req.file);
       else if (req.body.remove_file === '1') {
         await c.query('DELETE FROM document_files WHERE document_id = $1', [id]);

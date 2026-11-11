@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { DOC_STATUSES } from '../constants.js';
 import MarkdownView from '../components/MarkdownView.jsx';
 import DocLinkPicker from '../components/DocLinkPicker.jsx';
+import { TagEditor } from '../components/Tags.jsx';
 
 const EMPTY = { title: '', doc_type: 'law', number: '', adopted_at: '', status: 'active', content: '' };
 
@@ -14,8 +15,13 @@ export default function DocumentEdit() {
   const navigate = useNavigate();
   const taRef = useRef(null);
 
-  const { docTypes } = useAuth();
-  const [form, setForm] = useState(() => ({ ...EMPTY, doc_type: docTypes.law ? 'law' : Object.keys(docTypes)[0] || 'other' }));
+  const { docTypes, reloadTypes, folders, restrictedFolders } = useAuth();
+  const [query] = useSearchParams();
+  // Новый документ создаётся в папке, из которой нажали «Добавить»
+  const startFolder = query.get('folder') || (restrictedFolders && folders[0] ? String(folders[0].id) : '');
+  const [form, setForm] = useState(() => ({ ...EMPTY, folder_id: startFolder, doc_type: docTypes.law ? 'law' : Object.keys(docTypes)[0] || 'other' }));
+  const [tags, setTags] = useState([]);
+  const [fileNote, setFileNote] = useState('');
   const [expectedUpdatedAt, setExpectedUpdatedAt] = useState('');
   const [existingFile, setExistingFile] = useState(null);
   const [file, setFile] = useState(null);
@@ -35,7 +41,9 @@ export default function DocumentEdit() {
         setForm({
           title: d.title, doc_type: d.doc_type, number: d.number,
           adopted_at: d.adopted_at || '', status: d.status, content: d.content,
+          folder_id: d.folder_id ? String(d.folder_id) : '',
         });
+        setTags(d.tags.map((t) => t.name));
         setExpectedUpdatedAt(d.updated_at);
         setExistingFile(d.file_name);
       })
@@ -75,6 +83,7 @@ export default function DocumentEdit() {
     const f = e.target.files[0] || null;
     setFile(f);
     setRemoveFile(false);
+    setFileNote('');
     if (!f) return;
     if (form.content.trim() && !window.confirm('Заменить текущий текст документа текстом из файла?')) return;
     setExtracting(true);
@@ -82,7 +91,8 @@ export default function DocumentEdit() {
     try {
       const fd = new FormData();
       fd.append('file', f);
-      const { text } = await api('/documents/extract', { method: 'POST', form: fd });
+      const { text, warning } = await api('/documents/extract', { method: 'POST', form: fd });
+      setFileNote(warning || '');
       setForm((prev) => ({
         ...prev,
         content: text,
@@ -102,6 +112,7 @@ export default function DocumentEdit() {
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      fd.append('tags', JSON.stringify(tags));
       if (file) fd.append('file', file);
       if (removeFile) fd.append('remove_file', '1');
       if (!isNew) fd.append('expected_updated_at', expectedUpdatedAt);
@@ -109,6 +120,7 @@ export default function DocumentEdit() {
         method: isNew ? 'POST' : 'PUT',
         form: fd,
       });
+      reloadTypes();
       navigate(`/documents/${r.id}`);
     } catch (err) {
       setError(err.message);
@@ -151,6 +163,21 @@ export default function DocumentEdit() {
         </label>
       </div>
 
+      <div className="grid-2">
+        <label className="field">
+          <span>Папка</span>
+          <select className="input" value={form.folder_id} onChange={set('folder_id')} required={restrictedFolders}>
+            {!restrictedFolders && <option value="">Без папки</option>}
+            {folders.map((f) => <option key={f.id} value={f.id}>{'\u00A0\u00A0\u00A0'.repeat(f.level) + f.name}</option>)}
+          </select>
+        </label>
+        <div className="field">
+          <span>Теги</span>
+          <TagEditor value={tags} onChange={setTags} />
+        </div>
+      </div>
+
+      {fileNote && <div className="alert alert-warn">{fileNote}</div>}
       <div className="field">
         <span>Файл документа (PDF, DOCX, TXT, MD — до 50 МБ)</span>
         <div className="file-row">
