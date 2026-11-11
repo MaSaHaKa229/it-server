@@ -8,6 +8,7 @@ import Search from './pages/Search.jsx';
 import DocumentView from './pages/DocumentView.jsx';
 import DocumentEdit from './pages/DocumentEdit.jsx';
 import DocTypes from './pages/DocTypes.jsx';
+import Folders from './pages/Folders.jsx';
 import Profile from './pages/Profile.jsx';
 
 function RequireAuth({ roles, children }) {
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/documents/new" element={<RequireAuth roles={EDITOR_ROLES}><DocumentEdit key="new" /></RequireAuth>} />
             <Route path="/documents/:id" element={<RequireAuth><DocumentView /></RequireAuth>} />
             <Route path="/documents/:id/edit" element={<RequireAuth roles={EDITOR_ROLES}><DocumentEdit /></RequireAuth>} />
+            <Route path="/folders" element={<RequireAuth roles={EDITOR_ROLES}><Folders /></RequireAuth>} />
             <Route path="/types" element={<RequireAuth roles={EDITOR_ROLES}><DocTypes /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
             <Route path="*" element={<p className="muted center">Страница не найдена</p>} />

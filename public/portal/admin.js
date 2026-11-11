@@ -83,6 +83,7 @@ function levelCell(u, mod) {
   const label = meta.modules[mod].levels[lv];
   const extra = [];
   if (mod === 'docs' && lv !== 'none' && Array.isArray(u.modules.docs_types) && u.modules.docs_types.length) extra.push('часть видов');
+  if (mod === 'docs' && lv !== 'none' && Array.isArray(u.modules.docs_folders)) extra.push(`папок: ${u.modules.docs_folders.length}`);
   if (mod === 'calendar' && lv !== 'none' && lv !== 'admin' && u.modules.calendar_own_only) extra.push('только свои');
   if (mod === 'inventory' && lv === 'view') extra.push('по настройкам читателя');
   const cls = { view: '', edit: '.green', admin: '.purple', executor: '.blue' }[lv] ?? '';
@@ -133,6 +134,29 @@ function userDialog(u) {
   docAll.addEventListener('change', () => docBoxes.forEach((l) => {
     const cb = l.querySelector('input'); cb.disabled = docAll.checked; if (docAll.checked) cb.checked = true;
   }));
+  // Доступ по папкам документов: «все» или отмеченные (вложенные открываются вместе с папкой)
+  const folderSel = new Set(Array.isArray(mods.docs_folders) ? mods.docs_folders : []);
+  const folderAll = h('input', { type: 'checkbox', checked: !Array.isArray(mods.docs_folders) });
+  const folderBoxes = (meta.docFolders || []).map((f) => {
+    const cb = h('input', { type: 'checkbox', value: f.id, checked: folderSel.has(f.id) });
+    return { f, cb, el: h('label.check', { style: { paddingLeft: (f.depth * 20) + 'px', display: 'flex' }, title: f.path }, cb, '📁 ' + f.name) };
+  });
+  // Отмеченная папка открывает вложенные: показываем их отмеченными и недоступными для снятия
+  function syncFolders() {
+    const on = new Set(folderBoxes.filter((x) => x.cb.dataset.own === '1').map((x) => x.f.id));
+    for (const x of folderBoxes) {
+      const inherited = !folderAll.checked && x.f.parent_id && (on.has(x.f.parent_id) || folderBoxes.find((y) => y.f.id === x.f.parent_id)?.cb.dataset.inh === '1');
+      x.cb.dataset.inh = inherited ? '1' : '';
+      x.cb.disabled = folderAll.checked || !!inherited;
+      x.cb.checked = folderAll.checked || !!inherited || x.cb.dataset.own === '1';
+    }
+  }
+  for (const x of folderBoxes) {
+    x.cb.dataset.own = folderSel.has(x.f.id) ? '1' : '';
+    x.cb.addEventListener('change', () => { x.cb.dataset.own = x.cb.checked ? '1' : ''; syncFolders(); });
+  }
+  folderAll.addEventListener('change', syncFolders);
+  syncFolders();
   const ownOnly = h('input', { type: 'checkbox', checked: !!mods.calendar_own_only });
 
   function renderMods() {
@@ -161,8 +185,14 @@ function userDialog(u) {
                 ? h('div.mod-extra.small', 'По умолчанию читатель видит всю технику, кроме паролей. Ограничить можно после создания в «ИТ-инвентарь → Пользователи».')
                 : null,
               m === 'docs' && mods.docs !== 'none'
-                ? h('div.mod-extra', h('div.row.wrap', h('strong.small', 'Виды документов:'), h('label.check.small', docAll, 'все')),
-                  h('div.row.wrap', { style: { marginTop: '6px', gap: '12px' } }, docBoxes))
+                ? [h('div.mod-extra',
+                  h('div.row', h('strong.small', 'Папки:'), h('label.check.small', folderAll, 'все папки и документы без папки')),
+                  folderBoxes.length
+                    ? h('div.stack', { style: { marginTop: '8px', gap: '4px', maxHeight: '220px', overflowY: 'auto' } }, folderBoxes.map((x) => x.el))
+                    : h('p.hint', 'Папок пока нет — их создают в разделе «Документы → Папки и теги».'),
+                  h('p.hint', 'Сотрудник видит только документы в отмеченных папках. Отметка папки открывает и все вложенные в неё.')),
+                h('div.mod-extra', h('div.row.wrap', h('strong.small', 'Виды документов:'), h('label.check.small', docAll, 'все')),
+                  h('div.row.wrap', { style: { marginTop: '6px', gap: '12px' } }, docBoxes))]
                 : null,
               m === 'calendar' && ['view', 'edit'].includes(mods.calendar)
                 ? h('div.mod-extra', h('label.check.small', ownOnly, 'Видит только свои задачи (где он автор или исполнитель)'))
@@ -176,10 +206,12 @@ function userDialog(u) {
     onclick: () => run(async () => {
       const types = docAll.checked ? null : docBoxes.map((l) => l.querySelector('input')).filter((c) => c.checked).map((c) => c.value);
       if (types && !types.length && mods.docs !== 'none') throw new Error('Отметьте хотя бы один вид документов или выберите «Нет доступа»');
+      const folderIds = folderAll.checked ? null : folderBoxes.filter((x) => x.cb.dataset.own === '1' && x.cb.dataset.inh !== '1').map((x) => x.f.id);
+      if (folderIds && !folderIds.length && mods.docs !== 'none') throw new Error('Отметьте хотя бы одну папку документов, «все папки» или выберите «Нет доступа»');
       const body = {
         username: username.value.trim(), password: password.value || undefined,
         full_name: fullName.value, email: email.value, is_active: active.checked, is_admin: isAdmin.checked,
-        modules: { ...mods, docs_types: types, calendar_own_only: ownOnly.checked },
+        modules: { ...mods, docs_types: types, docs_folders: folderIds, calendar_own_only: ownOnly.checked },
       };
       if (isNew) await api.post('/api/admin/users', body); else await api.put('/api/admin/users/' + u.id, body);
       m.close(); toast(isNew ? 'Пользователь создан' : 'Сохранено'); render();

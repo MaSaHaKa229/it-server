@@ -19,9 +19,12 @@ const roleFor = (isAdmin, modules) => (isAdmin ? 'superadmin' : modules.inventor
 router.get('/meta', ah(async (req, res) => {
   // Виды документов — из справочника реестра документов
   const { rows } = await query('SELECT code, name FROM docs.doc_types ORDER BY sort, name');
+  // Папки документов (дерево) — для выдачи доступа по папкам
+  const folders = (await require('../docs/routes/folders').loadTree()).map((f) => ({ id: f.id, name: f.name, path: f.path, depth: f.depth, parent_id: f.parent_id }));
   res.json({
     modules: Object.fromEntries(Object.entries(MODULES).map(([k, m]) => [k, { label: m.label, levels: m.levels }])),
     docTypes: Object.fromEntries(rows.map((r) => [r.code, r.name])),
+    docFolders: folders,
   });
 }));
 

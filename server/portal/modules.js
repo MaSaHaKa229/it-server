@@ -46,6 +46,10 @@ function normalizeModules(m) {
   out.docs_types = Array.isArray(m.docs_types)
     ? m.docs_types.map(String).filter((t) => /^[\w-]{1,40}$/.test(t)).slice(0, 200)
     : null;
+  // Папки документов: null — все, иначе список id выданных папок
+  out.docs_folders = Array.isArray(m.docs_folders)
+    ? [...new Set(m.docs_folders.map(Number).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 2000)
+    : null;
   out.calendar_own_only = !!m.calendar_own_only;
   return out;
 }

@@ -1,6 +1,4 @@
 const mammoth = require('mammoth');
-// Прямой импорт: index.js пакета pdf-parse в некоторых окружениях пытается читать тестовый файл
-const pdfParse = require('pdf-parse/lib/pdf-parse.js');
 const { httpError } = require('./utils');
 
 const ALLOWED_EXT = ['.pdf', '.docx', '.txt', '.md'];
@@ -34,14 +32,101 @@ function cleanup(text) {
     .trim();
 }
 
-async function extractText(file) {
+// ---------- PDF ----------
+// pdf.js из пакета pdf-parse подключаем напрямую и разбираем КАЖДУЮ страницу отдельно:
+// сам pdf-parse при ошибке на странице молча возвращает пустую строку, и текст терялся без сообщения.
+// Если основной движок не дал текста страницы, она разбирается вторым (более новым).
+const PDF_ENGINES = ['v1.10.100', 'v2.0.550'];
+const engines = {};
+function engine(version) {
+  if (!engines[version]) {
+    const lib = require(`pdf-parse/lib/pdf.js/${version}/build/pdf.js`);
+    lib.disableWorker = true;
+    engines[version] = lib;
+  }
+  return engines[version];
+}
+
+async function pageText(page) {
+  const content = await page.getTextContent({ normalizeWhitespace: false, disableCombineTextItems: false });
+  let lastY;
+  let text = '';
+  for (const item of content.items) {
+    text += (lastY === item.transform[5] || lastY === undefined ? '' : '\n') + item.str;
+    lastY = item.transform[5];
+  }
+  return text;
+}
+
+async function openPdf(version, buffer) {
+  // Копия данных: движок может забрать буфер себе
+  const task = engine(version).getDocument({ data: new Uint8Array(buffer) });
+  return task.promise || task;
+}
+
+/** Текст PDF по страницам: { text, pages, textPages, emptyPages: [номера] } */
+async function extractPdf(buffer) {
+  let doc;
+  let used = 0;
+  let firstError;
+  for (; used < PDF_ENGINES.length; used++) {
+    try { doc = await openPdf(PDF_ENGINES[used], buffer); break; } catch (e) { firstError = firstError || e; }
+  }
+  if (!doc) throw firstError;
+  const total = doc.numPages;
+  const texts = new Array(total).fill('');
+  const read = async (d, i) => { try { return (await pageText(await d.getPage(i))).trim(); } catch { return ''; } };
+  for (let i = 1; i <= total; i++) texts[i - 1] = await read(doc, i);
+
+  // Страницы без текста пробуем вторым движком
+  let missing = texts.map((t, i) => (t ? 0 : i + 1)).filter(Boolean);
+  if (missing.length && used + 1 < PDF_ENGINES.length) {
+    try {
+      const alt = await openPdf(PDF_ENGINES[used + 1], buffer);
+      for (const i of missing) texts[i - 1] = await read(alt, i);
+      if (alt.destroy) alt.destroy();
+    } catch { /* второй движок не открыл файл — остаёмся с тем, что есть */ }
+    missing = texts.map((t, i) => (t ? 0 : i + 1)).filter(Boolean);
+  }
+  if (doc.destroy) doc.destroy();
+  return { text: texts.filter(Boolean).join('\n\n'), pages: total, textPages: total - missing.length, emptyPages: missing };
+}
+
+/** «4, 5, 6, 9» → «4–6, 9» */
+function ranges(nums) {
+  const out = [];
+  for (let i = 0; i < nums.length; i++) {
+    let j = i;
+    while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++;
+    out.push(i === j ? String(nums[i]) : `${nums[i]}–${nums[j]}`);
+    i = j;
+  }
+  return out.join(', ');
+}
+
+/**
+ * Извлечь текст из файла.
+ * Возвращает { text, pages, textPages, warning } — pages/textPages только для PDF.
+ */
+async function extractFile(file) {
   const name = file.originalname.toLowerCase();
   let text;
+  let info = { pages: null, textPages: null, warning: null };
   try {
     if (name.endsWith('.docx')) {
       text = (await mammoth.extractRawText({ buffer: file.buffer })).value;
     } else if (name.endsWith('.pdf')) {
-      text = (await pdfParse(file.buffer)).text;
+      const r = await extractPdf(file.buffer);
+      text = r.text;
+      info = { pages: r.pages, textPages: r.textPages, warning: null };
+      if (r.emptyPages.length === r.pages) {
+        info.warning = `В файле ${r.pages} стр., но текста в них нет — это скан (изображения страниц). ` +
+          'Поиск по тексту такого документа работать не будет; сам файл сохранится и откроется целиком кнопкой «Открыть оригинал». ' +
+          'Текст можно ввести вручную.';
+      } else if (r.emptyPages.length) {
+        info.warning = `Текст получен с ${r.textPages} из ${r.pages} стр. Без текста страницы: ${ranges(r.emptyPages)} — ` +
+          'скорее всего, это сканы или изображения. Их содержимое не попадёт в поиск; файл сохранится целиком и откроется кнопкой «Открыть оригинал».';
+      }
     } else if (name.endsWith('.txt') || name.endsWith('.md')) {
       text = decodeText(file.buffer);
     } else {
@@ -51,7 +136,9 @@ async function extractText(file) {
     if (e.expose) throw e;
     throw httpError(400, `Не удалось извлечь текст из файла: ${e.message}`);
   }
-  return cleanup(text);
+  return { text: cleanup(text), ...info };
 }
 
-module.exports = { extractText, fixFilename, ALLOWED_EXT };
+const extractText = async (file) => (await extractFile(file)).text;
+
+module.exports = { extractText, extractFile, fixFilename, ALLOWED_EXT };

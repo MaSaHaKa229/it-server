@@ -100,3 +100,34 @@ DO $$ BEGIN
   ALTER TABLE documents ADD CONSTRAINT documents_doc_type_fk
     FOREIGN KEY (doc_type) REFERENCES doc_types(code) ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ------------------------------------------------------------
+-- Папки (дерево) и теги
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS folders (
+  id         SERIAL PRIMARY KEY,
+  parent_id  INTEGER REFERENCES folders(id) ON DELETE RESTRICT,
+  name       VARCHAR(200) NOT NULL,
+  sort       INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS folders_name_idx ON folders (COALESCE(parent_id, 0), lower(name));
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS documents_folder_idx ON documents (folder_id);
+
+CREATE TABLE IF NOT EXISTS tags (
+  id    SERIAL PRIMARY KEY,
+  name  VARCHAR(60) NOT NULL,
+  color VARCHAR(7) NOT NULL DEFAULT '#6B778C'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS tags_name_idx ON tags (lower(name));
+CREATE TABLE IF NOT EXISTS document_tags (
+  document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  tag_id      INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (document_id, tag_id)
+);
+CREATE INDEX IF NOT EXISTS document_tags_tag_idx ON document_tags (tag_id);
+
+-- Сколько страниц в загруженном PDF и со скольких получен текст (для предупреждения о сканах)
+ALTER TABLE document_files ADD COLUMN IF NOT EXISTS pages INTEGER;
+ALTER TABLE document_files ADD COLUMN IF NOT EXISTS text_pages INTEGER;

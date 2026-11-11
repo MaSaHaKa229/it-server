@@ -15,6 +15,8 @@ function apiRouter() {
   r.use('/auth', require('./routes/auth'));
   r.use('/documents', require('./routes/documents'));
   r.use('/doc-types', require('./routes/doc-types'));
+  r.use('/folders', require('./routes/folders').folders);
+  r.use('/tags', require('./routes/folders').tags);
   r.use((req, res) => res.status(404).json({ error: 'Не найдено' }));
   // eslint-disable-next-line no-unused-vars
   r.use((err, req, res, next) => {
