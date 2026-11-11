@@ -350,7 +350,7 @@
     clear(
       app,
       topbar({
-        brandText: "\u0417\u0430\u044F\u0432\u043A\u0438 \u0432 \u0418\u0422-\u043E\u0442\u0434\u0435\u043B",
+        brandText: "HelpDesk",
         brandHref: "#/",
         logo: "hd",
         nav,
@@ -366,33 +366,18 @@
   function authPage(title, ...content) {
     clear(app, h(
       "div.login-page",
-      h("div.login-brand", h("span.brand-logo.hd", "?"), "\u0417\u0430\u044F\u0432\u043A\u0438 \u0432 \u0418\u0422-\u043E\u0442\u0434\u0435\u043B"),
+      h("div.login-brand", h("span.brand-logo.hd", "?"), "HelpDesk"),
       h(
         "div.login-card",
         { style: title === "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F" ? { width: "560px" } : {} },
         h("h1", title),
         content
-      ),
-      cfg.portalUrl ? h(
-        "p.muted.small",
-        { style: { marginTop: "24px" } },
-        "\u0421\u043E\u0442\u0440\u0443\u0434\u043D\u0438\u043A\u0430\u043C \u0418\u0422-\u043E\u0442\u0434\u0435\u043B\u0430: ",
-        h("a", { href: portalLink() }, "\u0432\u0445\u043E\u0434 \u0432 \u0418\u0422-\u043F\u043E\u0440\u0442\u0430\u043B")
-      ) : null
+      )
     ));
     setTimeout(() => {
       var _a;
       return (_a = app.querySelector("input")) == null ? void 0 : _a.focus();
     }, 30);
-  }
-  function portalLink() {
-    try {
-      const u = new URL(cfg.portalUrl);
-      if (u.hostname === "localhost" && location.hostname !== "localhost") u.hostname = location.hostname;
-      return u.toString();
-    } catch (e) {
-      return cfg.portalUrl;
-    }
   }
   async function logout() {
     await api.post("/logout").catch(() => {
