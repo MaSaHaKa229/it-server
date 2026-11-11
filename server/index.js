@@ -80,6 +80,7 @@ async function main() {
   portalApi.use('/summary', require('./portal/summary'));
   portalApi.use('/notifications', require('./portal/notifications')); // колокольчик уведомлений
   portalApi.use('/search', require('./portal/search'));               // общий поиск в шапке
+  portalApi.use('/my', require('./portal/views'));                    // сохранённые фильтры, избранное, недавние
   app.use('/api', portalApi);
 
   // ---------- ИТ-инвентарь ----------
@@ -100,6 +101,7 @@ async function main() {
   inv.use('/netinfo', requireAuth, require('./inventory/netprobe')); // сведения из сети (AD, WMI, SNMP)
   inv.use('/netscan', requireStaff, require('./inventory/netprobe/scan')); // сканирование сети — редакторы и администратор
   inv.use('/audits', requireStaff, require('./inventory/routes/audits')); // инвентаризация — редакторы и администратор
+  inv.use('/moves', requireAuth, require('./inventory/routes/moves'));    // перемещения техники
   inv.use('/', requireAuth, require('./inventory/routes/catalog'));
   app.use('/inventory/api', inv);
 

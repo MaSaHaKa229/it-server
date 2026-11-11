@@ -35,10 +35,11 @@ export function fileInput() {
 }
 
 const ACTION = {
-  created: () => 'создал(а) заявку',
-  status: (d) => ['статус: ', h('b', d.from || '—'), ' → ', h('b', d.to || '—')],
+  created: (d) => (d && d.staff ? `создал(а) заявку ${d.channel || ''}`.trim() : 'создал(а) заявку'),
+  due_confirmed: () => 'срок подтверждён',
+  status: (d) => ['статус: ', h('b', d.from || '—'), ' → ', h('b', d.to || '—'), d.via === 'calendar' ? ' (из календаря)' : ''],
   assignee: (d) => (d.to ? ['исполнитель: ', h('b', d.to), d.auto ? ' (назначен автоматически)' : ''] : ['снят исполнитель ', h('b', d.from || '')]),
-  due: (d) => (d.to ? ['срок: ', h('b', fmtDateTime(d.to))] : 'срок снят'),
+  due: (d) => (d.to ? [d.auto ? 'срок по нормативу: ' : 'срок: ', h('b', fmtDateTime(d.to))] : 'срок снят'),
   priority: (d) => ['приоритет: ', h('b', d.to)],
   category: (d) => ['вид проблемы: ', h('b', d.to || '—')],
   device: (d) => (d.added ? `привязана техника ${d.added}` : d.removed ? `отвязана техника ${d.removed}`

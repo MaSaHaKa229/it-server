@@ -210,27 +210,27 @@ router.post('/', requireStaff, ah(async (req, res) => {
 }));
 
 // =================== Изменение ===================
-router.patch('/:id', requireStaff, ah(async (req, res) => {
-  const id = intOrNull(req.params.id);
-  await tx(async (db) => {
+/** Изменить устройство (как в карточке): поля, доп. поля; изменения — в историю. Возвращает изменения */
+async function updateDevice(db, id, body, userId) {
+  {
     const cur = await db.query('SELECT type_id, extra FROM devices WHERE id = $1 FOR UPDATE', [id]);
     if (!cur.rows[0]) throw new HttpError(404, 'Устройство не найдено');
-    const cols = await parseDeviceBody(db, req.body, { partial: true });
+    const cols = await parseDeviceBody(db, body, { partial: true });
     const typeId = cols.type_id || cur.rows[0].type_id;
     const defs = await applicableDefs(db, typeId, id);
 
     const beforeRow = (await loadVisible(db, STAFF_P, id)).row;
 
-    if (req.body.extra !== undefined) {
-      const changes = normalizeExtra(req.body.extra, defs);
+    if (body.extra !== undefined) {
+      const changes = normalizeExtra(body.extra, defs);
       const extra = { ...cur.rows[0].extra };
       for (const [k, v] of Object.entries(changes)) {
         if (v === null) delete extra[k]; else extra[k] = v;
       }
       cols.extra = JSON.stringify(extra);
     }
-    if (!Object.keys(cols).length) return;
-    cols.updated_by = req.user.id;
+    if (!Object.keys(cols).length) return {};
+    cols.updated_by = userId;
     const keys = Object.keys(cols);
     await db.query(
       `UPDATE devices SET ${keys.map((k, i) => `${k} = $${i + 1}`).join(', ')}, updated_at = now() WHERE id = $${keys.length + 1}`,
@@ -238,8 +238,14 @@ router.patch('/:id', requireStaff, ah(async (req, res) => {
     );
     const afterRow = (await loadVisible(db, STAFF_P, id)).row;
     const ch = diff(displayMap(beforeRow, defs), displayMap(afterRow, defs));
-    if (Object.keys(ch).length) await addHistory(db, id, req.user.id, 'updated', ch);
-  });
+    if (Object.keys(ch).length) await addHistory(db, id, userId, 'updated', ch);
+    return ch;
+  }
+}
+
+router.patch('/:id', requireStaff, ah(async (req, res) => {
+  const id = intOrNull(req.params.id);
+  await tx((db) => updateDevice(db, id, req.body, req.user.id));
   res.json({ ok: true });
 }));
 
@@ -261,6 +267,12 @@ router.post('/bulk', requireStaff, ah(async (req, res) => {
         await addHistory(db, r.id, req.user.id, 'updated',
           { 'Состояние': [L[r.old_status] || r.old_status, L[value]] });
       }
+    } else if (action === 'update') {
+      // Массовое изменение полей: value — те же поля, что в карточке (тип и состояние — отдельно)
+      const v = value && typeof value === 'object' ? { ...value } : {};
+      delete v.type_id;
+      if (!Object.keys(v).length) throw new HttpError(400, 'Не выбрано ни одного поля');
+      for (const id of ids) await updateDevice(db, id, v, req.user.id);
     } else if (action === 'delete') {
       await db.query('DELETE FROM devices WHERE id = ANY($1::int[])', [ids]);
     } else {
@@ -423,3 +435,4 @@ router.delete('/:id/credentials/:cid', requireStaff, ah(async (req, res) => {
 
 module.exports = router;
 module.exports.loadVisible = loadVisible;
+module.exports.updateDevice = updateDevice;

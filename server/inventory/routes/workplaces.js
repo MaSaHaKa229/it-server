@@ -37,6 +37,18 @@ router.get('/', ah(async (req, res) => {
   res.json(rows);
 }));
 
+router.get('/export.xlsx', ah(async (req, res) => {
+  const params = [];
+  const vis = visibleWhere(req.perms, params);
+  const { rows } = await query(`${SELECT(vis)} ORDER BY w.name`, params);
+  await require('../../portal/xlsx').sendXlsx(res, 'workplaces.xlsx', 'Рабочие места', [
+    { header: 'Рабочее место', key: 'name', width: 28 }, { header: 'Сотрудник', key: 'employee', width: 26 },
+    { header: 'Отдел', key: 'department', width: 24 }, { header: 'Расположение', key: 'location', width: 18 },
+    { header: 'Техники', key: 'device_count', width: 10 }, { header: 'Что стоит', key: 'device_types', width: 40 },
+    { header: 'Примечание', key: 'notes', width: 40 },
+  ], rows);
+}));
+
 async function loadWorkplace(req, id) {
   const params = [];
   const vis = visibleWhere(req.perms, params);

@@ -185,3 +185,8 @@ CREATE TABLE IF NOT EXISTS assign_rules (
   is_active     BOOLEAN NOT NULL DEFAULT true,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Срок по нормативу вида проблемы (categories.sla_hours) ставится сам; due_auto — ещё не подтверждён администратором.
+-- channel — откуда заявка: web (сайт заявок), phone, visit, email, other (создана службой ИТ за сотрудника)
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS due_auto BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'web';

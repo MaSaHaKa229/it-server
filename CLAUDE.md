@@ -47,10 +47,10 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
 Все права проверяются на сервере. Изменяющие запросы к API требуют заголовок `X-Requested-With` (защита от CSRF).
 
 **Связи между модулями:**
-- заявка helpdesk ↔ задача календаря (`server/helpdesk/calendar-sync.js`, односторонняя синхронизация из заявки);
+- заявка helpdesk ↔ задача календаря (`server/helpdesk/calendar-sync.js`: из заявки — всё, из задачи — только статус);
 - заявка → техника инвентаря: `helpdesk.ticket_devices` (несколько устройств; `tickets.device_id` — первое, для совместимости);
   привязка/отвязка — исполнитель или админ helpdesk, пишется в `history` заявки и `public.device_history` (ticket_linked/unlinked);
-- срок заявки выставляет только администратор helpdesk при назначении исполнителя.
+- срок заявки выставляет администратор helpdesk (или он ставится по нормативу вида проблемы и подтверждается администратором);
 
 **Регулярные задачи календаря** — `calendar.task_series` (шаблон, `every_months`, `until`, `tz`); повторы — обычные
 строки `tasks` с `series_id`/`series_idx`, создаются по требованию `ensureOccurrences()` (`server/calendar/series.js`)
@@ -88,6 +88,15 @@ React-клиенты грузят его динамически по адрес�
 **Подключение к сеансу** (RDP shadow) — `netprobe/remote.js`: кнопка в карточке скачивает `.cmd` с
 `powershell -EncodedCommand` (qwinsta → `mstsc /shadow`, иначе msra/RDP), настройка `netprobe_settings.remote_connect`
 (enabled/control/consent, меняет суперадмин), каждое скачивание — `device_history` action `remote_connect`. На Windows не проверялось.
+**Перемещения** — `device_moves` (`server/inventory/routes/moves.js`, `public/inventory/js/pages/moves.js`: окно
+«Переместить», «Изменить поля…» → `devices/bulk` action `update` через `updateDevice()` из devices.js).
+**Заявка за сотрудника** — `POST /helpdesk/api/tickets` (staff.js, `requesterFor`: без e-mail — адрес-заглушка
+`*@helpdesk.invalid`, на него `mail.send` не шлёт), `tickets.channel`; **норматив** — `categories.sla_hours`,
+`tickets.due_auto` (подтверждение `confirm_due`), это смягчает правило «срок ставит только администратор».
+**Задача → заявка** — `calendar-sync.fromTask()` из PATCH задачи (только статус).
+**Сохранённые фильтры, избранное, недавние** — `server/portal/views.js` (`/api/my/views`, `/api/my/items`; таблицы
+`saved_views`, `user_items`), клиент — `public/shared/recent.js` (`starButton`, `mountRecent` в `mountHeaderTools`).
+**Excel** — `server/portal/xlsx.js` `sendXlsx()`; маршруты `…/export.xlsx` используют те же отборы, что списки.
 **Сканирование по расписанию** — `netprobe_settings.scan_schedule`, `scan.js` `startSchedule()`; новые — уведомление `netscan_new`.
 Главная — `public/portal/home.js` + `/api/summary/my` (мои заявки, мои задачи на сегодня, уведомления).
 Значения для карточки — `netprobe/format.js`: шаблоны (`netprobe_settings.formats`) и замены (`netprobe_replacements`). Поиск в AD: база из настроек → домен контроллера → GC:// леса

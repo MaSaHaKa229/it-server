@@ -72,7 +72,8 @@ const fromOf = (c) => c.from || c.user || 'it-portal@localhost';
 /** Отправить письмо; ошибки только пишутся в журнал */
 async function send(to, subject, text) {
   const t = getTransport();
-  if (!t || !to) return false;
+  // *.invalid — служебный адрес сотрудника без почты (заявка создана службой ИТ по телефону)
+  if (!t || !to || /\.invalid$/i.test(String(to))) return false;
   try {
     await t.sendMail({ from: fromOf(cfg), to, subject, text });
     return true;

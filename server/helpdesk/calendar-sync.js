@@ -1,4 +1,5 @@
-// Заявки → календарь (односторонняя синхронизация).
+// Заявки ↔ календарь. Из заявки в задачу переносится всё (название, срок, исполнитель, статус);
+// из задачи в заявку — только статус (fromTask): выполнил задачу — заявка закрыта, вернул в работу — открыта.
 // Каждая заявка = задача в календаре (категория «Заявки»). Пока исполнителя нет — задача без исполнителя
 // на день создания; после назначения — у исполнителя, на срок или на день назначения.
 // Срок, исполнитель и статус меняются только в заявке — правки задачи в календаре
@@ -147,4 +148,48 @@ async function backfill() {
   return rows.length;
 }
 
-module.exports = { syncTicket, removeTicketTask, backfill };
+/**
+ * Задача календаря → заявка: статус задачи меняет статус заявки.
+ * done — первый «закрытый» статус (не «отклонена/отменена»), cancelled — «отклонена/отменена» (если есть),
+ * in_progress — первый открытый не начальный статус, todo — начальный. Права — как в заявке: администратор helpdesk
+ * или исполнитель этой заявки (свободную заявку исполнитель берёт себе). Возвращает текст для журнала или null.
+ */
+async function fromTask(taskId, taskStatus, user) {
+  const { level } = require('../portal/modules');
+  const lv = level(user, 'helpdesk');
+  if (!['executor', 'admin'].includes(lv)) return null;
+  const c = db();
+  const { rows } = await c.query(
+    `SELECT t.id, t.status_id, t.assignee_id, s.name AS status_name, s.is_closed
+       FROM helpdesk.tickets t JOIN helpdesk.statuses s ON s.id = t.status_id
+      WHERE t.calendar_task_id = $1 OR t.id = (SELECT helpdesk_ticket_id FROM calendar.tasks WHERE id = $1) LIMIT 1`, [taskId]);
+  const t = rows[0];
+  if (!t) return null;
+  if (lv !== 'admin' && t.assignee_id && t.assignee_id !== user.id) return null;
+  const { rows: sts } = await c.query('SELECT * FROM helpdesk.statuses ORDER BY sort, id');
+  const cancel = (s) => /отклон|отмен|отозван/i.test(s.name);
+  const target = {
+    done: sts.find((s) => s.is_closed && !cancel(s)) || sts.find((s) => s.is_closed),
+    cancelled: sts.find((s) => s.is_closed && cancel(s)),
+    in_progress: sts.find((s) => !s.is_closed && !s.is_default) || sts.find((s) => s.is_default),
+    todo: sts.find((s) => s.is_default) || sts.find((s) => !s.is_closed),
+  }[taskStatus];
+  if (!target || target.id === t.status_id) return null;
+  // Уже в «той же группе» (например, закрыта другим закрытым статусом) — не трогаем
+  if ((taskStatus === 'done' || taskStatus === 'cancelled') && t.is_closed) return null;
+  // Открытая заявка: из «новой» в «в работе» — да; остальное (в работе → к выполнению) не трогаем
+  const isNew = t.status_id === (sts.find((s) => s.is_default) || {}).id;
+  if ((taskStatus === 'todo' || taskStatus === 'in_progress') && !t.is_closed && !(taskStatus === 'in_progress' && isNew)) return null;
+  const who = { userId: user.id };
+  await L.tx(async (x) => {
+    await x.query(`UPDATE helpdesk.tickets SET status_id = $2, updated_at = now(),
+                     closed_at = ${target.is_closed ? 'COALESCE(closed_at, now())' : 'NULL'}${!t.assignee_id ? ', assignee_id = $3' : ''}
+                   WHERE id = $1`, !t.assignee_id ? [t.id, target.id, user.id] : [t.id, target.id]);
+    if (!t.assignee_id) await L.addHistory(x, t.id, who, 'assignee', { from: null, to: user.role === 'superadmin' ? 'Служба ИТ' : (user.full_name || user.username) });
+    await L.addHistory(x, t.id, who, 'status', { from: t.status_name, to: target.name, via: 'calendar' });
+  });
+  require('./notify').statusChanged(t.id).catch(() => {});
+  return `Заявка #${t.id}: ${target.name}`;
+}
+
+module.exports = { syncTicket, removeTicketTask, backfill, fromTask };

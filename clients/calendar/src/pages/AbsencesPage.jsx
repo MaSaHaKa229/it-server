@@ -76,6 +76,8 @@ export default function AbsencesPage() {
             <b className="year-title">{year}</b>
             <button className="icon-btn" onClick={() => setYear((y) => y + 1)} aria-label="Следующий год"><Icon name="right" /></button>
           </span>
+          <a className="btn" title="Выгрузить в Excel отсутствия за год"
+            href={'/calendar/api/absences/export.xlsx' + qs({ from: `${year}-01-01`, to: `${year + 1}-01-01`, kind: kinds, user: who })}>Excel</a>
           <MultiSelect label="Сотрудники" allLabel="Все сотрудники" searchable value={who} onChange={setWho}
             options={users.filter((u) => u.is_active).map((u) => ({ value: String(u.id), label: u.name, color: u.color }))} />
           <MultiSelect label="Виды" allLabel="Все виды" value={kinds} onChange={setKinds}

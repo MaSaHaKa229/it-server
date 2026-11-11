@@ -104,11 +104,14 @@ async function addHistory(db, ticketId, who, action, details = {}) {
     [ticketId, who.userId || null, who.requesterId || null, action, JSON.stringify(details)]);
 }
 
+/** Срок по нормативу вида проблемы (от момента from) или null */
+const slaDue = (cat, from = new Date()) => (cat && cat.sla_hours ? new Date(new Date(from).getTime() + cat.sla_hours * 3600e3) : null);
+
 const PRIORITIES = { low: 'Низкий', normal: 'Обычный', high: 'Высокий', critical: 'Критический' };
 
 // Общий SELECT заявки
 const TICKET_SELECT = `
-  SELECT t.id, t.title, t.description, t.location, t.priority, t.due_at, t.created_at, t.updated_at, t.closed_at,
+  SELECT t.id, t.title, t.description, t.location, t.priority, t.due_at, t.due_auto, t.channel, t.created_at, t.updated_at, t.closed_at,
          t.requester_id, t.category_id, t.status_id, t.assignee_id, t.device_id, t.calendar_task_id,
          c.name AS category_name, c.icon AS category_icon,
          s.name AS status_name, s.color AS status_color, s.is_closed,
@@ -153,5 +156,5 @@ module.exports = {
   resolveDepartment, departments,
   pool, query, tx, migrate, parseDomains, getSettings, setSetting,
   mailEnabled, sendMail, sendMailStrict, helpdeskUrl, portalUrl,
-  upload, saveAttachments, sendAttachment, addHistory, PRIORITIES, TICKET_SELECT, MAX_FILE,
+  upload, saveAttachments, sendAttachment, addHistory, PRIORITIES, TICKET_SELECT, MAX_FILE, slaDue,
 };

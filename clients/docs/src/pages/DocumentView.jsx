@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, downloadFile } from '../api.js';
 import { useAuth } from '../auth.jsx';
@@ -177,7 +177,10 @@ export default function DocumentView() {
             <span className={`status status-${doc.status}`}>{DOC_STATUSES[doc.status]}</span>
             <TagList tags={doc.tags} />
           </div>
-          <h1 className="doc-title">{doc.title}</h1>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            <h1 className="doc-title" style={{ flex: 1 }}>{doc.title}</h1>
+            <Star item={{ kind: 'document', ref: String(doc.id), title: doc.title, link: `/docs/documents/${doc.id}` }} />
+          </div>
 
           <div className="doc-actions">
             {doc.file_name && /\.(pdf|txt|md)$/i.test(doc.file_name) && (
@@ -251,4 +254,15 @@ export default function DocumentView() {
       )}
     </div>
   );
+}
+
+// Звёздочка «в избранное» и отметка в «недавних» (общий модуль портала /shared/recent.js)
+const RECENT_URL = ['', 'shared', 'recent.js'].join('/');
+function Star({ item }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const host = ref.current;
+    import(/* @vite-ignore */ RECENT_URL).then((m) => { if (host) host.replaceChildren(m.starButton(item)); }).catch(() => {});
+  }, [item.ref]);
+  return <span ref={ref} />;
 }

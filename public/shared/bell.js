@@ -231,5 +231,8 @@ export function mountHeaderTools(host) {
   const s = document.createElement('span');
   host.append(s);
   import('./search.js').then((m) => m.mountSearch(s)).catch(() => {});
+  const r = document.createElement('span');
+  host.append(r);
+  import('./recent.js').then((m) => m.mountRecent(r)).catch(() => {});
   return mountBell(host);
 }

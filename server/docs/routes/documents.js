@@ -143,11 +143,12 @@ function dbError(e) {
 }
 
 /* ---------- Поиск / список ---------- */
-router.get('/', ah(async (req, res) => {
+/** Поиск документов (список и выгрузка в Excel — с одинаковыми отборами); all — без постраничности */
+async function search(req, all = false) {
   const q = String(req.query.q || '').trim().slice(0, 500);
   const mode = ['all', 'title', 'content'].includes(req.query.mode) ? req.query.mode : 'all';
-  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
-  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+  const limit = all ? 20000 : Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+  const page = all ? 1 : Math.max(parseInt(req.query.page, 10) || 1, 1);
 
   const params = [];
   const p = (v) => { params.push(v); return `$${params.length}`; };
@@ -220,12 +221,30 @@ router.get('/', ah(async (req, res) => {
     ORDER BY ${order}`;
 
   const { rows } = await query(sql, params);
-  res.json({
+  return {
     items: rows.map(({ total, ...r }) => r),
     total: rows.length ? Number(rows[0].total) : 0,
     page,
     limit,
-  });
+  };
+}
+
+router.get('/', ah(async (req, res) => res.json(await search(req))));
+
+// Выгрузка найденного в Excel (те же отборы, что в поиске)
+router.get('/export.xlsx', ah(async (req, res) => {
+  const d = await search(req, true);
+  const types = Object.fromEntries((await query('SELECT code, name FROM doc_types')).rows.map((r) => [r.code, r.name]));
+  const folders = Object.fromEntries((await query('SELECT id, name FROM folders')).rows.map((r) => [r.id, r.name]));
+  const ST = { active: 'Действует', inactive: 'Утратил силу', draft: 'Проект' };
+  await require('../../portal/xlsx').sendXlsx(res, 'documents.xlsx', 'Документы', [
+    { header: 'Название', key: 'title', width: 60 }, { header: 'Вид', key: 'doc_type', width: 18, get: (x) => types[x.doc_type] || x.doc_type },
+    { header: 'Номер', key: 'number', width: 14 }, { header: 'Дата принятия', key: 'adopted_at', width: 14, date: 'day' },
+    { header: 'Статус', key: 'status', width: 14, get: (x) => ST[x.status] || x.status },
+    { header: 'Папка', key: 'folder', width: 22, get: (x) => folders[x.folder_id] || '' },
+    { header: 'Теги', key: 'tags', width: 26, get: (x) => (x.tags || []).map((t) => t.name).join(', ') },
+    { header: 'Изменён', key: 'updated_at', width: 17, date: true },
+  ], d.items);
 }));
 
 /* ---------- Извлечение текста из файла (для предпросмотра в редакторе) ---------- */

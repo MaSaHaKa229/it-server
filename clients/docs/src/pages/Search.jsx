@@ -83,7 +83,15 @@ export default function Search() {
         {curFolder && curFolder.path.split(' / ').slice(0, -1).map((n, i) => <span key={i}><span className="sep">/ </span>{n}</span>)}
         {(curFolder || folder === '0' || curTag) && <><span className="sep">/</span><span>{title}</span></>}
       </div>
-      <div className="page-head"><h1>{title}</h1>{data && <span className="count-badge">{data.total}</span>}</div>
+      <div className="page-head"><h1>{title}</h1>{data && <span className="count-badge">{data.total}</span>}
+        <span style={{ flex: 1 }} />
+        {data && data.total > 0 && (
+          <a className="btn" title="Выгрузить в Excel все найденные документы"
+            href={'/docs/api/documents/export.xlsx?' + new URLSearchParams(Object.entries({ q, mode, type, status, folder, tag, sort }).filter(([, v]) => v))}>
+            Excel
+          </a>
+        )}
+      </div>
       <form
         className="search-box card"
         onSubmit={(e) => { e.preventDefault(); update({ q: text.trim() }); }}

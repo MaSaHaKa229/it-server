@@ -158,3 +158,8 @@ a.tab:hover { text-decoration: none; }
 .home-sec { font-size: 16px; margin: 8px 0 12px; }
 .home-card .nb-item { border-bottom: 1px solid var(--n30); }
 .home-card-head a, .home-card-head .lozenge { white-space: nowrap; }
+
+/* Заявки: сохранённые фильтры в боковой панели */
+.saved-link { display: flex; align-items: center; }
+.saved-link .side-link { flex: 1; min-width: 0; }
+.saved-link .btn { padding: 0 6px; height: 24px; }

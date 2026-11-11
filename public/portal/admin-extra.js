@@ -239,9 +239,14 @@ export async function renderAudit(box) {
   let t = null;
   q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(apply, 300); });
 
+  const excel = h('a.btn', { title: 'Выгрузить в Excel записи с текущими отборами' }, 'Excel');
+  const syncExcel = () => { excel.href = '/api/admin/audit/export.xlsx?' + new URLSearchParams({ action: auditFilter.action, q: auditFilter.q, from: auditFilter.from, to: auditFilter.to }); };
+  syncExcel();
+  [action, q, from, to].forEach((x) => x.addEventListener('change', () => setTimeout(syncExcel, 0)));
+  q.addEventListener('input', () => setTimeout(syncExcel, 400));
   clear(box,
     h('p.muted', { style: { marginTop: 0 } }, 'Входы в портал (в том числе неудачные попытки), изменения пользователей и прав, настроек, резервные копии. Записи хранятся бессрочно.'),
-    h('div.toolbar', action, h('div.search-box', q), h('span.muted', 'с'), from, h('span.muted', 'по'), to),
+    h('div.toolbar', action, h('div.search-box', q), h('span.muted', 'с'), from, h('span.muted', 'по'), to, h('span.spacer'), excel),
     table, pager);
   await load();
 }

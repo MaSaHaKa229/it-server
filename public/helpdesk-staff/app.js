@@ -2,7 +2,7 @@
 import { h, clear, makeApi, modal, run, toast, confirmDialog, avatar, fmtDateTime, relTime, toLocalInput, statusPill, parseHash, sortHead, sortRows, savedSort } from '/shared/ui.js';
 import { thread, fileList, fileInput, historyList } from '/shared/thread.js';
 import { loadMe, portalTopbar, helpdeskUrl } from '/portal/shell.js';
-import { renderReports, renderRules } from './extra.js';
+import { renderReports, renderRules, newTicketDialog } from './extra.js';
 
 const api = makeApi('/helpdesk/api', {
   onUnauthorized: () => { location.href = '/login?next=' + encodeURIComponent('/helpdesk/' + location.hash); },
@@ -30,12 +30,57 @@ async function boot() {
   side = h('aside.sidebar');
   main = h('main.main');
   clear(app, header, h('div.layout', side, main));
+  loadSaved();
   window.addEventListener('hashchange', route);
   route();
 }
 async function loadMeta() { meta = await api.get('/meta'); }
 
 // Каркас как в ИТ-инвентаре: шапка с разделами, боковая панель с быстрыми фильтрами
+// Сохранённые фильтры (у каждого свои; общие видят все)
+const savedBox = h('div.side-section');
+async function loadSaved() {
+  const list = await portalCall('GET', '/api/my/views?section=helpdesk').catch(() => []);
+  drawSaved(Array.isArray(list) ? list : []);
+}
+function drawSaved(list) {
+  const cur = location.hash;
+  clear(savedBox, list.length ? [h('h4', 'Мои фильтры'), list.map((v) => {
+    const href = `#/?view=${encodeURIComponent(v.params.view || 'open')}&f=${encodeURIComponent(JSON.stringify(v.params.state || {}))}`;
+    return h('div.saved-link', h('a.side-link' + (cur === href ? '.active' : ''), { href, title: v.mine ? '' : `Общий фильтр (${v.owner})` },
+      (v.shared ? '👥 ' : '') + v.name),
+    v.mine ? h('button.btn.subtle.sm', { title: 'Удалить фильтр', onclick: async () => {
+      if (!await confirmDialog(`Удалить фильтр «${v.name}»?`, 'Заявки не удаляются — только сохранённый отбор.')) return;
+      run(async () => { await portalCall('DELETE', '/api/my/views/' + v.id); loadSaved(); });
+    } }, '×') : null);
+  })] : null);
+}
+const portalCall = async (method, url, body) => {
+  const r = await fetch(url, { method, credentials: 'same-origin', headers: { 'X-Requested-With': 'portal', 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || `Ошибка ${r.status}`);
+  return d;
+};
+function saveViewDialog(view) {
+  const name = h('input', { type: 'text', placeholder: 'Например: Принтеры отдела кадров' });
+  const shared = h('input', { type: 'checkbox' });
+  const save = h('button.btn.primary', 'Сохранить');
+  const m = modal({
+    title: 'Сохранить фильтр',
+    body: h('div.stack', { style: { gap: '12px' } },
+      h('label.field', h('span', 'Название'), name),
+      h('label.check', shared, 'Общий — виден всем сотрудникам службы ИТ'),
+      h('p.hint', 'Запоминаются раздел слева (открытые, мои…), поиск и выбранные отборы. Фильтр появится слева в «Моих фильтрах».')),
+    footer: [h('button.btn', { onclick: () => m.close() }, 'Отмена'), save],
+  });
+  setTimeout(() => name.focus(), 50);
+  save.addEventListener('click', () => run(async () => {
+    const state = Object.fromEntries(Object.entries(listState).filter(([, v]) => v));
+    await portalCall('POST', '/api/my/views', { section: 'helpdesk', name: name.value, shared: shared.checked, params: { view, state } });
+    m.close(); toast('Фильтр сохранён'); loadSaved();
+  }, save));
+}
+
 function layout(active, content) {
   const settingsPages = ['reports', 'rules', 'categories', 'statuses', 'requesters', 'settings'];
   clear(header, portalTopbar(me, settingsPages.includes(active) ? active : 'list', {
@@ -55,6 +100,7 @@ function layout(active, content) {
       QUICK.map(([k, label]) => link(k, '#/?view=' + k, label,
         { open: counts.open, mine: counts.mine, unassigned: counts.unassigned, overdue: counts.overdue }[k],
         k === 'overdue' || k === 'unassigned'))),
+    savedBox,
     h('div.side-section', h('h4', 'Анализ'), link('reports', '#/reports', 'Отчёты')),
     meta.me.isAdmin ? h('div.side-section', h('h4', 'Настройка'),
       link('rules', '#/rules', 'Автоназначение'),
@@ -110,6 +156,8 @@ async function renderList(params) {
   const view = params.get('view') || 'open';
   const base = (QUICK.find(([k]) => k === view) || QUICK[0])[2];
   const requester = params.get('requester');
+  // Сохранённый фильтр: #/?view=…&f={…}
+  if (params.get('f')) { try { Object.assign(listState, { status: '', category: '', assignee: '', priority: '', q: '' }, JSON.parse(params.get('f'))); } catch { /* испорченная ссылка */ } }
   const table = h('table.list');
   let rows = [];
   const info = h('span.muted.small');
@@ -124,11 +172,17 @@ async function renderList(params) {
   let t;
   search.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { listState.q = search.value; load(); }, 250); });
 
-  async function load() {
+  const excel = h('a.btn', { title: 'Выгрузить в Excel заявки с текущим отбором' }, 'Excel');
+  function query() {
     const q = new URLSearchParams({ ...base });
     for (const k of ['status', 'category', 'priority', 'q', 'sort']) if (listState[k]) q.set(k, listState[k]);
     if (listState.assignee && !base.assignee) q.set('assignee', listState.assignee);
     if (requester) q.set('requester', requester);
+    return q;
+  }
+  async function load() {
+    const q = query();
+    excel.href = '/helpdesk/api/tickets/export.xlsx?' + q;
     const res = await api.get('/tickets?' + q);
     counts = res.counts;
     rows = res.tickets;
@@ -154,14 +208,19 @@ async function renderList(params) {
   layout(view, [
     h('div.breadcrumbs', h('a', { href: '/' }, 'ИТ-портал'), h('span.sep', '/'), h('a', { href: '#/' }, 'Заявки')),
     h('div.page-head', h('h1', (QUICK.find(([k]) => k === view) || QUICK[0])[1]), h('span.badge', info),
-      requester ? h('a.lozenge.blue', { href: '#/?view=all' }, 'отбор по заявителю ✕') : null),
+      requester ? h('a.lozenge.blue', { href: '#/?view=all' }, 'отбор по заявителю ✕') : null,
+      h('span.spacer'),
+      h('button.btn.primary', { title: 'Заявка за сотрудника: позвонил, пришёл лично, написал', onclick: () => newTicketDialog({ api, meta }) }, '+ Новая заявка')),
     h('div.toolbar',
       h('div.search-box', search),
       sel('status', meta.statuses.map((s) => [s.id, s.name]), 'Все статусы'),
       sel('category', meta.categories.map((c) => [c.id, c.name]), 'Все виды'),
       base.assignee ? null : sel('assignee', [['me', 'Я'], ['none', 'Без исполнителя'], ...meta.executors.map((x) => [x.id, x.name])], 'Все исполнители'),
       sel('priority', Object.entries(meta.priorities), 'Любой приоритет'),
-      ticketSort.key ? h('button.btn.subtle.sm', { onclick: () => { ticketSort.key = ''; fill(); } }, 'Сбросить сортировку') : null),
+      ticketSort.key ? h('button.btn.subtle.sm', { onclick: () => { ticketSort.key = ''; fill(); } }, 'Сбросить сортировку') : null,
+      h('span.spacer'),
+      h('button.btn', { title: 'Запомнить текущий отбор — он появится слева в «Моих фильтрах»', onclick: () => saveViewDialog(view) }, 'Сохранить фильтр'),
+      excel),
     h('div.table-wrap', table),
   ]);
   await load();
@@ -216,7 +275,13 @@ async function renderTicket(id) {
   const dueCtl = admin
     ? h('div.row', due,
       h('button.btn.sm', { onclick: () => patch({ due_at: due.value ? new Date(due.value).toISOString() : null }, 'Срок установлен') }, 'OK'))
-    : h('div' + (t.is_overdue ? '.overdue' : ''), t.due_at ? fmtDateTime(t.due_at) : h('span.muted', 'не задан'));
+    : h('div' + (t.is_overdue ? '.overdue' : ''), t.due_at ? fmtDateTime(t.due_at) : h('span.muted', 'не задан'),
+      t.due_auto && t.due_at ? h('span.lozenge.yellow', { style: { marginLeft: '6px' }, title: 'Поставлен по нормативу вида проблемы, администратор ещё не подтвердил' }, 'по нормативу') : null);
+  const dueAuto = admin && t.due_auto && t.due_at
+    ? h('div.row', { style: { gap: '6px', marginTop: '4px' } },
+      h('span.lozenge.yellow', { title: 'Поставлен автоматически по нормативу вида проблемы' }, 'по нормативу'),
+      h('button.btn.sm', { onclick: () => patch({ confirm_due: true }, 'Срок подтверждён') }, 'Подтвердить срок'))
+    : null;
   const quickDue = admin ? h('div.row.wrap', { style: { gap: '4px' } },
     [['+4 ч', 4], ['+1 день', 24], ['+3 дня', 72], ['+неделя', 168]].map(([l, hrs]) =>
       h('button.btn.sm.subtle', { onclick: () => patch({ due_at: new Date(Date.now() + hrs * 3600e3).toISOString() }, 'Срок установлен') }, l)),
@@ -288,7 +353,11 @@ async function renderTicket(id) {
     h('div.stack',
       h('div', h('a', { href: '#/' }, '← Заявки')),
       h('div.panel',
-        h('div.row.wrap', h('span.ticket-key', '#' + t.id), statusPill(t.status_name, t.status_color),
+        h('div.row.wrap', h('span.ticket-key', '#' + t.id), statusPill(t.status_name, t.status_color), (() => {
+          const span = h('span');
+          import('/shared/recent.js').then((m) => span.append(m.starButton({ kind: 'ticket', ref: String(t.id), title: `#${t.id} ${t.title}`, link: `/helpdesk/#/tickets/${t.id}` }))).catch(() => {});
+          return span;
+        })(),
           t.is_overdue ? h('span.lozenge.red', 'просрочена') : null, h('span.spacer'),
           admin ? h('button.btn.sm.subtle', { onclick: () => editTitle(t, reload) }, 'Изменить тему') : null,
           admin ? h('button.btn.sm.subtle', {
@@ -312,7 +381,7 @@ async function renderTicket(id) {
         h('label.prop', h('span', 'Статус'), status),
         h('div.prop', h('span', 'Исполнитель'), assigneeCtl,
           t.calendar_task_id ? h('a.small', { href: '/calendar/#/calendar?task=' + t.calendar_task_id, target: '_blank' }, '📅 Задача в календаре') : null),
-        h('div.prop', h('span', 'Срок выполнения'), dueCtl, quickDue),
+        h('div.prop', h('span', 'Срок выполнения'), dueCtl, dueAuto, quickDue),
         h('label.prop', h('span', 'Приоритет'), prio),
         h('label.prop', h('span', 'Вид проблемы'), cat),
         h('div.prop', h('span', 'Техника'), deviceBox)),
@@ -381,12 +450,13 @@ async function renderCategories() {
     h('div.page-head', h('div', h('h1', 'Виды проблем'), h('div.muted', 'Из этого списка сотрудник выбирает, что случилось')),
       h('span.spacer'), h('button.btn.primary', { onclick: () => categoryDialog(null) }, '+ Добавить вид')),
     h('div.table-wrap', h('table.list',
-      h('thead', h('tr', h('th', ''), h('th', 'Название'), h('th', 'Исполнитель по умолчанию'), h('th', 'Заявок'), h('th', 'Порядок'), h('th', ''))),
+      h('thead', h('tr', h('th', ''), h('th', 'Название'), h('th', 'Исполнитель по умолчанию'), h('th', 'Нормативный срок'), h('th', 'Заявок'), h('th', 'Порядок'), h('th', ''))),
       h('tbody', meta.categories.map((c) => h('tr.clickable', { onclick: (e) => { if (!e.target.closest('button')) categoryDialog(c); } },
         h('td', { style: { fontSize: '20px' } }, c.icon),
         h('td', h('strong', c.name), c.is_active ? null : h('span.lozenge', { style: { marginLeft: '6px' } }, 'скрыт'),
           h('div.muted.small', c.description || '')),
         h('td', c.default_assignee_name || h('span.muted', '—')),
+        h('td', c.sla_hours ? slaText(c.sla_hours) : h('span.muted', '—')),
         h('td', c.ticket_count),
         h('td', c.sort),
         h('td', { style: { textAlign: 'right' } }, h('button.btn.subtle.sm', {
@@ -405,11 +475,12 @@ function categoryDialog(c) {
   const assignee = h('select', h('option', { value: '' }, '— не назначать —'), meta.executors.map((x) => h('option', { value: x.id }, x.name)));
   assignee.value = c?.default_assignee_id || '';
   const sort = h('input', { type: 'number', value: c?.sort ?? (meta.categories.length + 1) });
+  const sla = h('input', { type: 'number', min: 1, value: c?.sla_hours || '', placeholder: 'не задан', style: { width: '120px' } });
   const active = h('input', { type: 'checkbox', checked: c ? c.is_active : true });
   const save = h('button.btn.primary', {
     onclick: () => run(async () => {
       const body = { name: name.value, icon: icon.value, description: desc.value, default_assignee_id: assignee.value || null,
-        sort: sort.value, is_active: active.checked };
+        sort: sort.value, is_active: active.checked, sla_hours: sla.value ? Number(sla.value) : null };
       if (c) await api.put('/categories/' + c.id, body); else await api.post('/categories', body);
       m.close(); toast('Сохранено'); renderCategories();
     }, save),
@@ -420,7 +491,10 @@ function categoryDialog(c) {
       h('div.row', h('label.field', h('span', 'Значок'), icon), h('label.field', { style: { flex: 1 } }, h('span', 'Название'), name)),
       h('label.field', h('span', 'Описание'), desc),
       h('label.field', h('span', 'Исполнитель по умолчанию'), assignee),
-      h('p.hint', 'Новая заявка этого вида сразу попадает к этому исполнителю. Срок выполнения не ставится — его задаёт администратор в карточке заявки.'),
+      h('p.hint', 'Новая заявка этого вида сразу попадает к этому исполнителю (если не сработало правило автоназначения).'),
+      h('label.field', h('span', 'Нормативный срок выполнения, часов'), sla,
+        h('div.hint', 'Срок новой заявки этого вида ставится сам: время создания + норматив (8 — рабочий день, 24 — сутки, 72 — три дня). ',
+          'В заявке он отмечен «по нормативу» — администратор подтверждает или меняет его. Пусто — срок ставит администратор.')),
       h('div.form-grid', h('label.field', h('span', 'Порядок в списке'), sort), h('label.check', { style: { alignSelf: 'end' } }, active, 'Показывать сотрудникам'))),
     footer: [h('button.btn', { onclick: () => m.close() }, 'Отмена'), save],
   });
@@ -586,3 +660,5 @@ async function renderSettings() {
 }
 
 boot().catch((e) => { document.getElementById('app').textContent = 'Ошибка загрузки: ' + e.message; });
+
+const slaText = (h) => (h % 24 === 0 ? `${h / 24} ${h / 24 === 1 ? 'сутки' : 'сут.'}` : `${h} ч`);

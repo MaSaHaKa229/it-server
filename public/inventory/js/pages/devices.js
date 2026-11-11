@@ -6,6 +6,7 @@ import {
 import { state, isStaff, lookupItems, softwareItems, customDesc, displayValue } from '../store.js';
 import { navigate } from '../app.js';
 import { openCreateDevice } from './create.js';
+import { moveDialog, bulkEditDialog, moveStyles } from './moves.js';
 
 const PAGE = 50;
 const DEFAULT_COLS = ['key', 'type', 'hostname', 'model', 'employee', 'department', 'ip_address', 'status', 'updated_at'];
@@ -276,9 +277,13 @@ export async function renderDevices(root, params) {
         load();
       }),
     }))));
+    moveStyles();
+    const done = () => { st.selected.clear(); load(); };
     clear(bulkBox, h('div.bulkbar',
       h('strong', `Выбрано: ${st.selected.size}`),
       statusBtn,
+      h('button.btn.sm', { onclick: () => moveDialog([...st.selected].map((id) => ({ id })), done) }, 'Переместить…'),
+      h('button.btn.sm', { onclick: () => bulkEditDialog([...st.selected], done) }, 'Изменить поля…'),
       h('button.btn.sm', {
         onclick: async () => {
           const n = st.selected.size;

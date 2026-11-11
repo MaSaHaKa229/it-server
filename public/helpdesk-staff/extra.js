@@ -199,3 +199,86 @@ export async function renderRules({ layout, api, meta }) {
     }, save));
   }
 }
+
+// ====================== Заявка за сотрудника ======================
+/** Окно «Новая заявка»: служба ИТ записывает обращение сотрудника (звонок, пришёл лично, письмо) */
+export function newTicketDialog({ api, meta }) {
+  let chosen = null;
+  const search = h('input', { type: 'search', placeholder: 'ФИО, телефон, кабинет, отдел или e-mail — от 2 букв', autocomplete: 'off' });
+  const found = h('div.stack', { style: { gap: '2px', maxHeight: '180px', overflow: 'auto' } });
+  const chosenBox = h('div');
+  // Новый сотрудник (если его нет в списке)
+  const nName = h('input', { type: 'text', placeholder: 'Фамилия Имя Отчество' });
+  const nDep = h('select', h('option', { value: '' }, '— отдел —'), (meta.departments || []).map((d) => h('option', { value: d.id }, d.name)));
+  const nPhone = h('input', { type: 'text', placeholder: 'внутренний номер' });
+  const nRoom = h('input', { type: 'text', placeholder: 'например, 205' });
+  const nEmail = h('input', { type: 'email', placeholder: 'необязательно' });
+  const newBox = h('div.form-grid', { style: { display: 'none' } },
+    h('label.field', h('span', 'ФИО'), nName), h('label.field', h('span', 'Отдел'), nDep),
+    h('label.field', h('span', 'Телефон'), nPhone), h('label.field', h('span', 'Кабинет'), nRoom),
+    h('label.field', h('span', 'E-mail'), nEmail,
+      h('div.hint', 'Если указать — сотрудник получит письмо о заявке и сможет следить за ней на сайте заявок.')));
+  const newLink = h('a', { href: '#' }, '+ сотрудника нет в списке');
+  newLink.addEventListener('click', (e) => { e.preventDefault(); chosen = null; drawChosen(); newBox.style.display = ''; nName.value = nName.value || search.value; nName.focus(); });
+
+  function drawChosen() {
+    clear(chosenBox, chosen ? h('div.info-box', h('b', chosen.full_name),
+      [chosen.department, chosen.room ? `каб. ${chosen.room}` : '', chosen.phone, chosen.email].filter(Boolean).length
+        ? ' — ' + [chosen.department, chosen.room ? `каб. ${chosen.room}` : '', chosen.phone, chosen.email].filter(Boolean).join(', ') : '',
+      ' ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); chosen = null; drawChosen(); search.focus(); } }, 'изменить')) : null);
+    search.parentElement && (search.parentElement.hidden = !!chosen);
+    if (chosen) { newBox.style.display = 'none'; if (!loc.value && chosen.room) loc.value = chosen.room; }
+  }
+  let t = null;
+  search.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(async () => {
+      const q = search.value.trim();
+      if (q.length < 2) { clear(found); return; }
+      const list = await api.get('/requesters/search?q=' + encodeURIComponent(q)).catch(() => []);
+      clear(found, list.length ? list.map((r) => h('button.btn.subtle', {
+        type: 'button', style: { justifyContent: 'flex-start', textAlign: 'left', height: 'auto', padding: '4px 8px' },
+        onclick: () => { chosen = r; clear(found); drawChosen(); title.focus(); },
+      }, h('span', h('b', r.full_name), h('span.muted.small', ' ' + [r.department, r.room ? `каб. ${r.room}` : '', r.phone].filter(Boolean).join(', ')),
+        r.is_active ? null : h('span.muted.small', ' (отключён)')))) : h('span.muted.small', 'Не найдено — добавьте сотрудника ниже'));
+    }, 250);
+  });
+
+  const channel = h('select', [['phone', 'Позвонил'], ['visit', 'Пришёл лично'], ['email', 'Написал на почту'], ['other', 'Другое']].map(([v, l]) => h('option', { value: v }, l)));
+  const cat = h('select', h('option', { value: '' }, '— не указан —'), meta.categories.filter((c) => c.is_active).map((c) => h('option', { value: c.id }, `${c.icon} ${c.name}`)));
+  const prio = h('select', Object.entries(meta.priorities).map(([k, l]) => h('option', { value: k, selected: k === 'normal' }, l)));
+  const title = h('input', { type: 'text', placeholder: 'Кратко: что случилось' });
+  const desc = h('textarea', { rows: 4, placeholder: 'Подробности со слов сотрудника' });
+  const loc = h('input', { type: 'text', placeholder: 'Кабинет, рабочее место' });
+  const assignee = h('select',
+    h('option', { value: 'me' }, 'Взять себе'),
+    h('option', { value: 'auto' }, 'По правилам автоназначения'),
+    meta.me.isAdmin ? meta.executors.filter((x) => x.id !== meta.me.id).map((x) => h('option', { value: x.id }, x.name)) : null,
+    h('option', { value: 'none' }, 'Не назначать'));
+  const save = h('button.btn.primary', 'Создать заявку');
+  const m = modal({
+    title: 'Новая заявка за сотрудника', wide: true,
+    body: h('div.stack', { style: { gap: '12px' } },
+      h('div.field', h('span', 'Сотрудник'), h('div', search), found, chosenBox, h('div.small', newLink), newBox),
+      h('div.form-grid', h('label.field', h('span', 'Как обратился'), channel), h('label.field', h('span', 'Вид проблемы'), cat)),
+      h('label.field', h('span', 'Тема'), title),
+      h('label.field', h('span', 'Описание'), desc),
+      h('div.form-grid', h('label.field', h('span', 'Место'), loc), h('label.field', h('span', 'Приоритет'), prio)),
+      h('label.field', h('span', 'Исполнитель'), assignee),
+      h('p.hint', 'Срок ставится по нормативу вида проблемы (если он задан) — администратор его подтверждает или меняет в заявке.')),
+    footer: [h('button.btn', { onclick: () => m.close() }, 'Отмена'), save],
+  });
+  setTimeout(() => search.focus(), 50);
+  save.addEventListener('click', () => run(async () => {
+    const body = { title: title.value, description: desc.value, category_id: cat.value || null, priority: prio.value,
+      location: loc.value, channel: channel.value, assignee: assignee.value };
+    if (chosen) body.requester_id = chosen.id;
+    else if (newBox.style.display !== 'none' && nName.value.trim()) {
+      body.requester = { full_name: nName.value.trim(), department_id: nDep.value || null, phone: nPhone.value, room: nRoom.value, email: nEmail.value.trim() };
+    } else throw new Error('Выберите сотрудника из списка или добавьте нового');
+    const r = await api.post('/tickets', body);
+    m.close();
+    toast(`Заявка #${r.id} создана`);
+    location.hash = '#/tickets/' + r.id;
+  }, save));
+}

@@ -6,6 +6,9 @@ import { z } from 'zod';
 import { query, logActivity } from '../db.js';
 import { ah, validate, HttpError } from '../validate.js';
 import { absenceCond } from '../scope.js';
+import { createRequire } from 'node:module';
+
+const requireCjs = createRequire(import.meta.url);
 
 const r = Router();
 
@@ -20,7 +23,7 @@ const SELECT = `
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-r.get('/', ah(async (req, res) => {
+async function listAbsences(req) {
   const where = [];
   const vals = [];
   const day = (v) => (DAY.test(String(v)) ? String(v) : null);
@@ -36,7 +39,20 @@ r.get('/', ah(async (req, res) => {
   const scoped = absenceCond(req.user, vals); // уровень «Просмотр»: только разрешённые администратором
   if (scoped) where.push(scoped);
   const { rows } = await query(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY a.start_date, u.name LIMIT 5000`, vals);
-  res.json({ absences: rows });
+  return rows;
+}
+
+r.get('/', ah(async (req, res) => res.json({ absences: await listAbsences(req) })));
+
+const KIND_LABEL = { vacation: 'Отпуск', sick: 'Больничный', trip: 'Командировка', dayoff: 'Отгул', other: 'Другое' };
+r.get('/export.xlsx', ah(async (req, res) => {
+  const rows = await listAbsences(req);
+  await requireCjs('../../portal/xlsx.js').sendXlsx(res, 'absences.xlsx', 'Отсутствия', [
+    { header: 'Сотрудник', key: 'user_name', width: 28 }, { header: 'Вид', key: 'kind', width: 16, get: (a) => KIND_LABEL[a.kind] || a.kind },
+    { header: 'С', key: 'start_date', width: 12, date: 'day' }, { header: 'По', key: 'end_date', width: 12, date: 'day' },
+    { header: 'Дней', key: 'days', width: 8, get: (a) => Math.round((new Date(a.end_date) - new Date(a.start_date)) / 864e5) + 1 },
+    { header: 'Комментарий', key: 'comment', width: 40 }, { header: 'Отметил', key: 'created_by_name', width: 24 },
+  ], rows);
 }));
 
 const body = z.object({

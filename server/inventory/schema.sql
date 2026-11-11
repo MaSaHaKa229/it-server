@@ -381,3 +381,16 @@ CREATE TABLE IF NOT EXISTS inventory_audit_items (
 
 -- Кнопка «Подключиться к сеансу» в карточке техники: {"enabled":true,"control":true,"consent":true}
 ALTER TABLE netprobe_settings ADD COLUMN IF NOT EXISTS remote_connect JSONB NOT NULL DEFAULT '{"enabled":true,"control":true,"consent":true}'::jsonb;
+
+-- Перемещения техники: куда, кому, когда и почему (имена сохраняются — отчёт не меняется при правке справочников)
+CREATE TABLE IF NOT EXISTS device_moves (
+  id         BIGSERIAL PRIMARY KEY,
+  device_id  INT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+  moved_on   DATE NOT NULL DEFAULT current_date,
+  changes    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  note       TEXT NOT NULL DEFAULT '',
+  user_id    INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS device_moves_device_idx ON device_moves (device_id, moved_on DESC);
+CREATE INDEX IF NOT EXISTS device_moves_date_idx ON device_moves (moved_on DESC);

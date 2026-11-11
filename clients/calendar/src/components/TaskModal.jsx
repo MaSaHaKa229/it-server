@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { useApp } from '../context.jsx';
 import { fmtTaskPeriod, relative } from '../dates.js';
@@ -103,11 +103,14 @@ export default function TaskModal({ taskId, seriesId, createDefaults, onClose, o
   return (
     <Modal onClose={onClose} wide
       title={<span className="modal-title-row"><span className="dot lg" style={{ background: taskColor(task) }} />{task.title}</span>}
-      actions={canEdit && (
+      actions={(
         <>
+          <Star item={{ kind: 'task', ref: String(task.id), title: task.title, link: `/calendar/#/calendar?task=${task.id}` }} />
+          {canEdit && <>
           <button className="icon-btn" title="Копировать" onClick={duplicate}><Icon name="copy" /></button>
           <button className="icon-btn" title="Удалить" onClick={() => remove()}><Icon name="trash" /></button>
           <button className="btn" onClick={() => setEditing(true)}><Icon name="edit" /> Изменить</button>
+          </>}
         </>
       )}>
       <div className="task-view">
@@ -216,4 +219,15 @@ export default function TaskModal({ taskId, seriesId, createDefaults, onClose, o
       </div>
     </Modal>
   );
+}
+
+// Звёздочка «в избранное» и отметка в «недавних» (общий модуль портала /shared/recent.js)
+const RECENT_URL = ['', 'shared', 'recent.js'].join('/');
+function Star({ item }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const host = ref.current;
+    import(/* @vite-ignore */ RECENT_URL).then((m) => { if (host) host.replaceChildren(m.starButton(item)); }).catch(() => {});
+  }, [item.ref]);
+  return <span ref={ref} />;
 }

@@ -613,3 +613,17 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 16
 .yd-abs-legend { width: 8px !important; height: 8px !important; border-radius: 50% !important; }
 .yd { height: 54px; justify-content: flex-start; gap: 3px; }
 .yd-p { min-width: 13px; height: 13px; line-height: 13px; padding: 0 2px; border-radius: 7px; }
+
+/* Сохранённые фильтры */
+.saved-views { position: relative; }
+.saved-pop { position: absolute; z-index: 60; top: 36px; left: 0; width: 300px; background: #fff; border-radius: 3px;
+  box-shadow: 0 8px 16px -4px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31); padding: 6px 0; }
+.saved-item { display: flex; align-items: center; padding: 0 8px 0 0; }
+.saved-item:hover { background: #F4F5F7; }
+.saved-apply { flex: 1; text-align: left; border: 0; background: none; padding: 7px 14px; font: inherit; cursor: pointer; color: #172B4D; }
+.saved-empty { padding: 8px 14px; color: #6B778C; font-size: 13px; }
+.saved-foot { border-top: 1px solid #EBECF0; margin-top: 6px; padding: 8px 10px 4px; }
+.saved-form { display: flex; flex-direction: column; gap: 8px; }
+.saved-form input[type=text], .saved-form input:not([type]) { width: 100%; }
+.saved-buttons { display: flex; justify-content: flex-end; gap: 6px; }
+.saved-error { color: #DE350B; font-size: 12px; }

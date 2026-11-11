@@ -10,6 +10,7 @@ import {
 import { navigate } from '../app.js';
 import { openFieldModal } from './settings.js';
 import { openNetInfo } from './netinfo.js';
+import { moveDialog, moveStyles } from './moves.js';
 
 let activeTab = 'software';
 
@@ -124,11 +125,13 @@ export async function renderDevice(root, id) {
 
     // ----- левая колонка -----
     const left = h('div',
-      h('div.row', { style: { alignItems: 'flex-start' } }, h('div.grow', title), statusBtn, moreBtn),
+      h('div.row', { style: { alignItems: 'flex-start' } }, h('div.grow', title), starHost(
+        { kind: 'device', ref: String(d.id), title: `${key} ${d.hostname || d.model || type.name}`, link: `/inventory/#/devices/${d.id}` }), statusBtn, moreBtn),
       h('div.issue-actions',
         staff && P.software ? h('button.btn', { onclick: () => softwareModal() }, icon('plus'), 'Добавить ПО') : null,
         staff ? h('button.btn', { onclick: () => credentialModal() }, icon('lock'), 'Добавить пароль') : null,
         staff ? h('button.btn', { onclick: addField }, icon('plus'), 'Добавить поле') : null,
+        staff ? h('button.btn', { onclick: () => { moveStyles(); moveDialog([d], changed); } }, icon('box'), 'Переместить') : null,
         // Сведения из AD / WMI / SNMP — только редакторам и при известном сетевом имени или IP
         staff && (d.hostname || d.ip_address)
           ? h('button.btn', { onclick: () => openNetInfo(d, changed), title: 'Данные из Active Directory, WMI и SNMP' }, icon('eye'), 'Сведения из сети')
@@ -289,6 +292,7 @@ export async function renderDevice(root, id) {
     password_updated: 'изменил(а) пароль', password_removed: 'удалил(а) пароль', password_viewed: 'просмотрел(а) пароль',
     ticket_linked: 'привязал(а) к заявке', ticket_unlinked: 'отвязал(а) от заявки',
     remote_connect: 'подключился(-ась) к сеансу пользователя',
+    moved: 'переместил(а)',
     audit: 'провёл(а) инвентаризацию',
   };
   // Заявки helpdesk, к которым привязана эта техника
@@ -504,4 +508,11 @@ function remoteButton(d) {
     .then((c) => { btn.style.display = c.enabled ? '' : 'none'; });
   btn.addEventListener('click', () => { toast('Скачивается файл подключения — откройте его'); remoteCfg = null; });
   return btn;
+}
+
+// Звёздочка «в избранное» (общий модуль портала); заодно — отметка в «недавних»
+function starHost(item) {
+  const span = h('span', { style: { display: 'inline-flex', marginRight: '6px' } });
+  import('/shared/recent.js').then((m) => span.append(m.starButton(item))).catch(() => {});
+  return span;
 }

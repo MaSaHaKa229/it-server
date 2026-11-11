@@ -13,6 +13,7 @@ import ListView from '../components/ListView.jsx';
 import TaskModal from '../components/TaskModal.jsx';
 import AbsenceModal from '../components/AbsenceModal.jsx';
 import MultiSelect from '../components/MultiSelect.jsx';
+import SavedViews from '../components/SavedViews.jsx';
 
 const VIEWS = [
   { id: 'day', label: 'День' },
@@ -183,6 +184,9 @@ export default function CalendarPage() {
           <a className="icon-btn" href={'/calendar/api/tasks/export.ics' + qs({ ...query, limit: '' })} title="Экспорт в .ics (Outlook, Google Календарь)">
             <Icon name="download" />
           </a>
+          <a className="btn" href={'/calendar/api/tasks/export.xlsx' + qs({ ...query, limit: '' })} title="Выгрузить в Excel задачи за показанный период с текущими фильтрами">
+            Excel
+          </a>
           {canEdit && (
             <button className="btn" onClick={() => setModal({ newAbsence: { start_date: dateKey(view === 'month' || view === 'year' ? new Date() : cursor) } })}
               title="Отметить отпуск, больничный, командировку или отгул">
@@ -217,6 +221,7 @@ export default function CalendarPage() {
         {activeFilters > 0 && (
           <button className="btn ghost small" onClick={() => setFilters(EMPTY)}>Сбросить ({activeFilters})</button>
         )}
+        <SavedViews filters={filters} onApply={(f) => setFilters(normalize(f))} />
       </div>
       {showFilters && (
         <div className="filters more-filters">

@@ -161,7 +161,7 @@ router.put('/settings/notify', ah(async (req, res) => {
 }));
 
 // ---------------- Журнал входов и действий ----------------
-router.get('/audit', ah(async (req, res) => {
+async function auditQuery(req, all = false) {
   const q = req.query;
   const where = [];
   const vals = [];
@@ -177,8 +177,8 @@ router.get('/audit', ah(async (req, res) => {
     const like = p(`%${String(q.q).slice(0, 100)}%`);
     where.push(`(a.object ILIKE ${like} OR a.username ILIKE ${like} OR u.full_name ILIKE ${like} OR a.details::text ILIKE ${like} OR a.ip ILIKE ${like})`);
   }
-  const limit = Math.min(500, Number(q.limit) || 200);
-  const offset = Math.max(0, Number(q.offset) || 0);
+  const limit = all ? 50000 : Math.min(500, Number(q.limit) || 200);
+  const offset = all ? 0 : Math.max(0, Number(q.offset) || 0);
   const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const [list, total] = await Promise.all([
     query(`SELECT a.id, a.at, a.user_id, COALESCE(NULLIF(u.full_name, ''), u.username, a.username) AS user_name, a.username,
@@ -187,7 +187,21 @@ router.get('/audit', ah(async (req, res) => {
             ORDER BY a.at DESC, a.id DESC LIMIT ${limit} OFFSET ${offset}`, vals),
     query(`SELECT count(*)::int AS n FROM audit_log a LEFT JOIN users u ON u.id = a.user_id ${w}`, vals),
   ]);
-  res.json({ items: list.rows, total: total.rows[0].n, actions: audit.ACTIONS });
+  return { items: list.rows, total: total.rows[0].n, actions: audit.ACTIONS };
+}
+
+router.get('/audit', ah(async (req, res) => res.json(await auditQuery(req))));
+
+router.get('/audit/export.xlsx', ah(async (req, res) => {
+  const d = await auditQuery(req, true);
+  await require('./xlsx').sendXlsx(res, 'audit-log.xlsx', 'Журнал', [
+    { header: 'Когда', key: 'at', width: 18, date: true },
+    { header: 'Кто', key: 'who', width: 26, get: (x) => x.user_name || x.username || '' },
+    { header: 'Событие', key: 'action', width: 32, get: (x) => audit.ACTIONS[x.action] || x.action },
+    { header: 'Объект', key: 'object', width: 30 },
+    { header: 'Подробности', key: 'details', width: 60, get: (x) => JSON.stringify(x.details || {}) },
+    { header: 'IP', key: 'ip', width: 16 },
+  ], d.items);
 }));
 
 module.exports = router;

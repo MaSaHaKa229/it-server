@@ -51,6 +51,7 @@ export async function renderWorkplaces(root) {
   clear(root,
     h('div.breadcrumbs', h('a', { href: '#/' }, 'ИТ-служба'), h('span.sep', '/'), h('span', 'Рабочие места')),
     h('div.page-head', h('h1', 'Рабочие места'), h('span.badge', list.length), h('span.spacer'),
+      h('a.btn', { href: '/inventory/api/workplaces/export.xlsx', title: 'Выгрузить список рабочих мест в Excel' }, 'Excel'),
       isStaff() ? h('button.btn.primary', { onclick: () => workplaceModal(null, (id) => navigate('/workplaces/' + id)) }, icon('plus'), 'Создать рабочее место') : null),
     h('p.muted', { style: { margin: '-8px 0 16px' } },
       'Рабочее место объединяет технику одного сотрудника или точки: компьютер, монитор, принтер, телефон и т.д.'),
@@ -117,7 +118,11 @@ export async function renderWorkplace(root, id) {
       h('a', { href: '#/workplaces' }, 'Рабочие места'), h('span.sep', '/'), h('span', w.name)),
     h('div.issue.wp-issue',
       h('div',
-        h('h1.issue-title', w.name),
+        h('div.row', { style: { alignItems: 'flex-start' } }, h('h1.issue-title.grow', w.name), (() => {
+          const span = h('span');
+          import('/shared/recent.js').then((m) => span.append(m.starButton({ kind: 'workplace', ref: String(w.id), title: w.name, link: `/inventory/#/workplaces/${w.id}` }))).catch(() => {});
+          return span;
+        })()),
         staff ? h('div.issue-actions',
           h('button.btn.primary', { onclick: () => attachModal(w, reload) }, icon('plus'), 'Привязать технику'),
           h('button.btn', { onclick: () => workplaceModal(w, reload) }, icon('edit'), 'Изменить'),

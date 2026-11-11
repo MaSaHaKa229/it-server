@@ -59,5 +59,30 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS audit_log_at_idx ON audit_log (at DESC);
 
+-- Сохранённые фильтры (заявки, задачи): у каждого свои, можно сделать общими
+CREATE TABLE IF NOT EXISTS saved_views (
+  id         SERIAL PRIMARY KEY,
+  user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  section    TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  params     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  shared     BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS saved_views_idx ON saved_views (section, user_id);
+
+-- Избранное и недавно открытое (техника, заявки, задачи, документы, рабочие места)
+CREATE TABLE IF NOT EXISTS user_items (
+  user_id   INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind      TEXT NOT NULL,
+  ref       TEXT NOT NULL,
+  title     TEXT NOT NULL,
+  link      TEXT NOT NULL,
+  favorite  BOOLEAN NOT NULL DEFAULT false,
+  viewed_at TIMESTAMPTZ,
+  PRIMARY KEY (user_id, kind, ref)
+);
+CREATE INDEX IF NOT EXISTS user_items_viewed_idx ON user_items (user_id, viewed_at DESC);
+
 -- pg_trgm нужен реестру документов; ставим в public, чтобы он был виден всем модулям
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;

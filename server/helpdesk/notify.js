@@ -21,12 +21,12 @@ async function adminEmails() {
 
 const userLink = (id) => `${L.helpdeskUrl()}/#/tickets/${id}`;
 
-async function ticketCreated(id) {
+async function ticketCreated(id, actorId = null) {
   const t = await ticket(id);
   const body = `Вид: ${t.category_name || '—'}\nОт: ${t.requester_name}${t.requester_department ? ', ' + t.requester_department : ''}`
     + `\nМесто: ${t.location || '—'}${t.description ? '\n\n' + t.description.slice(0, 500) : ''}`;
-  await N.emit(await N.usersWhere(N.hd), 'hd_new', { title: `Новая заявка #${t.id}: ${t.title}`, body, link: staffPath(t.id) });
-  if (t.assignee_id) await assigned(id);
+  await N.emit(await N.usersWhere(N.hd), 'hd_new', { title: `Новая заявка #${t.id}: ${t.title}`, body, link: staffPath(t.id) }, actorId);
+  if (t.assignee_id) await assigned(id, actorId);
   if (!L.mailEnabled()) return;
   await L.sendMail(t.requester_email, `Заявка #${t.id} принята`,
     `Здравствуйте, ${t.requester_name}!\n\nВаша заявка «${t.title}» зарегистрирована под номером #${t.id}.\n` +

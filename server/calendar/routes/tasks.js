@@ -6,6 +6,10 @@ import { ah, validate, HttpError } from '../validate.js';
 import { ensureOccurrences, EVERY, validTz } from '../series.js';
 import { taskCond } from '../scope.js';
 import { taskAssigned, taskCommented } from '../notify.js';
+import { createRequire } from 'node:module';
+
+const requireCjs = createRequire(import.meta.url);
+const ticketIdOf = (t) => t.helpdesk_ticket_id;
 
 const r = Router();
 
@@ -149,6 +153,42 @@ r.get('/export.ics', ah(async (req, res) => {
   res.send(lines.join('\r\n'));
 }));
 
+// Выгрузка задач в Excel — период и отборы те же, что на экране
+r.get('/export.xlsx', ah(async (req, res) => {
+  await prepare(req.query);
+  const { where, vals } = buildFilters(req.query, req.user);
+  const { rows } = await query(`${TASK_SELECT} ${where} ORDER BY t.start_at LIMIT 20000`, vals);
+  const ExcelJS = requireCjs('exceljs');
+  const ST = { todo: 'К выполнению', in_progress: 'В работе', done: 'Выполнена', cancelled: 'Отменена' };
+  const PR = { low: 'Низкий', normal: 'Обычный', high: 'Высокий', critical: 'Критический' };
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Задачи', { views: [{ state: 'frozen', ySplit: 1 }] });
+  ws.columns = [
+    { header: 'Задача', key: 'title', width: 44 }, { header: 'Начало', key: 'start', width: 17 }, { header: 'Окончание', key: 'end', width: 17 },
+    { header: 'Статус', key: 'status', width: 14 }, { header: 'Приоритет', key: 'priority', width: 12 }, { header: 'Категория', key: 'category', width: 20 },
+    { header: 'Исполнители', key: 'assignees', width: 30 }, { header: 'Автор', key: 'author', width: 22 },
+    { header: 'Выполнена', key: 'completed', width: 17 }, { header: 'Описание', key: 'description', width: 50 },
+  ];
+  const head = ws.getRow(1);
+  head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0052CC' } };
+  for (const t of rows) {
+    const row = ws.addRow({
+      title: t.title, start: new Date(t.start_at), end: new Date(t.end_at), status: ST[t.status] || t.status, priority: PR[t.priority] || t.priority,
+      category: t.category_name || '', assignees: (t.assignees || []).map((a) => a.name).join(', '), author: t.created_by_name || '',
+      completed: t.completed_at ? new Date(t.completed_at) : '', description: String(t.description || '').slice(0, 2000),
+    });
+    const fmt = t.all_day ? 'dd.mm.yyyy' : 'dd.mm.yyyy hh:mm';
+    row.getCell('start').numFmt = fmt; row.getCell('end').numFmt = fmt;
+  }
+  ws.getColumn('completed').numFmt = 'dd.mm.yyyy hh:mm';
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 10 } };
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="tasks.xlsx"');
+  await wb.xlsx.write(res);
+  res.end();
+}));
+
 r.get('/:id', ah(async (req, res) => {
   const id = Number(req.params.id);
   const { rows } = await query(`${TASK_SELECT} WHERE t.id = $1`, [id]);
@@ -258,9 +298,11 @@ r.patch('/:id', requireRole('editor'), ah(async (req, res) => {
   const id = Number(req.params.id);
   const d = validate(taskBody.innerType().omit({ repeat: true }).partial(), req.body);
   let added = [];
+  let statusChanged = false;
   const task = await withTransaction(async (db) => {
     const { rows: [old] } = await db.query('SELECT * FROM tasks WHERE id=$1 FOR UPDATE', [id]);
     if (!old) throw new HttpError(404, 'Задача не найдена');
+    statusChanged = !!(d.status && d.status !== old.status && old.helpdesk_ticket_id);
     if (d.assignees) {
       const was = new Set((await db.query('SELECT user_id FROM task_assignees WHERE task_id = $1', [id])).rows.map((r) => r.user_id));
       added = [...new Set(d.assignees)].filter((u) => !was.has(u));
@@ -290,7 +332,16 @@ r.patch('/:id', requireRole('editor'), ah(async (req, res) => {
     return fetchTask(db, id);
   });
   taskAssigned(id, added, req.user.id);
-  res.json({ task });
+  // Задача из заявки helpdesk: статус задачи меняет и заявку
+  let ticket = null;
+  if (statusChanged && req.portalUser) {
+    try {
+      const sync = requireCjs('../../helpdesk/calendar-sync.js');
+      ticket = await sync.fromTask(id, d.status, req.portalUser);
+      if (ticket) await sync.syncTicket(ticketIdOf(task), req.user.id);
+    } catch (e) { console.error('Задача → заявка:', e.message); }
+  }
+  res.json({ task: ticket ? (await query(`${TASK_SELECT} WHERE t.id = $1`, [id])).rows[0] || task : task, ticket });
 }));
 
 r.post('/:id/duplicate', requireRole('editor'), ah(async (req, res) => {

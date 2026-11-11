@@ -41,24 +41,26 @@ async function executors() {
 }
 
 router.get('/meta', ah(async (req, res) => {
-  const [statuses, categories, execs, settings] = await Promise.all([
+  const [statuses, categories, execs, settings, departments] = await Promise.all([
     query('SELECT * FROM statuses ORDER BY sort, id'),
     query(`SELECT c.*, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS default_assignee_name,
                   (SELECT count(*)::int FROM tickets t WHERE t.category_id = c.id) AS ticket_count
              FROM categories c LEFT JOIN public.users u ON u.id = c.default_assignee_id ORDER BY c.sort, c.name`),
     executors(),
     L.getSettings(),
+    L.departments(),
   ]);
   res.json({
     me: { id: req.user.id, name: req.user.full_name || req.user.username, isAdmin: isAdmin(req),
       inventory: level(req.user, 'inventory') !== 'none' },
-    statuses: statuses.rows, categories: categories.rows, executors: execs, priorities: L.PRIORITIES,
+    statuses: statuses.rows, categories: categories.rows, executors: execs, priorities: L.PRIORITIES, departments,
     settings, mailEnabled: L.mailEnabled(), helpdeskUrl: L.helpdeskUrl(),
   });
 }));
 
 // ---------- список заявок ----------
-router.get('/tickets', ah(async (req, res) => {
+/** Условия отбора списка заявок (общие для списка и выгрузки в Excel) */
+function ticketFilters(req) {
   const q = req.query;
   const where = [];
   const vals = [];
@@ -85,11 +87,13 @@ router.get('/tickets', ah(async (req, res) => {
     due: 't.due_at ASC NULLS LAST, t.id',
     priority: "array_position(ARRAY['critical','high','normal','low'], t.priority), t.created_at",
   }[q.sort] || 's.is_closed, t.updated_at DESC';
-  const limit = Math.min(Number(q.limit) || 300, 1000);
-  const { rows } = await query(
-    `${L.TICKET_SELECT}
-     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-     ORDER BY ${sort} LIMIT ${limit}`, vals);
+  return { where: where.length ? 'WHERE ' + where.join(' AND ') : '', vals, sort };
+}
+
+router.get('/tickets', ah(async (req, res) => {
+  const { where, vals, sort } = ticketFilters(req);
+  const limit = Math.min(Number(req.query.limit) || 300, 1000);
+  const { rows } = await query(`${L.TICKET_SELECT} ${where} ORDER BY ${sort} LIMIT ${limit}`, vals);
   const counts = (await query(
     `SELECT count(*) FILTER (WHERE NOT s.is_closed)::int AS open,
             count(*) FILTER (WHERE NOT s.is_closed AND t.assignee_id = $1)::int AS mine,
@@ -97,6 +101,38 @@ router.get('/tickets', ah(async (req, res) => {
             count(*) FILTER (WHERE NOT s.is_closed AND t.due_at < now())::int AS overdue
        FROM tickets t JOIN statuses s ON s.id = t.status_id`, [req.user.id])).rows[0];
   res.json({ tickets: rows.map(({ description, ...t }) => t), counts });
+}));
+
+// Выгрузка списка заявок в Excel (с теми же отборами, что на экране)
+router.get('/tickets/export.xlsx', ah(async (req, res) => {
+  const ExcelJS = require('exceljs');
+  const { where, vals, sort } = ticketFilters(req);
+  const { rows } = await query(`${L.TICKET_SELECT} ${where} ORDER BY ${sort} LIMIT 20000`, vals);
+  const CH = { web: 'сайт заявок', phone: 'по телефону', visit: 'лично', email: 'по почте', other: 'другое' };
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Заявки', { views: [{ state: 'frozen', ySplit: 1 }] });
+  ws.columns = [
+    { header: '№', key: 'id', width: 7 }, { header: 'Тема', key: 'title', width: 40 }, { header: 'Вид', key: 'category_name', width: 20 },
+    { header: 'Приоритет', key: 'priority', width: 12 }, { header: 'Статус', key: 'status_name', width: 14 },
+    { header: 'Заявитель', key: 'requester_name', width: 24 }, { header: 'Отдел', key: 'requester_department', width: 22 },
+    { header: 'Телефон', key: 'requester_phone', width: 12 }, { header: 'Место', key: 'location', width: 14 },
+    { header: 'Исполнитель', key: 'assignee_name', width: 22 }, { header: 'Как поступила', key: 'channel', width: 14 },
+    { header: 'Создана', key: 'created_at', width: 17 }, { header: 'Срок', key: 'due_at', width: 17 }, { header: 'Закрыта', key: 'closed_at', width: 17 },
+    { header: 'Описание', key: 'description', width: 50 },
+  ];
+  const head = ws.getRow(1);
+  head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0052CC' } };
+  for (const t of rows) {
+    ws.addRow({ ...t, priority: L.PRIORITIES[t.priority] || t.priority, channel: CH[t.channel] || t.channel,
+      due_at: t.due_at || '', closed_at: t.closed_at || '', description: String(t.description || '').slice(0, 2000) });
+  }
+  ['created_at', 'due_at', 'closed_at'].forEach((k) => { ws.getColumn(k).numFmt = 'dd.mm.yyyy hh:mm'; });
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 15 } };
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="helpdesk-tickets.xlsx"');
+  await wb.xlsx.write(res);
+  res.end();
 }));
 
 async function loadTicket(id) {
@@ -138,6 +174,97 @@ router.get('/tickets/:id', ah(async (req, res) => {
   });
 }));
 
+// ---------- заявка от службы ИТ за сотрудника (звонок, пришёл лично, письмо) ----------
+const CHANNELS = { phone: 'по телефону', visit: 'лично', email: 'по почте', other: 'со слов сотрудника' };
+
+// Поиск заявителя (для всех сотрудников helpdesk)
+router.get('/requesters/search', ah(async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.json([]);
+  const { rows } = await query(
+    `SELECT r.id, r.full_name, CASE WHEN r.email LIKE '%.invalid' THEN '' ELSE r.email END AS email,
+            COALESCE(l.value, r.department) AS department, r.department_id, r.phone, r.room, r.is_active
+       FROM requesters r LEFT JOIN public.lookups l ON l.id = r.department_id
+      WHERE r.full_name ILIKE $1 OR r.email ILIKE $1 OR r.phone ILIKE $1 OR r.room ILIKE $1 OR COALESCE(l.value, r.department) ILIKE $1
+      ORDER BY r.is_active DESC, r.full_name LIMIT 20`, [`%${q.replace(/[\\%_]/g, (m) => '\\' + m)}%`]);
+  res.json(rows);
+}));
+
+/** Найти или создать заявителя по данным из формы службы ИТ */
+async function requesterFor(db, b) {
+  if (intOrNull(b.requester_id)) {
+    const r = (await db.query('SELECT * FROM requesters WHERE id = $1', [intOrNull(b.requester_id)])).rows[0];
+    if (!r) throw new HttpError(400, 'Сотрудник не найден');
+    return r;
+  }
+  const n = b.requester || {};
+  const fullName = str(n.full_name, 200);
+  if (!fullName) throw new HttpError(400, 'Укажите сотрудника: выберите из списка или впишите ФИО');
+  const email = (str(n.email, 200) || '').toLowerCase();
+  if (email) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Некорректный e-mail');
+    const ex = (await db.query('SELECT * FROM requesters WHERE lower(email) = $1', [email])).rows[0];
+    if (ex) return ex;
+  }
+  const dep = await L.resolveDepartment({ department_id: n.department_id, department: n.department });
+  // Без e-mail — служебный адрес-заглушка (на сайт заявок такой сотрудник войти не сможет, письма не отправляются)
+  const addr = email || `nomail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@helpdesk.invalid`;
+  const hash = await bcrypt.hash(require('crypto').randomBytes(24).toString('hex'), 10);
+  const { rows } = await db.query(
+    `INSERT INTO requesters (email, full_name, department, department_id, phone, room, password_hash, is_active, is_approved, email_verified)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, true, true, false) RETURNING *`,
+    [addr, fullName, dep ? dep.name : null, dep ? dep.id : null, str(n.phone, 50), str(n.room, 100), hash]);
+  return rows[0];
+}
+
+router.post('/tickets', ah(async (req, res) => {
+  const b = req.body || {};
+  const title = str(b.title, 200);
+  if (!title) throw new HttpError(400, 'Кратко опишите проблему в поле «Тема»');
+  const admin = isAdmin(req);
+  const priority = L.PRIORITIES[b.priority] ? b.priority : 'normal';
+  const channel = CHANNELS[b.channel] ? b.channel : 'phone';
+  const id = await tx(async (db) => {
+    const rq = await requesterFor(db, b);
+    const cat = intOrNull(b.category_id) ? (await db.query('SELECT * FROM categories WHERE id = $1', [intOrNull(b.category_id)])).rows[0] : null;
+    if (intOrNull(b.category_id) && !cat) throw new HttpError(400, 'Вид проблемы не найден');
+    const st = (await db.query('SELECT id FROM statuses ORDER BY is_default DESC, sort, id LIMIT 1')).rows[0];
+    // Исполнитель: «себе», выбранный администратором или по правилам автоназначения
+    let assignee = null;
+    let assigneeName = null;
+    let auto = false;
+    let how = null;
+    if (b.assignee === 'me') { assignee = req.user.id; assigneeName = req.user.role === 'superadmin' ? 'Служба ИТ' : (req.user.full_name || req.user.username); }
+    else if (/^\d+$/.test(String(b.assignee)) && admin) {
+      const ex = (await executors()).find((x) => x.id === Number(b.assignee));
+      if (!ex) throw new HttpError(400, 'Этот пользователь не может быть исполнителем');
+      assignee = ex.id; assigneeName = ex.name;
+    } else if (b.assignee !== 'none') {
+      const p = await require('./autoassign').pick(db, { category: cat, departmentId: rq.department_id || null });
+      if (p) { assignee = p.assigneeId; assigneeName = p.name; auto = true; how = p.how; }
+    }
+    // Срок: администратор может указать; иначе — нормативный срок вида проблемы
+    let due = null;
+    let dueAuto = false;
+    if (admin && b.due_at) {
+      due = new Date(b.due_at);
+      if (Number.isNaN(due.getTime())) throw new HttpError(400, 'Некорректный срок');
+    } else if (cat && cat.sla_hours) { due = L.slaDue(cat); dueAuto = true; }
+    const { rows } = await db.query(
+      `INSERT INTO tickets (requester_id, category_id, status_id, priority, title, description, location, assignee_id, due_at, due_auto, channel)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [rq.id, cat ? cat.id : null, st.id, priority, title, str(b.description, 20000) || '', str(b.location, 200) || rq.room, assignee, due, dueAuto, channel]);
+    const tid = rows[0].id;
+    await L.addHistory(db, tid, me(req), 'created', { staff: true, channel: CHANNELS[channel] });
+    if (assignee) await L.addHistory(db, tid, me(req), 'assignee', { from: null, to: assigneeName, auto, how });
+    if (due) await L.addHistory(db, tid, me(req), 'due', { from: null, to: due, auto: dueAuto });
+    return tid;
+  });
+  await calendarSync.syncTicket(id, req.user.id);
+  notify.ticketCreated(id, req.user.id).catch(() => {});
+  res.status(201).json({ id });
+}));
+
 // ---------- изменение заявки ----------
 router.patch('/tickets/:id', ah(async (req, res) => {
   const id = intOrNull(req.params.id);
@@ -163,7 +290,7 @@ router.patch('/tickets/:id', ah(async (req, res) => {
       // Исполнитель, взявший свободную заявку, становится её исполнителем
       if (!cur.assignee_id && !('assignee_id' in b) && !st.is_closed) {
         set('assignee_id', req.user.id);
-        await L.addHistory(db, id, me(req), 'assignee', { from: null, to: req.user.full_name || req.user.username });
+        await L.addHistory(db, id, me(req), 'assignee', { from: null, to: req.user.role === 'superadmin' ? 'Служба ИТ' : (req.user.full_name || req.user.username) });
       }
       await L.addHistory(db, id, me(req), 'status', { from: cur.status_name, to: st.name });
       events.push('status');
@@ -197,6 +324,13 @@ router.patch('/tickets/:id', ah(async (req, res) => {
         set('due_at', due);
         await L.addHistory(db, id, me(req), 'due', { from: cur.due_at, to: due });
       }
+      if (cur.due_auto) set('due_auto', false);
+    }
+    // Подтвердить срок, поставленный по нормативу
+    if (b.confirm_due && cur.due_auto) {
+      if (!admin) throw new HttpError(403, 'Сроки подтверждает администратор helpdesk');
+      set('due_auto', false);
+      await L.addHistory(db, id, me(req), 'due_confirmed', { to: cur.due_at });
     }
     if ('priority' in b && b.priority !== cur.priority) {
       if (!L.PRIORITIES[b.priority]) throw new HttpError(400, 'Неизвестный приоритет');
@@ -213,6 +347,15 @@ router.patch('/tickets/:id', ah(async (req, res) => {
         if (to && !nm(to)) throw new HttpError(400, 'Вид проблемы не найден');
         set('category_id', to);
         await L.addHistory(db, id, me(req), 'category', { from: nm(cur.category_id), to: nm(to) });
+        // Срок по нормативу ещё не подтверждён — пересчитать по новому виду проблемы
+        if ((cur.due_auto || !cur.due_at) && !('due_at' in b)) {
+          const nc = to ? (await db.query('SELECT sla_hours FROM categories WHERE id = $1', [to])).rows[0] : null;
+          const nd = L.slaDue(nc, cur.created_at);
+          if ((nd ? nd.getTime() : null) !== (cur.due_at ? cur.due_at.getTime() : null)) {
+            set('due_at', nd); set('due_auto', !!nd);
+            await L.addHistory(db, id, me(req), 'due', { from: cur.due_at, to: nd, auto: true });
+          }
+        }
       }
     }
     if ('title' in b) {
@@ -328,19 +471,21 @@ router.get('/devices', ah(async (req, res) => {
 function categoryBody(b) {
   const name = str(b.name, 100);
   if (!name) throw new HttpError(400, 'Укажите название');
+  const sla = Math.round(Number(b.sla_hours)) || null;
+  if (sla !== null && (sla < 1 || sla > 24 * 365)) throw new HttpError(400, 'Нормативный срок — от 1 часа до года');
   return [name, str(b.description, 500), str(b.icon, 8) || '🛠', Number(b.sort) || 0, b.is_active !== false,
-    b.default_assignee_id ? Number(b.default_assignee_id) : null];
+    b.default_assignee_id ? Number(b.default_assignee_id) : null, sla];
 }
 router.post('/categories', requireAdmin, ah(async (req, res) => {
   const { rows } = await query(
-    `INSERT INTO categories (name, description, icon, sort, is_active, default_assignee_id)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`, categoryBody(req.body || {}));
+    `INSERT INTO categories (name, description, icon, sort, is_active, default_assignee_id, sla_hours)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`, categoryBody(req.body || {}));
   res.status(201).json(rows[0]);
 }));
 router.put('/categories/:id', requireAdmin, ah(async (req, res) => {
   const { rows } = await query(
     `UPDATE categories SET name = $1, description = $2, icon = $3, sort = $4, is_active = $5,
-            default_assignee_id = $6 WHERE id = $7 RETURNING *`,
+            default_assignee_id = $6, sla_hours = $7 WHERE id = $8 RETURNING *`,
     [...categoryBody(req.body || {}), intOrNull(req.params.id)]);
   if (!rows[0]) throw new HttpError(404, 'Не найдено');
   res.json(rows[0]);
