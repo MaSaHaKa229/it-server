@@ -65,14 +65,26 @@ export const ABSENCE_KINDS = {
 };
 
 // Периодичность регулярных задач (месяцев между повторами)
+// Регулярные задачи: помесячные (months) и по дням (days; weekdays — дни недели 1 = пн … 7 = вс)
 export const FREQS = {
+  daily: { label: 'Каждый день', days: 1 },
+  workdays: { label: 'По будням (пн–пт)', days: 1, weekdays: [1, 2, 3, 4, 5] },
+  weekly: { label: 'Каждую неделю', days: 7, pickDays: true },
+  biweekly: { label: 'Через неделю', days: 14, pickDays: true },
   monthly: { label: 'Каждый месяц', months: 1 },
   quarterly: { label: 'Каждый квартал', months: 3 },
   halfyear: { label: 'Каждые полгода', months: 6 },
   yearly: { label: 'Каждый год', months: 12 },
 };
+export const WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 export const freqByMonths = (m) => Object.keys(FREQS).find((k) => FREQS[k].months === m);
-export const freqLabel = (m) => FREQS[freqByMonths(m)]?.label || '';
+/** Подпись частоты: по ключу ('weekly') или, для старых данных, по числу месяцев; weekdays — уточнение для недель */
+export const freqLabel = (x, weekdays) => {
+  const key = typeof x === 'number' ? freqByMonths(x) : x;
+  const base = FREQS[key]?.label || '';
+  if (FREQS[key]?.pickDays && weekdays?.length) return `${base} (${weekdays.map((d) => WEEKDAYS[d - 1]).join(', ')})`;
+  return base;
+};
 
 // Вид задачи (для фильтра)
 export const SOURCES = {

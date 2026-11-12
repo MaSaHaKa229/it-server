@@ -269,7 +269,10 @@ async function mailComputed() {
 }
 
 function start() {
-  const run = () => mailComputed().catch((e) => console.error('Уведомления на почту:', e.message));
+  const H = require('./health');
+  H.register('notify_mail', 'Рассылка уведомлений на почту', 15);
+  const run = () => H.track('notify_mail', async () => { await mailComputed(); return mail.enabled() ? 'почта настроена' : 'почта не настроена — письма не отправляются'; })
+    .catch((e) => console.error('Уведомления на почту:', e.message));
   setTimeout(run, 2 * 60 * 1000).unref?.();
   setInterval(run, 15 * 60 * 1000).unref?.();
   // Старые прочитанные события чистим раз в сутки

@@ -119,6 +119,9 @@ router.delete('/users/:id', ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---------------- Состояние системы ----------------
+router.use('/status', require('./status'));
+
 // ---------------- Резервные копии ----------------
 router.use('/backup', require('./backup').router);
 

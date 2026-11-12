@@ -212,12 +212,13 @@ export function newTicketDialog({ api, meta }) {
   const nDep = h('select', h('option', { value: '' }, '— отдел —'), (meta.departments || []).map((d) => h('option', { value: d.id }, d.name)));
   const nPhone = h('input', { type: 'text', placeholder: 'внутренний номер' });
   const nRoom = h('input', { type: 'text', placeholder: 'например, 205' });
-  const nEmail = h('input', { type: 'email', placeholder: 'необязательно' });
+  const nEmail = h('input', { type: 'email', placeholder: 'ivanova@company.local' });
   const newBox = h('div.form-grid', { style: { display: 'none' } },
     h('label.field', h('span', 'ФИО'), nName), h('label.field', h('span', 'Отдел'), nDep),
     h('label.field', h('span', 'Телефон'), nPhone), h('label.field', h('span', 'Кабинет'), nRoom),
-    h('label.field', h('span', 'E-mail'), nEmail,
-      h('div.hint', 'Если указать — сотрудник получит письмо о заявке и сможет следить за ней на сайте заявок.')));
+    h('label.field', h('span', 'E-mail (обязательно)'), nEmail,
+      h('div.hint', 'Рабочая почта сотрудника. Он получит письмо о заявке, а когда сам зарегистрируется на сайте заявок с этим адресом — '
+        + 'увидит там эту заявку (вторая учётная запись не появится).')));
   const newLink = h('a', { href: '#' }, '+ сотрудника нет в списке');
   newLink.addEventListener('click', (e) => { e.preventDefault(); chosen = null; drawChosen(); newBox.style.display = ''; nName.value = nName.value || search.value; nName.focus(); });
 
@@ -274,6 +275,7 @@ export function newTicketDialog({ api, meta }) {
       location: loc.value, channel: channel.value, assignee: assignee.value };
     if (chosen) body.requester_id = chosen.id;
     else if (newBox.style.display !== 'none' && nName.value.trim()) {
+      if (!nEmail.value.trim()) throw new Error('Укажите рабочий e-mail сотрудника');
       body.requester = { full_name: nName.value.trim(), department_id: nDep.value || null, phone: nPhone.value, room: nRoom.value, email: nEmail.value.trim() };
     } else throw new Error('Выберите сотрудника из списка или добавьте нового');
     const r = await api.post('/tickets', body);

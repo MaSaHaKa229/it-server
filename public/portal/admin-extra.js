@@ -258,6 +258,7 @@ const SETTINGS_MAP = [
     ['Уведомления и почта', '/admin#notify', 'почтовый сервер, пороги «за сколько предупреждать»'],
     ['Резервные копии', '/admin#backup', 'расписание, папка, восстановление'],
     ['Журнал входов и действий', '/admin#audit', 'кто и когда входил, что менял'],
+    ['Состояние системы', '/admin#status', 'самопроверка, фоновые задания, ошибки, место на диске'],
   ]],
   ['ИТ-инвентарь', [
     ['Типы техники', '/inventory/#/settings/types', 'какие поля у какого типа'],
@@ -294,4 +295,64 @@ export function renderSettingsMap(box) {
       h('div.stack', { style: { gap: '10px' } }, items.map(([label, href, hint]) => h('div',
         h('a', { href, style: { fontWeight: 500 } }, label),
         h('div.small.muted', hint))))))));
+}
+
+// ====================== Состояние системы ======================
+const mb = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(1)} ГБ` : n >= 1e6 ? `${Math.round(n / 1e6)} МБ` : `${Math.max(1, Math.round(n / 1e3))} КБ`);
+const dur = (s) => { const d = Math.floor(s / 86400); const hh = Math.floor((s % 86400) / 3600); const mm = Math.floor((s % 3600) / 60); return d ? `${d} дн. ${hh} ч` : hh ? `${hh} ч ${mm} мин` : `${mm} мин`; };
+const MARK = { true: ['✓', '#36B37E'], warn: ['!', '#FF8B00'], false: ['✕', '#DE350B'] };
+const JOB_STATE = { ok: ['работает', '.green'], waiting: ['ещё не запускалось', ''], late: ['давно не запускалось', '.yellow'], error: ['ошибка', '.red'] };
+
+export async function renderStatus(box) {
+  const d = await api.get('/api/admin/status');
+  const row = (k, v) => h('tr', h('td.muted', { style: { width: '220px' } }, k), h('td', v));
+  const bad = d.checks.filter((c) => c.ok !== true).length;
+  clear(box,
+    h('div.row', { style: { marginBottom: '12px' } },
+      h('span', bad ? h('b', { style: { color: '#DE350B' } }, `Требует внимания: ${bad}`) : h('b', { style: { color: '#006644' } }, 'Всё в порядке')),
+      h('span.spacer'),
+      h('button.btn', { onclick: () => run(() => renderStatus(box)) }, 'Обновить')),
+    h('div.panel',
+      h('h2', { style: { marginTop: 0 } }, 'Самопроверка'),
+      h('table.list', h('tbody', d.checks.map((c) => h('tr',
+        h('td', { style: { width: '32px', fontWeight: 700, color: MARK[String(c.ok)][1] } }, MARK[String(c.ok)][0]),
+        h('td', { style: { width: '260px' } }, h('b', c.title)),
+        h('td', c.text)))))),
+    h('div.panel',
+      h('h2', { style: { marginTop: 0 } }, 'Фоновые задания'),
+      h('table.list',
+        h('thead', h('tr', h('th', 'Задание'), h('th', 'Состояние'), h('th', 'Последний запуск'), h('th', 'Результат'), h('th', 'Запусков / ошибок'))),
+        h('tbody', d.jobs.map((j) => h('tr',
+          h('td', j.label),
+          h('td', h('span.lozenge' + JOB_STATE[j.state][1], JOB_STATE[j.state][0])),
+          h('td.nowrap', j.lastRun ? fmtDateTime(j.lastRun) : '—'),
+          h('td.small', j.state === 'error' ? h('span', { style: { color: '#DE350B' } }, j.lastError) : (j.info || '')),
+          h('td', `${j.runs} / ${j.fails}`))))),
+      h('p.hint', 'Задания запускаются сами: опрос принтеров — раз в 2 часа, письма — раз в 15 минут, повторы задач — раз в 6 часов, ',
+        'копия и сканирование — по расписанию. Счётчики обнуляются при перезапуске портала.')),
+    h('div.form-grid', { style: { alignItems: 'start' } },
+      h('div.panel',
+        h('h2', { style: { marginTop: 0 } }, 'Портал'),
+        h('table.list', h('tbody',
+          row('Версия', [d.version.version, d.version.built ? ` от ${fmtDateTime(d.version.built)}` : ' (сборка разработчика)', d.version.commit ? h('span.muted', ` · ${d.version.commit}`) : null]),
+          row('Компьютер', `${d.server.hostname} · ${d.server.platform}`),
+          row('Node.js', d.server.node),
+          row('Работает без перезапуска', `${dur(d.server.uptime)} (с ${fmtDateTime(d.server.started)})`),
+          row('Память портала', `${mb(d.server.memory)} · свободно на компьютере ${mb(d.server.freemem)} из ${mb(d.server.totalmem)}`),
+          row('Папка', d.server.folder),
+          row('Диск', d.server.disk ? `свободно ${mb(d.server.disk.free)} из ${mb(d.server.disk.total)}` : '—')))),
+      h('div.panel',
+        h('h2', { style: { marginTop: 0 } }, 'База данных'),
+        h('table.list', h('tbody',
+          row('База', `${d.db.name} · ${d.db.version}`),
+          row('Размер', mb(d.db.size)),
+          row('Подключений', String(d.db.connections)),
+          row('Последняя копия', d.backup && d.backup.last_ok_at ? `${fmtDateTime(d.backup.last_ok_at)} · ${d.backup.last_file || ''}` : 'не было'),
+          row('Самые большие таблицы', h('div.small', d.db.tables.map((t) => h('div', `${t.name} — ${mb(t.size)}`)))))))),
+    h('div.panel',
+      h('h2', { style: { marginTop: 0 } }, 'Последние ошибки'),
+      d.errors.length ? h('div', { style: { maxHeight: '360px', overflow: 'auto' } }, d.errors.map((e) => h('div', { style: { padding: '6px 0', borderBottom: '1px solid var(--n30)' } },
+        h('span.muted.small', fmtDateTime(e.at)), h('pre.small', { style: { margin: '2px 0 0', whiteSpace: 'pre-wrap', fontFamily: 'inherit' } }, e.text))))
+        : h('p.muted', 'Ошибок с момента запуска не было.'),
+      h('p.hint', 'Полный журнал — файл portal.log в папке портала.')));
 }

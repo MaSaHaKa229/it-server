@@ -44,7 +44,10 @@ async function pollAll() {
 }
 
 function start() {
-  const run = () => pollAll().catch((e) => console.error('Расходники принтеров:', e.message));
+  const H = require('../../portal/health');
+  H.register('supplies', 'Опрос расходников принтеров и МФУ', 120);
+  const run = () => H.track('supplies', async () => { const r = await pollAll(); return r && r.polled != null ? `опрошено: ${r.polled}` : undefined; })
+    .catch((e) => console.error('Расходники принтеров:', e.message));
   setTimeout(run, FIRST_MS).unref?.();
   setInterval(run, EVERY_MS).unref?.();
 }

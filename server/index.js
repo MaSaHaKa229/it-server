@@ -23,6 +23,7 @@ if (!process.env.SESSION_SECRET || !process.env.APP_SECRET_KEY) {
 }
 
 async function main() {
+  require('./portal/health').captureErrors(); // последние ошибки — на странице «Состояние системы»
   console.log('Подготовка базы данных…');
   await initAll();
   await require('./portal/mail').load(); // настройки почты (Администрирование → Почта или .env)

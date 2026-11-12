@@ -15,7 +15,7 @@ function describe(a) {
   const name = d.title || d.name;
   if (name) s += ` «${name}»`;
   if (d.duplicated_from) s += ' (копия)';
-  if (a.entity === 'series' && d.every_months) s += ` — ${freqLabel(d.every_months).toLowerCase()}`;
+  if (a.entity === 'series' && (d.freq || d.every_months)) s += ` — ${freqLabel(d.freq || d.every_months).toLowerCase()}`;
   if (a.entity === 'absence' && d.kind) s += `: ${ABSENCE_KINDS[d.kind]?.label.toLowerCase() || d.kind}, ${fmtShort(d.from)} — ${fmtShort(d.to)}`;
   if (d.fields?.length) s += `: ${d.fields.join(', ')}`;
   if (d.status && a.entity === 'task') s += ` → ${STATUSES[d.status]?.label}`;

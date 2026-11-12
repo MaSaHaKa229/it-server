@@ -643,3 +643,10 @@ input[type=checkbox], input[type=radio] { accent-color: var(--accent); width: 16
 .agenda-row:hover .agenda-quick { visibility: visible; }
 .quick-btn { display: inline-flex; align-items: center; height: 26px; padding: 0 8px; border-radius: 3px; background: #F4F5F7; color: #172B4D; font-size: 12px; white-space: nowrap; }
 .quick-btn:hover { background: #E3FCEF; color: #006644; }
+
+/* Выбор дней недели для еженедельных задач */
+.weekday-pick { display: flex; gap: 4px; flex-wrap: wrap; }
+.weekday-pick label { display: inline-flex; align-items: center; justify-content: center; min-width: 38px; height: 30px; padding: 0 6px;
+  border: 1px solid var(--border); border-radius: 3px; cursor: pointer; font-size: 13px; user-select: none; }
+.weekday-pick label.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.weekday-pick input { display: none; }

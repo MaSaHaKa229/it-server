@@ -193,3 +193,8 @@ ALTER TABLE task_series ADD COLUMN IF NOT EXISTS color TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE;
 UPDATE users x SET is_system = (p.role = 'superadmin')
   FROM public.users p WHERE p.id = x.id AND x.is_system IS DISTINCT FROM (p.role = 'superadmin');
+
+-- Ежедневные и еженедельные регулярные задачи: шаг в днях (1 — каждый день, 7 — каждую неделю, 14 — через неделю)
+-- и дни недели (1 — пн … 7 — вс; пусто — день недели первой задачи). Для помесячных every_days = NULL.
+ALTER TABLE task_series ADD COLUMN IF NOT EXISTS every_days INTEGER;
+ALTER TABLE task_series ADD COLUMN IF NOT EXISTS weekdays INTEGER[] NOT NULL DEFAULT '{}';

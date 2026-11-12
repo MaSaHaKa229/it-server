@@ -52,9 +52,9 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
   привязка/отвязка — исполнитель или админ helpdesk, пишется в `history` заявки и `public.device_history` (ticket_linked/unlinked);
 - срок заявки выставляет администратор helpdesk (или он ставится по нормативу вида проблемы и подтверждается администратором);
 
-**Регулярные задачи календаря** — `calendar.task_series` (шаблон, `every_months`, `until`, `tz`); повторы — обычные
+**Регулярные задачи календаря** — `calendar.task_series` (шаблон, `every_months` — помесячные, либо `every_days` 1/7/14 + `weekdays` (isodow) — ежедневные/по будням/еженедельные/через неделю; `until`, `tz`; ключ частоты для клиента — `FREQ_SQL`); повторы — обычные
 строки `tasks` с `series_id`/`series_idx`, создаются по требованию `ensureOccurrences()` (`server/calendar/series.js`)
-при запросе периода и таймером на год вперёд; удалённые по одному — в `task_series_skips`. Даты повторов считаются
+при запросе периода и таймером (помесячные — на год вперёд, по дням — на 62 дня); удалённые по одному — в `task_series_skips`. Даты повторов считаются
 в часовом поясе серии (`tz` из браузера), иначе «1-е число» уезжает при поясе базы ≠ поясу пользователей.
 Отсутствия сотрудников — `calendar.absences`. Дата выполнения задачи `completed_at` ставится триггером.
 
@@ -92,8 +92,8 @@ React-клиенты грузят его динамически по адрес�
 «Переместить», «Изменить поля…» → `devices/bulk` action `update` через `updateDevice()` из devices.js).
 **Заявки сотрудника в рабочем месте** — `workplaces.requester_id` (колонка добавляется в helpdesk/schema.sql, т. к. FK на
 `helpdesk.requesters`), маршруты `workplaces/:id/tickets|requester`, `workplaces/requesters/search` (только с доступом к helpdesk).
-**Заявка за сотрудника** — `POST /helpdesk/api/tickets` (staff.js, `requesterFor`: без e-mail — адрес-заглушка
-`*@helpdesk.invalid`, на него `mail.send` не шлёт), `tickets.channel`; **норматив** — `categories.sla_hours`,
+**Заявка за сотрудника** — `POST /helpdesk/api/tickets` (staff.js, `requesterFor`: e-mail обязателен (просьба пользователя — без дублей заявителей), такой заявитель
+создаётся с `email_verified=false`, и регистрация на сайте заявок с тем же адресом «забирает» эту запись), `tickets.channel`; **норматив** — `categories.sla_hours`,
 `tickets.due_auto` (подтверждение `confirm_due`), это смягчает правило «срок ставит только администратор».
 **Задача → заявка** — `calendar-sync.fromTask()` из PATCH задачи (только статус).
 **Сохранённые фильтры, избранное, недавние** — `server/portal/views.js` (`/api/my/views`, `/api/my/items`; таблицы
@@ -104,6 +104,9 @@ React-клиенты грузят его динамически по адрес�
 `data-theme` в main.jsx); `/shared/peek.js` — карточка по наведению (`/api/peek`, ссылки или `data-peek="kind:id"`);
 меню «Ещё ▾» — 4-й элемент `true` в nav (`topbar` в ui.js, инвентарь, календарь); `toast(text, type, title, { undo })`;
 справка — `public/portal/help.js` (`/help`, разделы и пункты по правам пользователя — условия в `SECTIONS`); «Все настройки» — `admin-extra.js` `SETTINGS_MAP` (новые настройки добавлять туда).
+**Состояние системы** — `/admin#status`, `server/portal/status.js` (версия из `server/version.json`, который пишет
+`make-update.sh`; диск, база, самопроверка) + `server/portal/health.js` (`register`/`track` фоновых заданий, `captureErrors()`
+— кольцевой буфер `console.error`). Новые фоновые таймеры оборачивать в `track`.
 **Сканирование по расписанию** — `netprobe_settings.scan_schedule`, `scan.js` `startSchedule()`; новые — уведомление `netscan_new`.
 Главная — `public/portal/home.js` + `/api/summary/my` (мои заявки, мои задачи на сегодня, уведомления).
 Значения для карточки — `netprobe/format.js`: шаблоны (`netprobe_settings.formats`) и замены (`netprobe_replacements`). Поиск в AD: база из настроек → домен контроллера → GC:// леса

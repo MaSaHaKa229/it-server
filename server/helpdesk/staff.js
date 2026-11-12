@@ -200,15 +200,19 @@ async function requesterFor(db, b) {
   const n = b.requester || {};
   const fullName = str(n.full_name, 200);
   if (!fullName) throw new HttpError(400, 'Укажите сотрудника: выберите из списка или впишите ФИО');
+  // E-mail обязателен: по нему сотрудник потом сам зарегистрируется на сайте заявок и получит эту же учётную запись
+  // со всеми заявками (а не заведёт вторую)
   const email = (str(n.email, 200) || '').toLowerCase();
-  if (email) {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Некорректный e-mail');
-    const ex = (await db.query('SELECT * FROM requesters WHERE lower(email) = $1', [email])).rows[0];
-    if (ex) return ex;
+  if (!email) throw new HttpError(400, 'Укажите рабочий e-mail сотрудника');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, 'Некорректный e-mail');
+  const ex = (await db.query('SELECT * FROM requesters WHERE lower(email) = $1', [email])).rows[0];
+  if (ex) return ex;
+  const domains = (await L.getSettings()).allowed_domains || [];
+  if (domains.length && !domains.includes(email.split('@')[1])) {
+    throw new HttpError(400, `E-mail должен быть рабочим: ${domains.map((d) => '@' + d).join(', ')}`);
   }
   const dep = await L.resolveDepartment({ department_id: n.department_id, department: n.department });
-  // Без e-mail — служебный адрес-заглушка (на сайт заявок такой сотрудник войти не сможет, письма не отправляются)
-  const addr = email || `nomail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@helpdesk.invalid`;
+  const addr = email;
   const hash = await bcrypt.hash(require('crypto').randomBytes(24).toString('hex'), 10);
   const { rows } = await db.query(
     `INSERT INTO requesters (email, full_name, department, department_id, phone, room, password_hash, is_active, is_approved, email_verified)

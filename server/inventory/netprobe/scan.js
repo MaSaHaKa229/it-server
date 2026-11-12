@@ -392,7 +392,11 @@ async function scheduleTick() {
   const networks = (s.scan_networks || localNetworks()).trim();
   if (!networks) return;
   const { job: j, done } = startScan(networks, sch.wmi && s.wmi_enabled, null);
-  await done;
+  await require('../../portal/health').track('netscan_auto', async () => {
+    await done;
+    if (j.error) throw new Error(j.error);
+    return `найдено устройств: ${j.found ?? '—'}, новых: ${(j.fresh || []).length}`;
+  }).catch(() => {});
   if (j.error) {
     console.error('Сканирование по расписанию:', j.error);
     return;
@@ -410,6 +414,7 @@ async function scheduleTick() {
 }
 
 function startSchedule() {
+  require('../../portal/health').register('netscan_auto', 'Сканирование сети по расписанию', null);
   const run = () => scheduleTick().catch((e) => console.error('Сканирование по расписанию:', e.message));
   setTimeout(run, 2 * 60 * 1000).unref?.();
   setInterval(run, 60 * 1000).unref?.();

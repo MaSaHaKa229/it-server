@@ -14,7 +14,7 @@ const ACTIONS = { create: 'создал(а) задачу', update: 'измени
 function DeleteSeriesDialog({ task, onPick, onClose }) {
   return (
     <Modal title="Удалить регулярную задачу" onClose={onClose}>
-      <p>«{task.title}» повторяется {freqLabel(task.series_every_months).toLowerCase()}. Что удалить?</p>
+      <p>«{task.title}» повторяется {freqLabel(task.series_freq || task.series_every_months, task.series_weekdays).toLowerCase()}. Что удалить?</p>
       <div className="choice-list">
         <button className="choice" onClick={() => onPick('one')}>
           <b>Только этот повтор</b><small>Остальные повторы останутся, этот больше не появится</small>
@@ -130,7 +130,7 @@ export default function TaskModal({ taskId, seriesId, createDefaults, onClose, o
             <div className="meta-row">
               <span>Повтор</span>
               <span className="series-meta">
-                <b>{freqLabel(task.series_every_months)}</b>
+                <b>{freqLabel(task.series_freq || task.series_every_months, task.series_weekdays)}</b>
                 {task.series_until && <span className="muted"> · до {fmtDate(fromInputDate(task.series_until), { day: 'numeric', month: 'long', year: 'numeric' })}</span>}
                 {canEdit && <button className="link" onClick={() => editSeries(task.series_id)}>Изменить все повторы</button>}
               </span>

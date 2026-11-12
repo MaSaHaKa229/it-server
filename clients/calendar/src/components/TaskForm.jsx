@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, qs } from '../api.js';
 import { useApp } from '../context.jsx';
-import { addDays, fmtDate, fmtShort, fromInputDate, nextOccurrence, toInputDate, toInputDateTime } from '../dates.js';
-import { ABSENCE_KINDS, COLOR_MODES, FREQS, freqByMonths, initials, PALETTE, PRIORITIES, shortName, STATUSES } from '../constants.js';
+import { addDays, fmtDate, fmtShort, fromInputDate, nextOccurrence, nextOccurrenceDays, toInputDate, toInputDateTime } from '../dates.js';
+import { ABSENCE_KINDS, COLOR_MODES, FREQS, freqByMonths, initials, PALETTE, PRIORITIES, shortName, STATUSES, WEEKDAYS } from '../constants.js';
 import Icon from './Icon.jsx';
 
 const TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } })();
-const COPIES = { daily: 'Каждый день', weekdays: 'По будням', weekly: 'Каждую неделю' };
 
 /**
  * Форма задачи.
@@ -31,7 +30,8 @@ export default function TaskForm({ task, series, defaults, onSaved, onCancel }) 
     start: init.all_day ? toInputDate(init.start_at) : toInputDateTime(init.start_at),
     end: init.all_day ? toInputDate(init.end_at) : toInputDateTime(init.end_at),
     checklist: (series?.checklist ?? task?.checklist)?.map(({ text, done }) => ({ text, done: !!done })) ?? [],
-    repeat: series ? freqByMonths(series.every_months) : (defaults?.repeat ?? ''),
+    repeat: series ? (series.freq || freqByMonths(series.every_months)) : (defaults?.repeat ?? ''),
+    weekdays: series?.weekdays ?? [],
     repeatCount: 4,
     until: series?.until ?? '',
   });
@@ -89,8 +89,10 @@ export default function TaskForm({ task, series, defaults, onSaved, onCancel }) 
     if (!isSeries) return null;
     const s = parse(f.start), e = parse(f.end);
     if (isNaN(s) || isNaN(e) || e < s) return null;
-    return nextOccurrence(s, e, FREQS[f.repeat].months, f.all_day, f.until || null);
-  }, [isSeries, f.start, f.end, f.repeat, f.all_day, f.until]); // eslint-disable-line react-hooks/exhaustive-deps
+    const fr = FREQS[f.repeat];
+    if (fr.days) return nextOccurrenceDays(s, e, fr.days, fr.pickDays ? f.weekdays : fr.weekdays, f.all_day, f.until || null);
+    return nextOccurrence(s, e, fr.months, f.all_day, f.until || null);
+  }, [isSeries, f.start, f.end, f.repeat, f.all_day, f.until, f.weekdays]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = async (e) => {
     e.preventDefault();
@@ -109,12 +111,12 @@ export default function TaskForm({ task, series, defaults, onSaved, onCancel }) 
       let res;
       if (series) {
         res = await api.patch(`/series/${series.id}`, {
-          ...common, freq: f.repeat, until: f.until || null, tz: TZ, checklist: f.checklist.map(({ text }) => ({ text })),
+          ...common, freq: f.repeat, weekdays: f.weekdays, until: f.until || null, tz: TZ, checklist: f.checklist.map(({ text }) => ({ text })),
         });
       } else {
         const body = { ...common, status: f.status, checklist: f.checklist };
         if (!task && f.repeat) {
-          body.repeat = isSeries ? { freq: f.repeat, until: f.until || null, tz: TZ } : { freq: f.repeat, count: Number(f.repeatCount) };
+          body.repeat = { freq: f.repeat, weekdays: f.weekdays, until: f.until || null, tz: TZ };
           if (isSeries) body.checklist = f.checklist.map(({ text }) => ({ text, done: false }));
         }
         res = task ? await api.patch(`/tasks/${task.id}`, body) : await api.post('/tasks', body);
@@ -125,7 +127,8 @@ export default function TaskForm({ task, series, defaults, onSaved, onCancel }) 
 
   const seriesChangesDates = series && (toInputDateTime(series.start_at) !== toInputDateTime(parse(f.start))
     || toInputDateTime(series.end_at) !== toInputDateTime(parse(f.end)) || series.all_day !== f.all_day
-    || freqByMonths(series.every_months) !== f.repeat || (series.until || '') !== f.until);
+    || (series.freq || freqByMonths(series.every_months)) !== f.repeat || (series.until || '') !== f.until
+    || JSON.stringify(series.weekdays || []) !== JSON.stringify([...f.weekdays].sort()));
 
   return (
     <form className="task-form" onSubmit={submit}>
@@ -168,14 +171,12 @@ export default function TaskForm({ task, series, defaults, onSaved, onCancel }) 
               <span>Повторять</span>
               <select value={f.repeat} onChange={(e) => set('repeat', e.target.value)}>
                 {!series && <option value="">Не повторять</option>}
-                <optgroup label="Регулярная задача (без ограничения по числу)">
-                  {Object.entries(FREQS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                <optgroup label="По дням и неделям">
+                  {Object.entries(FREQS).filter(([, v]) => v.days).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                 </optgroup>
-                {!series && (
-                  <optgroup label="Несколько отдельных копий">
-                    {Object.entries(COPIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </optgroup>
-                )}
+                <optgroup label="По месяцам">
+                  {Object.entries(FREQS).filter(([, v]) => v.months).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </optgroup>
               </select>
             </label>
             {isSeries && (
@@ -184,11 +185,20 @@ export default function TaskForm({ task, series, defaults, onSaved, onCancel }) 
                 <input type="date" value={f.until} onChange={(e) => set('until', e.target.value)} />
               </label>
             )}
-            {f.repeat && !isSeries && (
-              <label className="field">
-                <span>Количество повторений</span>
-                <input type="number" min={2} max={52} value={f.repeatCount} onChange={(e) => set('repeatCount', e.target.value)} />
-              </label>
+            {isSeries && FREQS[f.repeat].pickDays && (
+              <div className="field">
+                <span>Дни недели</span>
+                <div className="weekday-pick">
+                  {WEEKDAYS.map((w, i) => (
+                    <label key={w} className={f.weekdays.includes(i + 1) ? 'on' : ''}>
+                      <input type="checkbox" checked={f.weekdays.includes(i + 1)}
+                        onChange={(e) => set('weekdays', e.target.checked ? [...f.weekdays, i + 1].sort() : f.weekdays.filter((x) => x !== i + 1))} />
+                      {w}
+                    </label>
+                  ))}
+                </div>
+                <small className="muted">Не отмечено — в тот же день недели, что и первая задача</small>
+              </div>
             )}
           </div>
           {isSeries && (

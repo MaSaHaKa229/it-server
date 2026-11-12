@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { query, withTransaction, logActivity } from '../db.js';
 import { requireRole } from '../auth.js';
 import { ah, validate, HttpError } from '../validate.js';
-import { ensureOccurrences, EVERY, validTz } from '../series.js';
+import { ensureOccurrences, EVERY, validTz, isSeriesFreq, seriesTiming, FREQ_SQL } from '../series.js';
 import { taskCond } from '../scope.js';
 import { taskAssigned, taskCommented } from '../notify.js';
 import { createRequire } from 'node:module';
@@ -32,7 +32,8 @@ const taskBody = z.object({
   // daily/weekdays/weekly — несколько отдельных копий (count);
   // monthly/quarterly/halfyear/yearly — периодическая задача без конца (или до until)
   repeat: z.object({
-    freq: z.enum(['daily', 'weekdays', 'weekly', 'monthly', 'quarterly', 'halfyear', 'yearly']),
+    freq: z.enum(['daily', 'weekdays', 'workdays', 'weekly', 'biweekly', 'monthly', 'quarterly', 'halfyear', 'yearly']),
+    weekdays: z.array(z.number().int().min(1).max(7)).max(7).optional(),
     count: z.number().int().min(2).max(52).optional(),
     until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
     tz: z.string().max(64).optional(),
@@ -49,7 +50,8 @@ const TASK_SELECT = `
     (SELECT count(*)::int FROM task_checklist cl WHERE cl.task_id = t.id) AS checklist_total,
     (SELECT count(*)::int FROM task_checklist cl WHERE cl.task_id = t.id AND cl.done) AS checklist_done,
     (SELECT count(*)::int FROM task_comments cm WHERE cm.task_id = t.id) AS comment_count,
-    ts.every_months AS series_every_months, to_char(ts.until, 'YYYY-MM-DD') AS series_until
+    ts.every_months AS series_every_months, to_char(ts.until, 'YYYY-MM-DD') AS series_until,
+    CASE WHEN ts.id IS NULL THEN NULL ELSE ${FREQ_SQL('ts')} END AS series_freq, ts.weekdays AS series_weekdays
   FROM tasks t
   LEFT JOIN task_series ts ON ts.id = t.series_id
   LEFT JOIN categories c ON c.id = t.category_id
@@ -248,7 +250,10 @@ function occurrenceOffsets(start, repeat) {
 
 r.post('/', requireRole('editor'), ah(async (req, res) => {
   const d = validate(taskBody, req.body);
-  if (d.repeat && EVERY[d.repeat.freq]) return res.status(201).json(await createSeries(d, req.user));
+  // Регулярная задача (без ограничения числа повторов): помесячные — всегда; по дням — если не задано количество копий
+  if (d.repeat && (EVERY[d.repeat.freq] || (isSeriesFreq(d.repeat.freq) && !d.repeat.count))) {
+    return res.status(201).json(await createSeries(d, req.user));
+  }
   if (d.repeat && !d.repeat.count) throw new HttpError(400, 'Укажите количество повторений');
   const created = await withTransaction(async (db) => {
     const ids = [];
@@ -274,15 +279,16 @@ r.post('/', requireRole('editor'), ah(async (req, res) => {
 
 // Периодическая задача: серия + повторы на год вперёд. Ответ — первый созданный повтор.
 async function createSeries(d, user) {
+  const timing = seriesTiming(d.repeat.freq, d.repeat.weekdays);
   const seriesId = await withTransaction(async (db) => {
     const { rows } = await db.query(
       `INSERT INTO task_series (title, description, start_at, end_at, all_day, priority, category_id, every_months, until,
-                                assignees, checklist, created_by, updated_by, tz, color)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13,$14) RETURNING id`,
-      [d.title, d.description, d.start_at, d.end_at, d.all_day, d.priority, d.category_id ?? null, EVERY[d.repeat.freq],
+                                assignees, checklist, created_by, updated_by, tz, color, every_days, weekdays)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13,$14,$15,$16) RETURNING id`,
+      [d.title, d.description, d.start_at, d.end_at, d.all_day, d.priority, d.category_id ?? null, timing.every_months,
         d.repeat.until || null, [...new Set(d.assignees)], JSON.stringify((d.checklist || []).map((c) => ({ text: c.text }))), user.id,
-        await validTz(db, d.repeat.tz), d.color ?? null]);
-    await logActivity(db, user.id, 'create', 'series', rows[0].id, { title: d.title, every_months: EVERY[d.repeat.freq] });
+        await validTz(db, d.repeat.tz), d.color ?? null, timing.every_days, timing.weekdays]);
+    await logActivity(db, user.id, 'create', 'series', rows[0].id, { title: d.title, freq: d.repeat.freq, every_months: timing.every_days ? undefined : timing.every_months });
     return rows[0].id;
   });
   await ensureOccurrences(null, null, seriesId);

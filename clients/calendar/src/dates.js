@@ -72,6 +72,25 @@ export function addMonthsClamp(d, n) {
 }
 
 /** Ближайший повтор регулярной задачи, который ещё не закончился (как считает сервер) */
+/** Ближайший повтор по дням: шаг days, дни недели weekdays (1 = пн … 7 = вс) */
+export function nextOccurrenceDays(start, end, days, weekdays, allDay, until) {
+  const today = startOfDay(new Date());
+  const isoDow = (d) => ((d.getDay() + 6) % 7) + 1;
+  const weekStart = (d) => { const x = startOfDay(d); x.setDate(x.getDate() - (isoDow(x) - 1)); return x; };
+  for (let k = 0; k < 800; k++) {
+    const s = addDays(start, k);
+    const e = addDays(end, k);
+    if (until && toInputDate(s) > until) return null;
+    const ok = weekdays && weekdays.length
+      ? weekdays.includes(isoDow(s)) && (days < 14 || Math.round((weekStart(s) - weekStart(start)) / 6048e5) % (days / 7) === 0)
+      : k % days === 0;
+    if (!ok) continue;
+    const fin = allDay ? addDays(startOfDay(e), 1) : e;
+    if (fin > today) return { start: s, end: e };
+  }
+  return null;
+}
+
 export function nextOccurrence(start, end, months, allDay, until) {
   const today = startOfDay(new Date());
   for (let k = 0; k < 600; k++) {

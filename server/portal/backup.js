@@ -278,8 +278,11 @@ async function tick() {
   if (st.last_auto_day === today) return;
   await setSetting('backup_state', { ...st, last_auto_day: today });
   try {
-    await lock('резервное копирование по расписанию', () => createBackup('auto'));
-    cleanup(s);
+    await require('./health').track('backup', async () => {
+      const r = await lock('резервное копирование по расписанию', () => createBackup('auto'));
+      cleanup(s);
+      return `${r.file}, ${Math.round(r.size / 1024)} КБ`;
+    });
   } catch (e) {
     console.error('Резервное копирование:', e.message);
     await setSetting('backup_state', { ...(await state()), last_error: e.message, last_error_at: new Date().toISOString() });
@@ -291,6 +294,7 @@ async function tick() {
 }
 
 function start() {
+  require('./health').register('backup', 'Резервная копия по расписанию', 24 * 60);
   const run = () => tick().catch((e) => console.error('Резервное копирование:', e.message));
   setTimeout(run, 90 * 1000).unref?.();
   setInterval(run, 60 * 1000).unref?.();

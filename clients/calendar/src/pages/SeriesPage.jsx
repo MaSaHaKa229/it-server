@@ -11,6 +11,11 @@ import TaskModal from '../components/TaskModal.jsx';
 function when(s) {
   const st = new Date(s.start_at), en = new Date(s.end_at);
   const dm = (d) => fmtDate(d, { day: 'numeric', month: 'long' });
+  // По дням и неделям — время, с какого дня
+  if (s.every_days) {
+    const time = s.all_day ? 'весь день' : `${fmtTime(st)}–${fmtTime(en)}`;
+    return `${time}, с ${dm(st)}`;
+  }
   if (s.every_months === 1) {
     const days = sameDay(st, en) ? `${st.getDate()}-го числа` : `с ${st.getDate()}-го по ${en.getDate()}-е число`;
     return s.all_day ? days : `${days}, ${fmtTime(st)}–${fmtTime(en)}`;
@@ -38,7 +43,7 @@ export default function SeriesPage() {
       <header className="page-head row">
         <div>
           <h2>Регулярные задачи</h2>
-          <p className="muted">Отчёты и другие дела, которые повторяются каждый месяц, квартал, полгода или год. Повторы сами появляются в календаре.</p>
+          <p className="muted">Отчёты и другие дела, которые повторяются каждый день, по будням, каждую неделю, месяц, квартал, полгода или год. Повторы сами появляются в календаре.</p>
         </div>
         {canEdit && (
           <button className="btn primary" onClick={() => {
@@ -59,7 +64,7 @@ export default function SeriesPage() {
                     <span className="person"><i className="dot" style={{ background: s.category_color || '#97A0AF' }} /><b>{s.title}</b></span>
                     <div className="muted small">{s.category_name || 'Без категории'} · <span style={{ color: PRIORITIES[s.priority].color }}>{PRIORITIES[s.priority].label.toLowerCase()} приоритет</span></div>
                   </td>
-                  <td>{freqLabel(s.every_months)}{s.until && <div className="muted small">до {fmtDate(fromInputDate(s.until), { day: 'numeric', month: 'short', year: 'numeric' })}</div>}</td>
+                  <td>{freqLabel(s.freq || s.every_months, s.weekdays)}{s.until && <div className="muted small">до {fmtDate(fromInputDate(s.until), { day: 'numeric', month: 'short', year: 'numeric' })}</div>}</td>
                   <td>{when(s)}</td>
                   <td>
                     {s.next ? <button className="link" onClick={() => setModal({ id: s.next.id })}>{fmtDate(s.next.start_at, { day: 'numeric', month: 'long', year: 'numeric' })}</button>

@@ -13,6 +13,8 @@ mkdir -p "$tmp/it-portal" "$out"
 git -C "$root" archive HEAD server public scripts package.json package-lock.json start-portal.bat README.md INSTALL.md .env.example \
   | tar -x -C "$tmp/it-portal"
 cp "$root/scripts/UPDATE-README.txt" "$tmp/it-portal/УСТАНОВКА.txt"
+# Версия сборки — для страницы «Состояние системы»
+printf '{"built":"%s","commit":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git -C "$root" rev-parse --short HEAD)" > "$tmp/it-portal/server/version.json"
 # Компоненты распознавания сканов PDF — внутри server (папку server пользователь заменяет целиком)
 node "$root/scripts/vendor-ocr.js" "$tmp/it-portal/server/vendor/ocr"
 # nginx.conf для Windows — с переводами строк CRLF

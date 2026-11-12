@@ -4,13 +4,14 @@ import { z } from 'zod';
 import { query, withTransaction, logActivity } from '../db.js';
 import { requireRole } from '../auth.js';
 import { ah, validate, HttpError } from '../validate.js';
-import { ensureOccurrences, EVERY, validTz } from '../series.js';
+import { ensureOccurrences, EVERY, EVERY_DAYS, validTz, seriesTiming, FREQ_SQL } from '../series.js';
 import { taskCond } from '../scope.js';
 
 const r = Router();
 
 const SELECT = `
   SELECT s.id, s.title, s.description, s.start_at, s.end_at, s.all_day, s.priority, s.category_id, s.every_months, s.color,
+         s.every_days, s.weekdays, ${FREQ_SQL('s')} AS freq,
          to_char(s.until, 'YYYY-MM-DD') AS until, s.assignees AS assignee_ids, s.checklist, s.created_at, s.updated_at,
          c.name AS category_name, c.color AS category_color, CASE WHEN cu.is_system THEN 'Служба ИТ' ELSE cu.name END AS created_by_name,
          COALESCE((SELECT json_agg(json_build_object('id', u.id, 'name', u.name, 'color', u.color) ORDER BY u.name)
@@ -54,7 +55,8 @@ const body = z.object({
   priority: z.enum(['low', 'normal', 'high', 'critical']).default('normal'),
   category_id: z.number().int().nullable().optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
-  freq: z.enum(Object.keys(EVERY)),
+  freq: z.enum([...Object.keys(EVERY), ...Object.keys(EVERY_DAYS)]),
+  weekdays: z.array(z.number().int().min(1).max(7)).max(7).optional(),
   until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   assignees: z.array(z.number().int()).default([]),
   checklist: z.array(z.object({ text: z.string().trim().min(1).max(300) })).default([]),
@@ -67,18 +69,21 @@ r.patch('/:id', requireRole('editor'), ah(async (req, res) => {
   const id = Number(req.params.id);
   const old = await getSeries(id, req.user);
   const d = validate(body, req.body);
-  const every = EVERY[d.freq];
+  const timing = seriesTiming(d.freq, d.weekdays);
+  const every = timing.every_months;
   const assignees = [...new Set(d.assignees)];
   const timingChanged = new Date(old.start_at).getTime() !== d.start_at.getTime() || new Date(old.end_at).getTime() !== d.end_at.getTime()
-    || old.all_day !== d.all_day || old.every_months !== every || (old.until || null) !== (d.until || null);
+    || old.all_day !== d.all_day || old.every_months !== every || (old.until || null) !== (d.until || null)
+    || (old.every_days || null) !== (timing.every_days || null) || JSON.stringify(old.weekdays || []) !== JSON.stringify(timing.weekdays);
 
   await withTransaction(async (db) => {
     await db.query(
       `UPDATE task_series SET title=$2, description=$3, start_at=$4, end_at=$5, all_day=$6, priority=$7, category_id=$8,
               every_months=$9, until=$10, assignees=$11, checklist=$12, updated_by=$13, updated_at=now(),
-              tz=COALESCE($14, tz), color=$15 WHERE id=$1`,
+              tz=COALESCE($14, tz), color=$15, every_days=$16, weekdays=$17 WHERE id=$1`,
       [id, d.title, d.description, d.start_at, d.end_at, d.all_day, d.priority, d.category_id ?? null, every,
-        d.until || null, assignees, JSON.stringify(d.checklist), req.user.id, d.tz ? await validTz(db, d.tz) : null, d.color ?? null]);
+        d.until || null, assignees, JSON.stringify(d.checklist), req.user.id, d.tz ? await validTz(db, d.tz) : null, d.color ?? null,
+        timing.every_days, timing.weekdays]);
     const future = `series_id = $1 AND status = 'todo' AND start_at >= date_trunc('day', now())`;
     if (timingChanged) {
       // Даты изменились — будущие повторы создаются заново
