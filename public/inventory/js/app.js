@@ -104,7 +104,7 @@ function renderShell() {
     { label: 'Сменить пароль', icon: 'lock', onClick: changePassword },
     { label: 'Настройки уведомлений', onClick: notifySettings },
     { label: 'Вид: тема и плотность', onClick: () => window.portalPrefs && window.portalPrefs.open() },
-    { label: 'Справка', onClick: () => { location.href = '/help#inventory'; } },
+    { label: 'Инструкция', onClick: () => { location.href = '/help#inventory'; } },
     '-',
     { label: 'Выйти', onClick: async () => { await api.post(location.origin + '/api/auth/logout'); location.href = '/login'; } },
   ], { align: 'right' }));

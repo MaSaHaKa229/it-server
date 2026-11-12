@@ -22,6 +22,7 @@ export function sections(me) {
     me.access.calendar !== 'none' && ['calendar', '/calendar/', 'Задачи'],
     me.access.helpdesk !== 'none' && ['helpdesk', '/helpdesk/', 'Заявки'],
     me.user.isAdmin && ['admin', '/admin', 'Администрирование'],
+    ['help', '/help', 'Инструкция'],
   ].filter(Boolean);
 }
 
@@ -33,7 +34,7 @@ export function userMenu(me) {
     '-',
     { label: 'Профиль и пароль', onClick: () => profileDialog(me) },
     { label: 'Вид: тема и плотность', onClick: () => window.portalPrefs && window.portalPrefs.open() },
-    { label: 'Справка', href: '/help' },
+    { label: 'Инструкция', href: '/help' },
     { label: 'Выйти', onClick: logout },
   ];
 }

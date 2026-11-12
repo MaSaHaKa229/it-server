@@ -157,7 +157,7 @@ function Shell() {
               <div className="menu-sep" />
               <a className="menu-item" href="#/profile">Профиль, цвет и пароль</a>
               <button className="menu-item" onClick={() => { setMenuOpen(false); window.portalPrefs?.open(); }}>Вид: тема и плотность</button>
-              <a className="menu-item" href="/help#calendar">Справка</a>
+              <a className="menu-item" href="/help#calendar">Инструкция</a>
               <button className="menu-item" onClick={logoutPortal}>Выйти</button>
             </div>
           )}

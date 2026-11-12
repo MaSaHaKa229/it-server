@@ -75,7 +75,7 @@ export default function Header({ onBurger }) {
             <div className="menu-sep" />
             <Link className="menu-item" to="/profile" onClick={() => setOpen(false)}>Профиль и пароль</Link>
             <button className="menu-item" onClick={() => { setOpen(false); window.portalPrefs?.open(); }}>Вид: тема и плотность</button>
-            <a className="menu-item" href="/help#docs">Справка</a>
+            <a className="menu-item" href="/help#docs">Инструкция</a>
             <button className="menu-item" onClick={logout}>Выйти</button>
           </div>
         )}

@@ -3,11 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Справка — ИТ-портал</title>
+  <title>Инструкция — ИТ-портал</title>
   <script src="/shared/prefs.js"></script>
   <link rel="icon" href="/portal/favicon.svg">
   <link rel="stylesheet" href="/shared/theme.css">
   <link rel="stylesheet" href="/shared/portal.css">
+  <style>
+    .hp-page { max-width: 1180px; }
+    .hp-grid { display: grid; grid-template-columns: 270px 1fr; gap: 28px; align-items: start; }
+    .hp-side { position: sticky; top: 72px; max-height: calc(100vh - 90px); overflow: auto; }
+    .hp-q { width: 100%; margin-bottom: 10px; }
+    .hp-sec { margin-bottom: 2px; }
+    .hp-sec-title { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 3px; color: var(--n800); font-weight: 600; text-decoration: none; }
+    .hp-sec-title:hover { background: var(--n20); text-decoration: none; }
+    .hp-sec.open > .hp-sec-title { color: var(--b500); }
+    .hp-ico { width: 20px; text-align: center; }
+    .hp-sub { display: block; padding: 5px 10px 5px 38px; border-radius: 3px; color: var(--n500); text-decoration: none; }
+    .hp-nav > .hp-sub { padding-left: 10px; }
+    .hp-sub:hover { background: var(--n20); color: var(--n800); text-decoration: none; }
+    .hp-sub.active { background: var(--b50); color: var(--b500); font-weight: 500; }
+    .hp-body { background: var(--n0, #fff); border: 1px solid var(--n40); border-radius: 3px; padding: 20px 28px 24px; min-height: 360px; }
+    .hp-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 4px 0 12px; }
+    .hp-head h1 { margin: 0; font-size: 22px; }
+    .hp-text { font-size: 15px; color: var(--n800); margin: 0 0 12px; }
+    .hp-steps { counter-reset: st; list-style: none; padding: 0; margin: 0 0 16px; }
+    .hp-steps li { counter-increment: st; position: relative; padding: 6px 0 6px 40px; font-size: 15px; line-height: 1.5; }
+    .hp-steps li::before { content: counter(st); position: absolute; left: 0; top: 5px; width: 26px; height: 26px; border-radius: 50%;
+      background: var(--b50); color: var(--b500); font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+    .hp-tips { background: #FFFAE6; border-left: 3px solid #FFAB00; padding: 10px 14px; border-radius: 3px; margin: 8px 0 16px; }
+    .hp-tips ul, .hp-in ul { margin: 6px 0 0; padding-left: 20px; }
+    .hp-tips li, .hp-in li { margin: 3px 0; }
+    .hp-in { margin: 8px 0 16px; }
+    .hp-pager { display: flex; justify-content: space-between; gap: 16px; border-top: 1px solid var(--n40); padding-top: 14px; margin-top: 20px; }
+  </style>
   <script type="module" src="/portal/help.js"></script>
 </head>
 <body>

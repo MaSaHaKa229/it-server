@@ -106,7 +106,9 @@ React-клиенты грузят его динамически по адрес�
 через `filter`, плотность `data-density=compact`, окно `window.portalPrefs.open()`; в календаре больше не ставить
 `data-theme` в main.jsx); `/shared/peek.js` — карточка по наведению (`/api/peek`, ссылки или `data-peek="kind:id"`);
 меню «Ещё ▾» — 4-й элемент `true` в nav (`topbar` в ui.js, инвентарь, календарь); `toast(text, type, title, { undo })`;
-справка — `public/portal/help.js` (`/help`, разделы и пункты по правам пользователя — условия в `SECTIONS`); «Все настройки» — `admin-extra.js` `SETTINGS_MAP` (новые настройки добавлять туда).
+инструкция — `public/portal/help.js` (`/help#раздел/подраздел`; `SECTIONS`: разделы → подразделы → шаги/советы, у каждого
+уровня условие доступа; новые возможности описывать там же; значок «?» в шапке — `mountHeaderTools` в bell.js, пункт
+«Инструкция» в nav портала и плитка на главной; стили — в `help.html`); «Все настройки» — `admin-extra.js` `SETTINGS_MAP` (новые настройки добавлять туда).
 **Состояние системы** — `/admin#status`, `server/portal/status.js` (версия из `server/version.json`, который пишет
 `make-update.sh`; диск, база, самопроверка) + `server/portal/health.js` (`register`/`track` фоновых заданий, `captureErrors()`
 — кольцевой буфер `console.error`). Новые фоновые таймеры оборачивать в `track`.

@@ -227,7 +227,24 @@ export function mountBell(host) {
 }
 
 /** Общий поиск по порталу + колокольчик (всё, что справа в шапке рядом с именем) */
+// Раздел инструкции по адресу страницы
+function helpHref() {
+  const p = location.pathname;
+  const sec = p.startsWith('/inventory') ? 'inventory' : p.startsWith('/helpdesk') ? 'helpdesk' : p.startsWith('/calendar') ? 'calendar'
+    : p.startsWith('/docs') ? 'docs' : p.startsWith('/admin') ? 'admin' : '';
+  return '/help' + (sec ? '#' + sec : '');
+}
+
 export function mountHeaderTools(host) {
+  if (location.pathname !== '/help') {
+    const q = document.createElement('a');
+    q.href = helpHref(); q.title = 'Инструкция по этому разделу'; q.textContent = '?';
+    q.setAttribute('style', 'width:28px;height:28px;margin-right:6px;border:1.5px solid #6B778C;border-radius:50%;display:inline-grid;'
+      + 'place-items:center;color:#42526E;font-weight:700;font-size:14px;text-decoration:none;line-height:1');
+    q.addEventListener('mouseenter', () => { q.style.background = '#F4F5F7'; });
+    q.addEventListener('mouseleave', () => { q.style.background = ''; });
+    host.append(q);
+  }
   const s = document.createElement('span');
   host.append(s);
   import('./search.js').then((m) => m.mountSearch(s)).catch(() => {});
