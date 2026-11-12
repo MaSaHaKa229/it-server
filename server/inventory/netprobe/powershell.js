@@ -68,22 +68,24 @@ try {
 `;
 
 // ---------- WMI/CIM: характеристики компьютера (WinRM, затем DCOM) ----------
-const WMI_SCRIPT = PREFIX + `
-$cn=$env:NM_TARGET; $cred=$null; $S=$null; $err=''; $proto_used=''
+const WMI_CORE = PREFIX + `
+$cred=$null
 if($env:NM_USER){ $sec=ConvertTo-SecureString $env:NM_PASS -AsPlainText -Force; $cred=New-Object System.Management.Automation.PSCredential($env:NM_USER,$sec) }
+function S($v){ if($null -eq $v){ '' } else { ("$v").Trim() } }
+function D($v){ if($v -is [datetime]){ $v.ToString('s') } else { S $v } }
+function One($cn){
+$S=$null; $script:err=''; $proto_used=''
 foreach($proto in 'Wsman','Dcom'){
   try{ $o=New-CimSessionOption -Protocol $proto
        $a=@{ComputerName=$cn;SessionOption=$o;OperationTimeoutSec=25;ErrorAction='Stop'}
        if($cred){$a.Credential=$cred}
-       $S=New-CimSession @a; $proto_used=$proto; break } catch { $err=$_.Exception.Message }
+       $S=New-CimSession @a; $proto_used=$proto; break } catch { $script:err=$_.Exception.Message }
 }
-if(-not $S){ @{error="Не удалось подключиться ни по WinRM, ни по WMI (DCOM): $err"} | ConvertTo-Json -Compress; exit }
+if(-not $S){ return @{error="Не удалось подключиться ни по WinRM, ни по WMI (DCOM): $($script:err)"} }
 $p=@{CimSession=$S}
 function Q($c,$f,$ns){ $a=@{ClassName=$c;ErrorAction='Stop'}; if($f){$a.Filter=$f}; if($ns){$a.Namespace=$ns}; try { Get-CimInstance @p @a } catch { $script:err=$_.Exception.Message; $null } }
-function S($v){ if($null -eq $v){ '' } else { ("$v").Trim() } }
-function D($v){ if($v -is [datetime]){ $v.ToString('s') } else { S $v } }
 $os=Q 'Win32_OperatingSystem'; $cs=Q 'Win32_ComputerSystem'; $bios=Q 'Win32_BIOS'; $bb=Q 'Win32_BaseBoard'
-if(-not $os -and -not $cs){ @{error="Нет доступа к WMI: $err"} | ConvertTo-Json -Compress; exit }
+if(-not $os -and -not $cs){ Remove-CimSession $S -ErrorAction SilentlyContinue; return @{error="Нет доступа к WMI: $($script:err)"} }
 $cpu=@(Q 'Win32_Processor'); $mem=@(Q 'Win32_PhysicalMemory'); $ld=@(Q 'Win32_LogicalDisk' 'DriveType=3')
 $dd=@(Q 'Win32_DiskDrive'); $gpu=@(Q 'Win32_VideoController'); $nic=@(Q 'Win32_NetworkAdapterConfiguration' 'IPEnabled=True')
 $csp=Q 'Win32_ComputerSystemProduct'; $enc=Q 'Win32_SystemEnclosure'
@@ -108,7 +110,18 @@ $r=[ordered]@{
  nics=@($nic|%{ [ordered]@{name=S $_.Description; mac=S $_.MACAddress; ip=(@($_.IPAddress) -join ', '); dhcp=[bool]$_.DHCPEnabled} })
 }
 Remove-CimSession $S -ErrorAction SilentlyContinue
-$r | ConvertTo-Json -Depth 4 -Compress
+return $r
+}
+`;
+// Один компьютер
+const WMI_SCRIPT = WMI_CORE + `
+try { (One $env:NM_TARGET) | ConvertTo-Json -Depth 4 -Compress } catch { @{error=$_.Exception.Message} | ConvertTo-Json -Compress }
+`;
+// Несколько компьютеров одним процессом PowerShell (сканирование сети): строка «@@NM@@имя@@json» на каждый
+const WMI_BATCH_SCRIPT = WMI_CORE + `
+foreach($t in ($env:NM_TARGETS -split ',')){ if(-not $t){ continue }
+  try { $x=One $t } catch { $x=@{error=$_.Exception.Message} }
+  [Console]::Out.WriteLine('@@NM@@'+$t+'@@'+($x | ConvertTo-Json -Depth 4 -Compress)); [Console]::Out.Flush() }
 `;
 
 function encode(script) {
@@ -164,4 +177,38 @@ function wmiCollect(s, target) {
   return runPS('wmi', WMI_SCRIPT, { NM_TARGET: target, ...credVars(s) }, 120000);
 }
 
-module.exports = { adLookup, wmiCollect };
+/**
+ * Характеристики нескольких компьютеров одним процессом PowerShell (запуск PowerShell в Windows дорогой —
+ * при сканировании сети раньше он запускался на каждый компьютер). Возвращает Map имя → ответ.
+ */
+async function wmiCollectMany(s, targets) {
+  const out = new Map();
+  if (!targets.length) return out;
+  if (process.env.NETPROBE_FAKE_DIR) {
+    for (const t of targets) out.set(t, await runPS('wmi', '', { NM_TARGET: t }, 1000));
+    return out;
+  }
+  if (!IS_WIN) {
+    for (const t of targets) out.set(t, { error: 'Сведения WMI собираются только на сервере с Windows' });
+    return out;
+  }
+  const env = {};
+  for (const [k, v] of Object.entries(process.env)) if (!/^NM_/i.test(k)) env[k] = v;
+  for (const [k, v] of Object.entries({ NM_TARGETS: targets.join(','), ...credVars(s) })) if (v) env[k] = String(v);
+  const timeout = 70000 * targets.length; // на один компьютер — не больше ~1 минуты
+  const r = await runFile('powershell.exe',
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encode(WMI_BATCH_SCRIPT)],
+    { timeout, env, encoding: 'utf8' });
+  for (const line of String(r.stdout || '').split(/\r?\n/)) {
+    const m = line.match(/^@@NM@@(.*?)@@(.*)$/);
+    if (!m) continue;
+    let data = null;
+    try { data = JSON.parse(m[2]); } catch { /* неполная строка */ }
+    out.set(m[1], data || { error: 'Неверный ответ PowerShell' });
+  }
+  const msg = r.killed ? 'Нет ответа (истекло время ожидания)' : (r.stderr || '').replace(/\s+/g, ' ').trim().slice(0, 300) || 'Нет ответа';
+  for (const t of targets) if (!out.has(t)) out.set(t, { error: msg });
+  return out;
+}
+
+module.exports = { adLookup, wmiCollect, wmiCollectMany };

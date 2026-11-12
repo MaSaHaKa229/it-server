@@ -39,11 +39,11 @@ async function resolveTarget({ hostname, ip }) {
 }
 
 /** ping: { alive, ms } */
-async function ping(ip) {
+async function ping(ip, wait = 1200) {
   if (!isIPv4(ip)) return { alive: false };
   const r = IS_WIN
-    ? await runFile('ping', ['-n', '1', '-w', '1200', ip], { timeout: 4000 })
-    : await runFile('ping', ['-c', '1', '-W', '1', ip], { timeout: 4000 });
+    ? await runFile('ping', ['-n', '1', '-w', String(wait), ip], { timeout: 4000 })
+    : await runFile('ping', ['-c', '1', '-W', String(Math.max(1, Math.round(wait / 1000))), ip], { timeout: 4000 });
   const out = r.stdout;
   const alive = /TTL=/i.test(out);
   // Windows (в т.ч. русская): «время<1мс TTL=128» / «time=12ms TTL=…»; Linux: «ttl=64 time=0.04 ms»
@@ -74,6 +74,51 @@ async function scanPorts(ip) {
   if (!isIPv4(ip)) return [];
   const res = await Promise.all(PORTS.map(async ([port, label]) => ((await tcpOpen(ip, port)) ? { port, label } : null)));
   return res.filter(Boolean);
+}
+
+// ---------- Быстрая проверка портов для сканирования сети ----------
+// Не больше MAX_SOCKETS подключений одновременно на всё сканирование: иначе Windows упирается в лимит
+// одновременных подключений, и сам портал отвечает браузерам с задержкой.
+const MAX_SOCKETS = 160;
+let sockets = 0;
+const waiting = [];
+async function slot() {
+  if (sockets < MAX_SOCKETS) { sockets++; return; }
+  await new Promise((r) => waiting.push(r));
+}
+function release() {
+  const next = waiting.shift();
+  if (next) next(); else sockets--;
+}
+
+/** 'open' — порт открыт; 'refused' — устройство есть, порт закрыт; null — нет ответа */
+async function tcpState(ip, port, timeout) {
+  await slot();
+  try {
+    return await new Promise((resolve) => {
+      const s = new net.Socket();
+      let done = false;
+      const end = (v) => { if (!done) { done = true; s.destroy(); resolve(v); } };
+      s.setTimeout(timeout);
+      s.once('connect', () => end('open'));
+      s.once('timeout', () => end(null));
+      s.once('error', (e) => end(e && e.code === 'ECONNREFUSED' ? 'refused' : null));
+      s.connect(port, ip);
+    });
+  } finally { release(); }
+}
+
+// Главные порты — по ним находится почти вся техника; остальные проверяются только у ответивших
+const MAIN_PORTS = [135, 445, 3389, 9100, 80, 443, 22];
+
+/**
+ * Проверка портов для сканирования: ports — какие проверять; alive — устройство ответило
+ * (открытым портом или отказом в подключении: отказ тоже означает, что устройство включено)
+ */
+async function probePorts(ip, ports, timeout = 600) {
+  const list = PORTS.filter(([p]) => ports.includes(p));
+  const res = await Promise.all(list.map(async ([port, label]) => ({ port, label, st: await tcpState(ip, port, timeout) })));
+  return { open: res.filter((x) => x.st === 'open').map(({ port, label }) => ({ port, label })), alive: res.some((x) => x.st) };
 }
 
 /** Отправить UDP-пакет и дождаться одного ответа */
@@ -280,4 +325,4 @@ async function snmp(ip, communities, timeout = 1500) {
   return null;
 }
 
-module.exports = { isIPv4, isHostname, resolveTarget, ping, scanPorts, netbios, arpMac, snmp, runFile, PORTS, IS_WIN };
+module.exports = { isIPv4, isHostname, resolveTarget, ping, scanPorts, probePorts, MAIN_PORTS, netbios, arpMac, snmp, runFile, PORTS, IS_WIN };

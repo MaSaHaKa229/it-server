@@ -66,8 +66,12 @@ NetBIOS, ARP, SNMP — на чистом Node.js (`probes.js`); AD и WMI — в
 имя/логин/пароль передаются через переменные окружения `NM_*`, не в тексте команды. Опрос — фоновое задание в памяти,
 браузер опрашивает статус; результат — `device_netinfo`, настройки (одна строка, пароль зашифрован) — `netprobe_settings`.
 Кнопка — только редакторам, настройки — только суперадмину.
-**Сканирование сети** — `server/inventory/netprobe/scan.js` (+ `public/inventory/js/pages/netscan.js`): поиск (порты → ping → ARP),
-опознание, по желанию WMI; результат — `netscan_last` (одна строка), скрытые — `netscan_ignore`; совпадения с базой
+**Сканирование сети** — `server/inventory/netprobe/scan.js` (+ `public/inventory/js/pages/netscan.js`); сеть опрашивает
+**отдельный процесс** `scan-worker.js` (fork, приоритет BELOW_NORMAL, задание и пароль — сообщением IPC; раньше сайт тормозил
+при сканировании): главные порты `MAIN_PORTS` (отказ в подключении = устройство есть, кроме подсетей /24, где «отказали» >80%),
+не больше 160 сокетов (`probePorts`), свои подсети — по ARP без ping, ping только чужим (16, 800 мс), остальные порты — у
+найденных; опознание; WMI — `wmiCollectMany` (один PowerShell на 6 компьютеров, 2 одновременно; кэш из `netscan_last` за 7 дней
+при том же имени и MAC, `wmi_cached`; `wmi_fresh` — заново у всех). PowerShell-скрипт WMI — функция `One` в `WMI_CORE`; результат — `netscan_last` (одна строка), скрытые — `netscan_ignore`; совпадения с базой
 считаются при каждом GET (MAC/серийный → имя → IP); «Дополнить» использует `renderCompare`/`applyToDevice` из netinfo.js.
 «Ждут решения» — `netscan_hosts` (state pending/done, handled_sig — подпись отличий на момент решения).
 **Уведомления** — `server/portal/notify.js`: список видов `KINDS` (кому доступен, событие или вычисляемое состояние),

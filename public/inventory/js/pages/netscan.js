@@ -66,6 +66,10 @@ export async function renderNetscan(root) {
   const body = h('div');
   const nets = h('input', { type: 'text', placeholder: 'Например: 10.0.1.0/24, 10.0.2.10-10.0.2.50' });
   const wmi = h('input', { type: 'checkbox' });
+  const wmiFresh = h('input', { type: 'checkbox' });
+  const wmiFreshBox = h('label.check.small', { style: { display: 'none', margin: '4px 0 0 24px' }, title: 'Иначе у компьютеров, у которых характеристики собирались за последние 7 дней и не изменились имя и MAC, они берутся из прошлого сканирования' },
+    wmiFresh, 'заново у всех компьютеров');
+  wmi.addEventListener('change', () => { wmiFreshBox.style.display = wmi.checked ? 'flex' : 'none'; });
   const scanBtn = h('button.btn.primary', 'Сканировать');
   const progress = h('div');
   // Сканирование по расписанию
@@ -87,7 +91,7 @@ export async function renderNetscan(root) {
   let schLoaded = false;
 
   scanBtn.addEventListener('click', () => run(async () => {
-    await api.post('/api/netscan', { networks: nets.value, wmi: wmi.checked });
+    await api.post('/api/netscan', { networks: nets.value, wmi: wmi.checked, wmi_fresh: wmi.checked && wmiFresh.checked });
     toast('Сканирование запущено');
     await load();
   }, scanBtn));
@@ -99,8 +103,11 @@ export async function renderNetscan(root) {
       'Поиск техники в сети: найденные устройства сравниваются с базой — новые можно добавить, у известных дополнить карточку.'),
     h('div.ns-form',
       h('label.field.ns-nets', h('span', 'Какие сети сканировать'), nets),
-      h('label.check.ns-wmi', wmi, 'Собрать характеристики компьютеров (WMI) — дольше'),
+      h('div.ns-wmi', { style: { display: 'flex', flexDirection: 'column' } }, h('label.check', wmi, 'Собрать характеристики компьютеров (WMI) — дольше'), wmiFreshBox),
       scanBtn),
+    h('p.muted.small', { style: { margin: '4px 0 0' } },
+      'Сканирование идёт отдельно от портала и с пониженным приоритетом — сайт в это время работает как обычно. ',
+      'Полное сканирование с характеристиками удобнее ставить на ночь (ниже — «По расписанию»).'),
     schBox,
     progress,
     body);
@@ -181,7 +188,8 @@ export async function renderNetscan(root) {
           x.first_seen ? h('div.small.muted', { title: `Последний раз в сети: ${fmtDate(x.last_seen)}` }, `найдено ${fmtDate(x.first_seen, false)}`) : null),
         h('td.nowrap', name || h('span.muted', '—'), x.netbios?.user ? h('div.small.muted', `вошёл: ${x.netbios.user}`) : null),
         h('td.nowrap.small', x.mac || x.suggest.mac_address || h('span.muted', '—')),
-        h('td', what || h('span.muted', '—'), x.wmi_error ? h('div.small.danger-text', { title: x.wmi_error }, 'WMI: нет доступа') : null),
+        h('td', what || h('span.muted', '—'), x.wmi_error ? h('div.small.danger-text', { title: x.wmi_error }, 'WMI: нет доступа') : null,
+          x.wmi_cached ? h('div.small.muted', { title: 'Характеристики не менялись — взяты из прошлого сканирования' }, 'WMI: из прошлого сканирования') : null),
         h('td.small', portsText(x) || h('span.muted', '—')),
         h('td', x.device
           ? h('div', h('a', { href: `#/devices/${x.device.id}` }, typeDot({ name: x.device.type_name, color: x.device.type_color }), ' ', x.device.key, ' ', x.device.hostname || x.device.model || ''),

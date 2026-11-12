@@ -1,7 +1,7 @@
 // Сканирование сети: поиск техники в подсетях, опознание и сравнение с базой инвентаря.
 //
-// 1. Поиск: TCP-порты (без процессов) и ping для остальных адресов; после — ARP-таблица сервера.
-// 2. Опознание отвечающих адресов: DNS, NetBIOS (имя, домен, пользователь, MAC), SNMP (принтеры), по желанию — WMI.
+// 1–2. Поиск и опознание (порты, ARP, ping, DNS, NetBIOS, SNMP, по желанию WMI) — в отдельном процессе
+//      scan-worker.js с пониженным приоритетом, чтобы портал не тормозил.
 // 3. Совпадения с базой считаются при каждом открытии страницы: MAC и серийный номер — надёжно,
 //    сетевое имя — вероятно, IP — слабо. Результат последнего сканирования хранится в netscan_last.
 const os = require('os');
@@ -9,7 +9,6 @@ const express = require('express');
 const { query } = require('../db');
 const { HttpError, ah, str } = require('../util');
 const P = require('./probes');
-const { wmiCollect } = require('./powershell');
 const NP = require('./index');
 
 const router = express.Router();
@@ -65,28 +64,6 @@ function localNetworks() {
 // ---------------- Сканирование ----------------
 let job = null; // { started_at, phase, done, total, found, by, networks, error, finished_at }
 
-async function pool(items, limit, fn) {
-  let i = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (i < items.length) { const k = i++; await fn(items[k], k); }
-  }));
-}
-
-/** ARP-таблица сервера: ip → MAC */
-async function arpTable() {
-  const r = P.IS_WIN ? await P.runFile('arp', ['-a'], { timeout: 8000 }) : await P.runFile('ip', ['neigh'], { timeout: 8000 });
-  const map = new Map();
-  for (const line of r.stdout.split(/\r?\n/)) {
-    const ip = line.match(/(\d+\.\d+\.\d+\.\d+)/);
-    const mac = line.match(/([0-9a-f]{2}[-:]){5}[0-9a-f]{2}/i);
-    if (!ip || !mac) continue;
-    const m = mac[0].replace(/[-:]/g, '').toUpperCase();
-    if (m === 'FFFFFFFFFFFF' || m === '000000000000' || /^01005E/.test(m)) continue; // широковещательные и групповые
-    map.set(ip[1], m.match(/../g).join(':'));
-  }
-  return map;
-}
-
 function guessKind(h) {
   const ports = new Set(h.ports.map((p) => p.port));
   const w = h.wmi;
@@ -102,64 +79,60 @@ function guessKind(h) {
   return 'unknown';
 }
 
-async function runScan(networks, ranges, { wmi }, userId) {
-  const ips = [];
-  for (const [s, e] of ranges) for (let n = s; n <= e; n++) ips.push(intToIp(n));
+/**
+ * Сеть опрашивает отдельный процесс (scan-worker.js) с пониженным приоритетом — портал при этом не тормозит.
+ * Ход работы приходит сообщениями и попадает в job; результат — список устройств.
+ */
+function runWorker(task) {
+  return new Promise((resolve, reject) => {
+    const { fork } = require('child_process');
+    const child = fork(require('path').join(__dirname, 'scan-worker.js'), [], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+    try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* не удалось — работает и так */ }
+    let result = null;
+    child.on('message', (m) => {
+      if (m.type === 'progress') Object.assign(job, { phase: m.phase, done: m.done, total: m.total, found: m.found });
+      else if (m.type === 'done') result = { hosts: m.hosts };
+      else if (m.type === 'error') result = { error: m.error };
+    });
+    child.on('error', (e) => reject(e));
+    child.on('exit', (code) => {
+      if (result && result.hosts) resolve(result.hosts);
+      else reject(new Error(result?.error || `Процесс сканирования завершился с кодом ${code}`));
+    });
+    child.send(task);
+  });
+}
+
+/** Характеристики (WMI) из прошлого сканирования, если ему меньше недели: [{ name, mac, wmi, at }] */
+async function wmiCache() {
+  const { rows: [last] } = await query(
+    `SELECT hosts, finished_at FROM netscan_last WHERE id = 1 AND finished_at > now() - interval '7 days'`).catch(() => ({ rows: [] }));
+  if (!last || !Array.isArray(last.hosts)) return [];
+  return last.hosts.filter((h) => h.wmi).map((h) => ({
+    name: h.netbios?.computer || (h.dns_name ? h.dns_name.split('.')[0] : '') || h.ip,
+    mac: h.mac || '', wmi: h.wmi, at: h.wmi_cached && h.wmi_cached !== true ? h.wmi_cached : last.finished_at,
+  }));
+}
+
+async function runScan(networks, ranges, { wmi, fresh }, userId) {
   const s = await NP.loadSettings({ withPassword: true });
-  const set = (phase, done, total) => Object.assign(job, { phase, done, total });
-
-  // 1. Поиск отвечающих адресов: сначала порты, у остальных — ping
-  const alive = new Map(); // ip → { ports, ping }
-  set('Поиск устройств: проверка портов', 0, ips.length);
-  await pool(ips, 96, async (ip) => {
-    const ports = await P.scanPorts(ip);
-    if (ports.length) alive.set(ip, { ports, ping: null });
-    job.done++; job.found = alive.size;
+  const useWmi = !!(wmi && s.wmi_enabled);
+  const hosts = await runWorker({
+    ranges,
+    snmp: s.snmp_enabled ? NP.communities(s) : null,
+    wmi: useWmi,
+    cred: { username: s.username || '', password: s.password || '' },
+    cache: useWmi && !fresh ? await wmiCache() : [],
   });
-  const rest = ips.filter((ip) => !alive.has(ip));
-  set('Поиск устройств: ping', 0, rest.length);
-  await pool(rest, 24, async (ip) => {
-    const pg = await P.ping(ip);
-    if (pg.alive) alive.set(ip, { ports: [], ping: pg.ms });
-    job.done++; job.found = alive.size;
-  });
-  // Адреса из ARP-таблицы (отвечают в сети, хотя не открыли порты и не ответили на ping)
-  const arp = await arpTable();
-  const inRange = (ip) => { const n = ipToInt(ip); return ranges.some(([a, b]) => n >= a && n <= b); };
-  for (const ip of arp.keys()) if (inRange(ip) && !alive.has(ip)) alive.set(ip, { ports: [], ping: null, arpOnly: true });
-
-  // 2. Опознание
-  const list = [...alive.keys()].sort((a, b) => ipToInt(a) - ipToInt(b));
-  const hosts = [];
-  set('Опознание устройств: имена, NetBIOS, SNMP', 0, list.length);
-  const dns = require('dns').promises;
-  await pool(list, 32, async (ip) => {
-    const a = alive.get(ip);
-    const [names, nb, sn] = await Promise.all([
-      Promise.race([dns.reverse(ip).catch(() => []), new Promise((r) => setTimeout(() => r([]), 3000))]),
-      P.netbios(ip),
-      s.snmp_enabled ? P.snmp(ip, NP.communities(s)) : null,
-    ]);
-    hosts.push({
-      ip, ports: a.ports, ping: a.ping, arp_only: !!a.arpOnly,
-      dns_name: names[0] || '', netbios: nb || null, mac: arp.get(ip) || nb?.mac || '', snmp: sn || null,
-    });
-    job.done++;
-  });
-  for (const h of hosts) h.kind = guessKind(h);
-
-  // 3. WMI — по желанию, только Windows-компьютеры с открытыми портами WMI/WinRM
-  if (wmi && s.wmi_enabled) {
-    const targets = hosts.filter((h) => h.ports.some((p) => p.port === 135 || p.port === 5985));
-    set('Характеристики компьютеров (WMI)', 0, targets.length);
-    await pool(targets, 4, async (h) => {
-      const name = h.netbios?.computer || (h.dns_name ? h.dns_name.split('.')[0] : '') || h.ip;
-      const r = await wmiCollect(s, name);
-      if (r.error) h.wmi_error = NP.wmiError(r.error);
-      else { h.wmi = NP.normalizeWmi(r); h.kind = guessKind(h); }
-      job.done++;
-    });
+  for (const h of hosts) {
+    if (h.wmi_raw) {
+      if (h.wmi_raw.error) h.wmi_error = NP.wmiError(h.wmi_raw.error);
+      else h.wmi = NP.normalizeWmi(h.wmi_raw);
+      delete h.wmi_raw;
+    }
+    h.kind = guessKind(h);
   }
+  job.found = hosts.length;
 
   hosts.sort((a, b) => ipToInt(a.ip) - ipToInt(b.ip));
   await query(
@@ -338,12 +311,12 @@ router.get('/', ah(async (req, res) => {
 }));
 
 /** Запустить сканирование в фоне; userId = null — по расписанию */
-function startScan(networks, wmi, userId) {
+function startScan(networks, wmi, userId, fresh = false) {
   if (job && !job.finished_at) throw new HttpError(409, 'Сканирование уже идёт');
   const ranges = parseNetworks(networks);
   job = { started_at: new Date().toISOString(), phase: 'Подготовка', done: 0, total: 0, found: 0, networks, error: null, finished_at: null, auto: !userId };
   const j = job;
-  const p = runScan(networks, ranges, { wmi: !!wmi }, userId)
+  const p = runScan(networks, ranges, { wmi: !!wmi, fresh: !!fresh }, userId)
     .catch((e) => { j.error = e.message; console.error('Сканирование сети:', e); })
     .finally(() => { j.finished_at = new Date().toISOString(); });
   return { job: j, done: p };
@@ -351,7 +324,7 @@ function startScan(networks, wmi, userId) {
 
 router.post('/', ah(async (req, res) => {
   const networks = (str(req.body.networks, 1000) || '').trim();
-  const { job: j } = startScan(networks, !!req.body.wmi, req.user.id);
+  const { job: j } = startScan(networks, !!req.body.wmi, req.user.id, !!req.body.wmi_fresh);
   res.status(202).json({ job: { ...j, fresh: undefined } });
 }));
 
