@@ -115,8 +115,8 @@ function renderShell() {
     h('a.brand', { href: '#/', style: { marginLeft: '-4px' } }, h('span.muted', '/'), h('span', 'ИТ Инвентарь')),
     navEl,
     isStaff() ? h('button.btn.primary', { style: { marginLeft: '8px' }, onclick: () => openCreateDevice() }, icon('plus'), 'Создать') : null,
-    // Поиск — общий поиск портала (техника, заявки, задачи, документы) в bellHost
-    h('span', { style: { width: '8px' } }),
+    // Поиск, избранное, колокольчик и пользователь — у правого края, как в остальных разделах
+    h('span.spacer'),
     bellHost,
     userName,
     avatarBtn);
