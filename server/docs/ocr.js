@@ -17,6 +17,28 @@ const MIN_PIXELS = 120000;   // меньшие картинки (логотип�
 const MAX_IMAGES_PER_PAGE = 6;
 const IDLE_MS = 3 * 60 * 1000; // распознаватель выгружается из памяти после простоя
 
+// Служебные сообщения движка распознавания («Image too small to scale!!», «Line cannot be recognized!!» и т. п.)
+// не ошибки: так он пропускает слишком мелкие пятна на скане. Но их бывают тысячи — они забивали окно портала
+// и portal.log. Отключаем их в движке (debug_file) и на всякий случай отфильтровываем в выводе процесса.
+const TESS_NOISE = /^(Image too small to scale!!.*|Line cannot be recognized!!.*|Empty page!!.*|Detected \d+ diacritics.*|Estimating resolution as \d+.*|Warning: Invalid resolution.*|Too few characters\..*|Too few lines.*)\r?\n?$/;
+function quietTesseractOutput() {
+  for (const s of [process.stdout, process.stderr]) {
+    if (s.__tessQuiet) continue;
+    s.__tessQuiet = true;
+    const orig = s.write.bind(s);
+    s.write = (chunk, ...rest) => {
+      const text = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf8') : null;
+      if (text == null || !/too small|cannot be recognized|Empty page|diacritics|resolution|Too few/.test(text)) return orig(chunk, ...rest);
+      const kept = text.split(/(?<=\n)/).filter((l) => !TESS_NOISE.test(l)).join('');
+      if (kept) return orig(kept, ...rest);
+      const cb = rest.find((x) => typeof x === 'function');
+      if (cb) process.nextTick(cb);
+      return true;
+    };
+  }
+}
+quietTesseractOutput();
+
 // Поиск компонентов распознавания. Обычное место — C:\it-portal\node_modules. Но при ручной распаковке архива
 // Windows часто создаёт лишнюю папку (node_modules\node_modules, it-portal-node_modules\node_modules) —
 // такие места тоже проверяем, чтобы распознавание заработало без повторного копирования.
@@ -98,6 +120,8 @@ async function getWorker() {
       langPath: langDir(), cacheMethod: 'none', gzip: true, logger: () => {},
       errorHandler: (e) => console.error('Распознавание текста:', e && e.message ? e.message : e),
     });
+    // Отладочные сообщения движка — в «никуда» (см. quietTesseractOutput)
+    await worker.setParameters({ debug_file: '/dev/null' }).catch(() => {});
   }
   return worker;
 }

@@ -120,9 +120,17 @@ async function main() {
   const sendPage = (file) => (req, res) => {
     res.set('Cache-Control', 'no-cache');
     res.sendFile(file, (err) => {
-      if (!err || res.headersSent) return;
-      // Файл страницы не найден — почти всегда это неполная папка public после обновления
+      if (!err) return;
       const rel = path.relative(path.join(__dirname, '..'), file);
+      // Браузер прервал загрузку (закрыли вкладку, быстро перешли на другую страницу) — это не ошибка
+      if (res.headersSent || req.aborted || ['ECONNABORTED', 'ECONNRESET', 'EPIPE'].includes(err.code)) return;
+      if (require('fs').existsSync(file)) {
+        // Файл на месте, но отдать не удалось — пишем настоящую причину, а не «не найден»
+        console.error(`Не удалось открыть страницу ${rel}: ${err.code || err.message}`);
+        if (!res.headersSent) res.status(500).send('Не удалось открыть страницу, попробуйте ещё раз');
+        return;
+      }
+      // Файла действительно нет — почти всегда это неполная папка public после обновления
       console.error(`Не найден файл ${rel}. Проверьте папку public (см. сообщение при запуске).`);
       res.status(500).type('html').send(
         '<!doctype html><meta charset="utf-8"><title>Ошибка установки</title>' +

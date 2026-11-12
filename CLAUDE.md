@@ -176,6 +176,10 @@ npm run build:install && npm run build        # только если прави
 - **Кэш браузера.** Скрипты с постоянными адресами отдаются с `Cache-Control: no-cache` (`cacheHeaders` в
   `server/index.js`); долго кэшируются только файлы сборок с хэшем в имени. Не возвращать `maxAge`.
 - **Неполная папка `public`** после ручного обновления — портал проверяет её при запуске (`checkPublic`).
+  Сообщение «Не найден файл …» в `sendPage` — только если файла действительно нет (раньше писалось и при прерванной
+  браузером загрузке — пользователь пугался).
+- **Шум распознавания** («Image too small to scale!!», «Line cannot be recognized!!») — `debug_file=/dev/null` и фильтр
+  вывода `quietTesseractOutput()` в `server/docs/ocr.js`; не ошибки.
 - **nginx на Windows:** каждый `start nginx` запускает ещё один процесс; перед запуском `taskkill /f /im nginx.exe`.
 - **`.bat`/`.ps1`/`UPDATE-README.txt`** — CRLF, для `.ps1` и текстового файла ещё и BOM (кириллица в Windows).
 - **`APP_SECRET_KEY`** из старого `.env` инвентаря менять нельзя — им зашифрованы пароли устройств.
