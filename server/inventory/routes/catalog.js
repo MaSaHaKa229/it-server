@@ -411,7 +411,7 @@ router.delete('/software-fields/:id', requireStaff, ah(async (req, res) => {
 // ======================= СОХРАНЁННЫЕ ФИЛЬТРЫ =======================
 router.get('/filters', ah(async (req, res) => {
   const { rows } = await query(
-    `SELECT f.id, f.name, f.query, f.is_shared, f.user_id, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE u.username END AS owner
+    `SELECT f.id, f.name, f.query, f.is_shared, f.user_id, CASE WHEN u.is_service THEN 'Служба ИТ' ELSE u.username END AS owner
        FROM saved_filters f JOIN users u ON u.id = f.user_id
       WHERE f.user_id = $1 OR f.is_shared ORDER BY f.name`, [req.user.id]);
   res.json(rows);

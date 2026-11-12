@@ -15,7 +15,7 @@ router.get('/views', ah(async (req, res) => {
   if (!SECTIONS.includes(section)) throw new HttpError(400, 'Неизвестный раздел');
   const { rows } = await query(
     `SELECT v.id, v.name, v.params, v.shared, v.user_id = $2 AS mine,
-            CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS owner
+            CASE WHEN u.is_service THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS owner
        FROM saved_views v JOIN users u ON u.id = v.user_id
       WHERE v.section = $1 AND (v.user_id = $2 OR v.shared)
       ORDER BY (v.user_id = $2) DESC, lower(v.name)`, [section, req.user.id]);

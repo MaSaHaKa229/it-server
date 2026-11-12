@@ -282,8 +282,8 @@ router.get('/device/:id', requireStaff, ah(async (req, res) => {
   const d = await loadDevice(id);
   const { rows } = await query(
     `SELECT n.data, n.collected_at,
-            CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE u.full_name END AS full_name,
-            CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE u.username END AS username FROM device_netinfo n
+            CASE WHEN u.is_service THEN 'Служба ИТ' ELSE u.full_name END AS full_name,
+            CASE WHEN u.is_service THEN 'Служба ИТ' ELSE u.username END AS username FROM device_netinfo n
        LEFT JOIN users u ON u.id = n.collected_by WHERE n.device_id = $1`, [id]);
   // Предложения для карточки пересчитываются при каждом открытии
   const fopts = await F.loadFormatOpts();

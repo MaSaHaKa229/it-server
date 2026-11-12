@@ -19,7 +19,7 @@ async function syncDocs(u) {
      VALUES ($1, $2, '!', $3, $4, $5, $6)
      ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name,
        role = EXCLUDED.role, is_active = EXCLUDED.is_active, is_system = EXCLUDED.is_system, updated_at = now()`,
-    [u.id, String(u.username).slice(0, 50), displayName(u).slice(0, 200), docsRole(u), active, u.role === 'superadmin']);
+    [u.id, String(u.username).slice(0, 50), displayName(u).slice(0, 200), docsRole(u), active, !!u.is_service]);
 }
 
 async function syncCalendar(u) {
@@ -34,7 +34,7 @@ async function syncCalendar(u) {
      VALUES ($1, $2, $3, '!', $4, $5, $6, $7)
      ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email, name = EXCLUDED.name,
        role = EXCLUDED.role, is_active = EXCLUDED.is_active, has_access = EXCLUDED.has_access, is_system = EXCLUDED.is_system`,
-    [u.id, mail, displayName(u), calRole(u), active, access, u.role === 'superadmin']);
+    [u.id, mail, displayName(u), calRole(u), active, access, !!u.is_service]);
   try {
     await upsert(email);
   } catch (e) {
@@ -43,7 +43,7 @@ async function syncCalendar(u) {
   }
 }
 
-const signature = (u) => JSON.stringify([u.username, u.full_name, u.email, u.role, u.is_active, u.modules]);
+const signature = (u) => JSON.stringify([u.username, u.full_name, u.email, u.role, !!u.is_service, u.is_active, u.modules]);
 
 /** Синхронизировать одного пользователя (если что-то изменилось) */
 async function syncUser(u) {
@@ -57,7 +57,7 @@ async function syncUser(u) {
 /** Синхронизировать всех пользователей портала */
 async function syncAll() {
   const { rows } = await db().query(
-    'SELECT id, username, full_name, email, role, is_active, modules FROM users ORDER BY id');
+    'SELECT id, username, full_name, email, role, is_service, is_active, modules FROM users ORDER BY id');
   for (const u of rows) await syncUser(u);
   // Пользователи, удалённые с портала, отключаются в модулях
   const ids = rows.map((u) => u.id);

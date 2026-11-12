@@ -185,7 +185,7 @@ async function fromTask(taskId, taskStatus, user) {
     await x.query(`UPDATE helpdesk.tickets SET status_id = $2, updated_at = now(),
                      closed_at = ${target.is_closed ? 'COALESCE(closed_at, now())' : 'NULL'}${!t.assignee_id ? ', assignee_id = $3' : ''}
                    WHERE id = $1`, !t.assignee_id ? [t.id, target.id, user.id] : [t.id, target.id]);
-    if (!t.assignee_id) await L.addHistory(x, t.id, who, 'assignee', { from: null, to: user.role === 'superadmin' ? 'Служба ИТ' : (user.full_name || user.username) });
+    if (!t.assignee_id) await L.addHistory(x, t.id, who, 'assignee', { from: null, to: user.is_service ? 'Служба ИТ' : (user.full_name || user.username) });
     await L.addHistory(x, t.id, who, 'status', { from: t.status_name, to: target.name, via: 'calendar' });
   });
   require('./notify').statusChanged(t.id).catch(() => {});

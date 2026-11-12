@@ -43,7 +43,7 @@ async function ticket(u, id) {
   const { rows: [t] } = await query(
     `SELECT t.id, t.title, t.priority, t.due_at, t.created_at, s.name AS status, s.color AS status_color, c.name AS category,
             r.full_name AS requester, COALESCE(l.value, r.department) AS department, t.location,
-            CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS assignee,
+            CASE WHEN u.is_service THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS assignee,
             left(t.description, 200) AS description
        FROM helpdesk.tickets t JOIN helpdesk.statuses s ON s.id = t.status_id JOIN helpdesk.requesters r ON r.id = t.requester_id
        LEFT JOIN helpdesk.categories c ON c.id = t.category_id LEFT JOIN public.lookups l ON l.id = r.department_id

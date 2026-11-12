@@ -110,7 +110,7 @@ async function list(req) {
   const { rows } = await query(
     `SELECT m.id, m.device_id, to_char(m.moved_on, 'YYYY-MM-DD') AS moved_on, m.changes, m.note, m.created_at,
             t.code AS type_code, t.name AS type_name, t.color AS type_color, d.hostname, d.inv_number, lm.value AS model,
-            CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS user_name
+            CASE WHEN u.is_service THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS user_name
        FROM device_moves m JOIN devices d ON d.id = m.device_id JOIN device_types t ON t.id = d.type_id
        LEFT JOIN lookups lm ON lm.id = d.model_id LEFT JOIN users u ON u.id = m.user_id
       WHERE ${where.join(' AND ')}${vis}

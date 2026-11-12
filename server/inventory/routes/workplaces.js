@@ -85,7 +85,7 @@ router.get('/:id/tickets', ah(async (req, res) => {
   const { rows: tickets } = await query(
     `SELECT t.id, t.title, t.created_at, t.closed_at, t.due_at, s.name AS status, s.color AS status_color, s.is_closed,
             r.full_name AS requester,
-            CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS assignee,
+            CASE WHEN u.is_service THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS assignee,
             (t.requester_id = $2) AS by_employee,
             (SELECT string_agg(dt.code || '-' || d.id, ', ') FROM helpdesk.ticket_devices td JOIN devices d ON d.id = td.device_id
                JOIN device_types dt ON dt.id = d.type_id WHERE td.ticket_id = t.id AND d.workplace_id = $1) AS devices

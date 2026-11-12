@@ -194,7 +194,8 @@ function row(u) {
   const name = u.full_name || u.username;
   return h('tr.clickable', { onclick: (e) => { if (!e.target.closest('button')) userDialog(u); } },
     h('td', h('span.row', avatar(name, 'sm'), h('strong', name),
-      u.role === 'superadmin' ? h('span.lozenge.purple', 'админ') : null)),
+      u.role === 'superadmin' ? h('span.lozenge.purple', 'админ') : null,
+      u.is_service ? h('span.lozenge', { title: 'Не показывается в списках людей; вместо имени — «Служба ИТ»' }, 'служебная') : null)),
     h('td.mono', u.username),
     h('td.muted', u.email || '—'),
     MOD_ORDER.map((m) => levelCell(u, m)),
@@ -219,6 +220,7 @@ function userDialog(u) {
   const email = h('input', { type: 'email', value: u?.email || '', placeholder: 'ivanov@company.local' });
   const active = h('input', { type: 'checkbox', checked: u ? u.is_active : true });
   const isAdmin = h('input', { type: 'checkbox', checked: u?.role === 'superadmin' });
+  const isService = h('input', { type: 'checkbox', checked: !!u?.is_service });
   const self = u && u.id === me.user.id;
   if (self) { isAdmin.disabled = true; active.disabled = true; }
 
@@ -264,7 +266,11 @@ function userDialog(u) {
     clear(modsBox,
       h('h3', { style: { margin: '8px 0 4px' } }, 'Доступ к разделам'),
       admin
-        ? h('div.info-box', 'Администратор портала имеет полный доступ ко всем разделам и управляет пользователями.')
+        ? h('div.stack',
+          h('div.info-box', 'Администратор портала имеет полный доступ ко всем разделам и управляет пользователями.'),
+          h('label.check', isService, h('span', h('strong', 'Служебная учётная запись'),
+            h('span.muted', ' — не показывается в списках людей (исполнители, фильтры, отпуска, статистика), в истории и переписке вместо имени — «Служба ИТ». '
+              + 'Отмечайте только общую учётную запись (например, admin); администраторов-сотрудников не отмечайте.'))))
         : h('div.stack',
           h('div.row.wrap', h('span.muted.small', 'Быстро задать:'),
             PRESETS.map(([label, p]) => h('button.btn.sm', { type: 'button', onclick: () => { Object.assign(mods, p); renderMods(); } }, label))),
@@ -311,7 +317,7 @@ function userDialog(u) {
       if (folderIds && !folderIds.length && mods.docs !== 'none') throw new Error('Отметьте хотя бы одну папку документов, «все папки» или выберите «Нет доступа»');
       const body = {
         username: username.value.trim(), password: password.value || undefined,
-        full_name: fullName.value, email: email.value, is_active: active.checked, is_admin: isAdmin.checked,
+        full_name: fullName.value, email: email.value, is_active: active.checked, is_admin: isAdmin.checked, is_service: isAdmin.checked && isService.checked,
         modules: { ...mods, docs_types: types, docs_folders: folderIds,
           ...(mods.calendar === 'view' ? calView.value() : { calendar_own_only: ownOnly.checked }) },
       };

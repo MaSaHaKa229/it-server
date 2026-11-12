@@ -117,7 +117,7 @@ const TICKET_SELECT = `
          s.name AS status_name, s.color AS status_color, s.is_closed,
          r.full_name AS requester_name, r.email AS requester_email, r.department AS requester_department,
          r.phone AS requester_phone, r.room AS requester_room,
-         CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS assignee_name,
+         CASE WHEN u.is_service THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS assignee_name,
          (t.due_at IS NOT NULL AND t.due_at < now() AND NOT s.is_closed) AS is_overdue
     FROM tickets t
     JOIN statuses s ON s.id = t.status_id

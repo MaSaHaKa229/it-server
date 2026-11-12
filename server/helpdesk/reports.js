@@ -19,7 +19,7 @@ function period(q) {
 }
 
 // Имя исполнителя: служебная учётная запись — «Служба ИТ»
-const EXEC_NAME = `CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END`;
+const EXEC_NAME = `CASE WHEN u.is_service THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END`;
 // Отдел заявителя: из справочника, иначе как написал сотрудник
 const DEP_NAME = `COALESCE(ld.value, NULLIF(r.department, ''), 'Не указан')`;
 // Время решения в часах

@@ -305,7 +305,7 @@ router.get('/', ah(async (req, res) => {
   const s = await NP.loadSettings();
   const [{ rows: [last] }, { rows: ign }] = await Promise.all([
     query(`SELECT l.started_at, l.finished_at, l.networks, l.ranges, l.hosts,
-                  CASE WHEN l.scanned_by IS NULL THEN 'по расписанию' WHEN u.role = 'superadmin' THEN 'Служба ИТ'
+                  CASE WHEN l.scanned_by IS NULL THEN 'по расписанию' WHEN u.is_service THEN 'Служба ИТ'
                        ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS scanned_by
              FROM netscan_last l LEFT JOIN users u ON u.id = l.scanned_by WHERE l.id = 1`),
     query('SELECT key FROM netscan_ignore'),

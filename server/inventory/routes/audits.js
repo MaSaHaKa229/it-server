@@ -15,8 +15,8 @@ const ids = (v) => (Array.isArray(v) ? [...new Set(v.map(Number).filter((n) => N
 const SUMMARY = `
   SELECT a.id, a.title, to_char(a.planned_date, 'YYYY-MM-DD') AS planned_date, a.status, a.filters, a.note,
          a.created_at, a.finished_at,
-         COALESCE(NULLIF(cu.full_name, ''), cu.username) AS created_by_name, cu.role = 'superadmin' AS created_by_system,
-         COALESCE(NULLIF(fu.full_name, ''), fu.username) AS finished_by_name, fu.role = 'superadmin' AS finished_by_system,
+         COALESCE(NULLIF(cu.full_name, ''), cu.username) AS created_by_name, cu.is_service AS created_by_system,
+         COALESCE(NULLIF(fu.full_name, ''), fu.username) AS finished_by_name, fu.is_service AS finished_by_system,
          (SELECT count(*)::int FROM inventory_audit_items i WHERE i.audit_id = a.id) AS total,
          (SELECT count(*)::int FROM inventory_audit_items i WHERE i.audit_id = a.id AND i.state = 'pending') AS pending,
          (SELECT count(*)::int FROM inventory_audit_items i WHERE i.audit_id = a.id AND i.state = 'found') AS found,
@@ -105,7 +105,7 @@ router.get('/:id', ah(async (req, res) => {
   const a = await getAudit(intOrNull(req.params.id));
   const { rows } = await query(
     `SELECT i.device_id, i.state, i.note, i.checked_at, i.snapshot,
-            COALESCE(NULLIF(u.full_name, ''), u.username) AS checked_by_name, u.role = 'superadmin' AS checked_by_system,
+            COALESCE(NULLIF(u.full_name, ''), u.username) AS checked_by_name, u.is_service AS checked_by_system,
             cur.hostname, cur.model, cur.employee, cur.location, cur.department, cur.workplace, cur.status, cur.inv_number, cur.serial_number,
             cur.type_code, cur.type_name, cur.type_color, cur.id IS NULL AS deleted
        FROM inventory_audit_items i
@@ -227,7 +227,7 @@ router.delete('/:id', ah(async (req, res) => {
 router.get('/:id/export.xlsx', ah(async (req, res) => {
   const a = await getAudit(intOrNull(req.params.id));
   const { rows } = await query(
-    `SELECT i.*, COALESCE(NULLIF(u.full_name, ''), u.username) AS checked_by_name, u.role = 'superadmin' AS sys
+    `SELECT i.*, COALESCE(NULLIF(u.full_name, ''), u.username) AS checked_by_name, u.is_service AS sys
        FROM inventory_audit_items i LEFT JOIN users u ON u.id = i.checked_by
       WHERE i.audit_id = $1 ORDER BY i.snapshot->>'location' NULLS LAST, i.device_id`, [a.id]);
   const wb = new ExcelJS.Workbook();

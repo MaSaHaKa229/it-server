@@ -11,7 +11,7 @@ const audit = require('./audit');
 const router = express.Router();
 router.use(requireSuperadmin);
 
-const FIELDS = 'id, username, full_name, email, role, is_active, permissions, modules, created_at, last_login';
+const FIELDS = 'id, username, full_name, email, role, is_service, is_active, permissions, modules, created_at, last_login';
 // Права читателя инвентаря по умолчанию — видит всё, кроме паролей
 const DEFAULT_READER = { types: null, departments: null, fields: null, passwords: false, software: true, export: true };
 
@@ -50,6 +50,7 @@ function diffUser(a, b, password) {
   const out = { username: b.username };
   if (!a) return out;
   if (a.role !== b.role) out.role = [a.role, b.role];
+  if (!!a.is_service !== !!b.is_service) out.is_service = [!!a.is_service, !!b.is_service];
   if (a.is_active !== b.is_active) out.is_active = [a.is_active, b.is_active];
   if ((a.full_name || '') !== (b.full_name || '')) out.full_name = [a.full_name, b.full_name];
   if ((a.email || '') !== (b.email || '')) out.email = [a.email, b.email];
@@ -73,10 +74,10 @@ router.post('/users', ah(async (req, res) => {
   if (exists.rows[0]) throw new HttpError(409, 'Пользователь с таким логином уже существует');
   const modules = normalizeModules(b.modules);
   const { rows } = await query(
-    `INSERT INTO users (username, password_hash, full_name, email, role, is_active, permissions, modules)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${FIELDS}`,
+    `INSERT INTO users (username, password_hash, full_name, email, role, is_active, permissions, modules, is_service)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${FIELDS}`,
     [username, await bcrypt.hash(String(b.password), 10), str(b.full_name, 200), validEmail(str(b.email, 200)),
-      roleFor(!!b.is_admin, modules), b.is_active !== false, JSON.stringify(DEFAULT_READER), JSON.stringify(modules)]);
+      roleFor(!!b.is_admin, modules), b.is_active !== false, JSON.stringify(DEFAULT_READER), JSON.stringify(modules), !!b.is_admin && !!b.is_service]);
   await syncUser(rows[0]);
   await audit.log(req, 'user_created', rows[0].full_name || rows[0].username, { username: rows[0].username, role: rows[0].role, modules });
   res.status(201).json(rows[0]);
@@ -91,7 +92,7 @@ router.put('/users/:id', ah(async (req, res) => {
   const modules = normalizeModules(b.modules);
   const before = (await query(`SELECT ${FIELDS} FROM users WHERE id = $1`, [id])).rows[0];
   const params = [str(b.full_name, 200), validEmail(str(b.email, 200)), roleFor(!!b.is_admin, modules),
-    b.is_active !== false, JSON.stringify(modules), id];
+    b.is_active !== false, JSON.stringify(modules), id, !!b.is_admin && !!b.is_service];
   let pw = '';
   if (b.password) {
     if (String(b.password).length < 8) throw new HttpError(400, 'Пароль должен быть не короче 8 символов');
@@ -99,7 +100,7 @@ router.put('/users/:id', ah(async (req, res) => {
     pw = `, password_hash = $${params.length}`;
   }
   const { rows } = await query(
-    `UPDATE users SET full_name = $1, email = $2, role = $3, is_active = $4, modules = $5${pw}
+    `UPDATE users SET full_name = $1, email = $2, role = $3, is_active = $4, modules = $5, is_service = $7${pw}
       WHERE id = $6 RETURNING ${FIELDS}`, params);
   if (!rows[0]) throw new HttpError(404, 'Пользователь не найден');
   if (b.is_active === false) await query(`DELETE FROM "session" WHERE (sess->>'userId')::int = $1`, [id]);

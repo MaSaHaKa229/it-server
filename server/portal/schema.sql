@@ -84,5 +84,16 @@ CREATE TABLE IF NOT EXISTS user_items (
 );
 CREATE INDEX IF NOT EXISTS user_items_viewed_idx ON user_items (user_id, viewed_at DESC);
 
+-- Служебная учётная запись (просьба пользователя): не показывается в списках людей, вместо имени — «Служба ИТ».
+-- Скрывается только она, остальные администраторы портала видны как обычные сотрудники.
+-- Один раз при обновлении служебной считается учётная запись admin (иначе — первый администратор).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_service BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE users SET is_service = TRUE
+ WHERE id = (SELECT id FROM users WHERE role = 'superadmin' ORDER BY (lower(username) = 'admin') DESC, id LIMIT 1)
+   AND NOT EXISTS (SELECT 1 FROM portal_settings WHERE key = 'service_account_init');
+INSERT INTO portal_settings (key, value) VALUES ('service_account_init', 'true'::jsonb) ON CONFLICT (key) DO NOTHING;
+UPDATE users SET is_service = FALSE WHERE is_service AND role <> 'superadmin';
+
+
 -- pg_trgm нужен реестру документов; ставим в public, чтобы он был виден всем модулям
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;

@@ -56,7 +56,7 @@ async function loadUser(req, res, next) {
   if (!req.session || !req.session.userId) return next();
   try {
     const { rows } = await query(
-      'SELECT id, username, full_name, email, role, is_active, permissions, modules FROM users WHERE id = $1',
+      'SELECT id, username, full_name, email, role, is_service, is_active, permissions, modules FROM users WHERE id = $1',
       [req.session.userId]
     );
     const u = rows[0];

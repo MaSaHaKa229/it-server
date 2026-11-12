@@ -7,7 +7,7 @@
 async function executors(db) {
   const { rows } = await db.query(
     `SELECT id, COALESCE(NULLIF(full_name, ''), username) AS name FROM public.users
-      WHERE is_active AND role <> 'superadmin' AND modules->>'helpdesk' IN ('executor', 'admin')`);
+      WHERE is_active AND NOT is_service AND (role = 'superadmin' OR modules->>'helpdesk' IN ('executor', 'admin'))`);
   return rows;
 }
 

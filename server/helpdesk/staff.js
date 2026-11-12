@@ -35,7 +35,7 @@ async function executors() {
   const { rows } = await query(
     `SELECT id, username, COALESCE(NULLIF(full_name, ''), username) AS name, email
        FROM public.users
-      WHERE is_active AND role <> 'superadmin' AND modules->>'helpdesk' IN ('executor', 'admin')
+      WHERE is_active AND NOT is_service AND (role = 'superadmin' OR modules->>'helpdesk' IN ('executor', 'admin'))
       ORDER BY 3`);
   return rows;
 }
@@ -43,7 +43,7 @@ async function executors() {
 router.get('/meta', ah(async (req, res) => {
   const [statuses, categories, execs, settings, departments] = await Promise.all([
     query('SELECT * FROM statuses ORDER BY sort, id'),
-    query(`SELECT c.*, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS default_assignee_name,
+    query(`SELECT c.*, CASE WHEN u.is_service THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS default_assignee_name,
                   (SELECT count(*)::int FROM tickets t WHERE t.category_id = c.id) AS ticket_count
              FROM categories c LEFT JOIN public.users u ON u.id = c.default_assignee_id ORDER BY c.sort, c.name`),
     executors(),
@@ -145,7 +145,7 @@ router.get('/tickets/:id', ah(async (req, res) => {
   const t = await loadTicket(intOrNull(req.params.id));
   const [comments, files, history, device, reqStats] = await Promise.all([
     query(`SELECT c.id, c.body, c.is_internal, c.created_at, c.user_id, c.requester_id,
-                  COALESCE(r.full_name, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END, '—') AS author
+                  COALESCE(r.full_name, CASE WHEN u.is_service THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END, '—') AS author
              FROM comments c
              LEFT JOIN requesters r ON r.id = c.requester_id
              LEFT JOIN public.users u ON u.id = c.user_id
@@ -153,7 +153,7 @@ router.get('/tickets/:id', ah(async (req, res) => {
     query(`SELECT id, comment_id, filename, mime_type, size, is_internal, created_at
              FROM attachments WHERE ticket_id = $1 ORDER BY id`, [t.id]),
     query(`SELECT h.action, h.details, h.created_at,
-                  COALESCE(r.full_name, CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END) AS author
+                  COALESCE(r.full_name, CASE WHEN u.is_service THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END) AS author
              FROM history h
              LEFT JOIN requesters r ON r.id = h.requester_id
              LEFT JOIN public.users u ON u.id = h.user_id
@@ -238,7 +238,7 @@ router.post('/tickets', ah(async (req, res) => {
     let assigneeName = null;
     let auto = false;
     let how = null;
-    if (b.assignee === 'me') { assignee = req.user.id; assigneeName = req.user.role === 'superadmin' ? 'Служба ИТ' : (req.user.full_name || req.user.username); }
+    if (b.assignee === 'me') { assignee = req.user.id; assigneeName = req.user.is_service ? 'Служба ИТ' : (req.user.full_name || req.user.username); }
     else if (/^\d+$/.test(String(b.assignee)) && admin) {
       const ex = (await executors()).find((x) => x.id === Number(b.assignee));
       if (!ex) throw new HttpError(400, 'Этот пользователь не может быть исполнителем');
@@ -294,7 +294,7 @@ router.patch('/tickets/:id', ah(async (req, res) => {
       // Исполнитель, взявший свободную заявку, становится её исполнителем
       if (!cur.assignee_id && !('assignee_id' in b) && !st.is_closed) {
         set('assignee_id', req.user.id);
-        await L.addHistory(db, id, me(req), 'assignee', { from: null, to: req.user.role === 'superadmin' ? 'Служба ИТ' : (req.user.full_name || req.user.username) });
+        await L.addHistory(db, id, me(req), 'assignee', { from: null, to: req.user.is_service ? 'Служба ИТ' : (req.user.full_name || req.user.username) });
       }
       await L.addHistory(db, id, me(req), 'status', { from: cur.status_name, to: st.name });
       events.push('status');
@@ -622,7 +622,7 @@ router.use('/reports', require('./reports'));
 const audit = require('../portal/audit');
 const RULES_SQL = `
   SELECT r.*, c.name AS category_name, l.value AS department_name,
-         CASE WHEN u.role = 'superadmin' THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS assignee_name
+         CASE WHEN u.is_service THEN 'Служба ИТ' ELSE COALESCE(NULLIF(u.full_name, ''), u.username) END AS assignee_name
     FROM assign_rules r
     LEFT JOIN categories c ON c.id = r.category_id
     LEFT JOIN public.lookups l ON l.id = r.department_id
