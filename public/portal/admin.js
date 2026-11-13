@@ -4,18 +4,19 @@ import { api, loadMe, portalTopbar } from './shell.js';
 
 let me, meta, users = [];
 const filter = { q: '', inactive: false };
-const MOD_ORDER = ['inventory', 'docs', 'calendar', 'helpdesk'];
+const MOD_ORDER = ['inventory', 'docs', 'calendar', 'helpdesk', 'remote'];
 const MOD_HINT = {
   inventory: 'Просмотр — только то, что разрешено в настройках читателя (типы техники, отделы, поля, пароли). Редактирование — добавление и изменение техники, справочников, импорт.',
   docs: 'Просмотр — поиск, чтение и скачивание документов. Редактирование — добавление, изменение и удаление документов.',
   calendar: 'Просмотр — календарь и задачи без изменений. Редактирование — создание и изменение задач, комментарии. Администратор — плюс удаление категорий и журнал.',
   helpdesk: 'Исполнитель — видит все заявки, берёт их в работу, меняет статус своих, переписывается с заявителем. Администратор — назначает исполнителей и сроки, настраивает виды проблем, статусы и регистрацию сотрудников.',
+  remote: 'Подключение к компьютерам пользователей. Только просмотр — видеть экран без управления. Управление — мышь и клавиатура. Администратор — плюс журнал всех подключений, настройки, установка агентов.',
 };
 // Готовые наборы прав
 const PRESETS = [
-  ['Сотрудник ИТ-отдела', { inventory: 'edit', docs: 'edit', calendar: 'edit', helpdesk: 'executor' }],
-  ['Только просмотр', { inventory: 'view', docs: 'view', calendar: 'view', helpdesk: 'none' }],
-  ['Без доступа', { inventory: 'none', docs: 'none', calendar: 'none', helpdesk: 'none' }],
+  ['Сотрудник ИТ-отдела', { inventory: 'edit', docs: 'edit', calendar: 'edit', helpdesk: 'executor', remote: 'control' }],
+  ['Только просмотр', { inventory: 'view', docs: 'view', calendar: 'view', helpdesk: 'none', remote: 'none' }],
+  ['Без доступа', { inventory: 'none', docs: 'none', calendar: 'none', helpdesk: 'none', remote: 'none' }],
 ];
 
 async function main() {
@@ -113,7 +114,7 @@ function row(u) {
 
 function userDialog(u) {
   const isNew = !u;
-  const mods = { ...(u?.modules || { inventory: 'view', docs: 'view', calendar: 'view', helpdesk: 'none' }) };
+  const mods = { ...(u?.modules || { inventory: 'view', docs: 'view', calendar: 'view', helpdesk: 'none', remote: 'none' }) };
   const username = h('input', { type: 'text', value: u?.username || '', disabled: !isNew, autocomplete: 'off', placeholder: 'ivanov' });
   const password = h('input', { type: 'password', autocomplete: 'new-password', placeholder: isNew ? 'Не короче 8 символов' : 'Оставьте пустым, чтобы не менять' });
   const fullName = h('input', { type: 'text', value: u?.full_name || '', placeholder: 'Иванов Иван Иванович' });

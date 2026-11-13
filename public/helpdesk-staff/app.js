@@ -2,6 +2,7 @@
 import { h, clear, makeApi, modal, run, toast, confirmDialog, avatar, fmtDateTime, relTime, toLocalInput, statusPill, parseHash, sortHead, sortRows, savedSort } from '/shared/ui.js';
 import { thread, fileList, fileInput, historyList } from '/shared/thread.js';
 import { loadMe, portalTopbar, helpdeskUrl } from '/portal/shell.js';
+import { remotePanel } from '/shared/remote.js';
 
 const api = makeApi('/helpdesk/api', {
   onUnauthorized: () => { location.href = '/login?next=' + encodeURIComponent('/helpdesk/' + location.hash); },
@@ -231,6 +232,7 @@ async function renderTicket(id) {
       ? h('div.stack', { style: { gap: '4px' } },
         h('a', { href: '/inventory/#/devices/' + t.device.id, target: '_blank' }, `${t.device.key} · ${t.device.hostname || t.device.inv_number || t.device.type_name}`),
         h('div.muted.small', [t.device.type_name, t.device.model, t.device.employee].filter(Boolean).join(' · ')),
+        remotePanel(t.device.id, { ticketId: t.id, title: false }),
         h('button.btn.sm.subtle', { style: { alignSelf: 'flex-start' }, onclick: () => patch({ device_id: null }) }, 'Отвязать'))
       : meta.me.inventory ? h('button.btn.sm', { onclick: pickDevice }, 'Привязать технику') : h('span.muted', '—'));
   }

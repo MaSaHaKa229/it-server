@@ -42,6 +42,7 @@ const ACTION = {
   priority: (d) => ['приоритет: ', h('b', d.to)],
   category: (d) => ['вид проблемы: ', h('b', d.to || '—')],
   device: (d) => (d.to ? 'привязана техника из инвентаря' : 'отвязана техника'),
+  remote: (d) => ['удалённое подключение к компьютеру ', h('b', d.computer || '—'), d.mode === 'view' ? ' (только просмотр)' : ''],
 };
 export function historyList(items) {
   if (!items.length) return null;
