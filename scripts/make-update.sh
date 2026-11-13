@@ -13,6 +13,8 @@ mkdir -p "$tmp/it-portal" "$out"
 git -C "$root" archive HEAD server public scripts package.json package-lock.json start-portal.bat README.md INSTALL.md .env.example \
   | tar -x -C "$tmp/it-portal"
 cp "$root/scripts/UPDATE-README.txt" "$tmp/it-portal/УСТАНОВКА.txt"
+# Обновление одной кнопкой: запускает scripts\update-portal.ps1
+cp "$root/scripts/update-portal.cmd" "$tmp/it-portal/ОБНОВИТЬ ПОРТАЛ.cmd"
 # Версия сборки — для страницы «Состояние системы»
 printf '{"built":"%s","commit":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git -C "$root" rev-parse --short HEAD)" > "$tmp/it-portal/server/version.json"
 # Компоненты распознавания сканов PDF — внутри server (папку server пользователь заменяет целиком)
@@ -20,5 +22,17 @@ node "$root/scripts/vendor-ocr.js" "$tmp/it-portal/server/vendor/ocr"
 # nginx.conf для Windows — с переводами строк CRLF
 sed -i 's/\r$//; s/$/\r/' "$tmp/it-portal/scripts/nginx.conf"
 rm -f "$out/it-portal-full-update.zip"
-(cd "$tmp" && zip -qr9 "$out/it-portal-full-update.zip" it-portal)
+# Архив — средствами Python: русские имена файлов помечаются как UTF-8 (утилита zip этого не делает,
+# и стандартная распаковка Windows показывала вместо «УСТАНОВКА.txt» набор символов)
+python3 - "$tmp" "$out/it-portal-full-update.zip" <<'PY'
+import os, sys, zipfile
+base, dest = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+    for d, dirs, files in os.walk(os.path.join(base, 'it-portal')):
+        dirs.sort()
+        rel = os.path.relpath(d, base)
+        z.write(d, rel)
+        for f in sorted(files):
+            z.write(os.path.join(d, f), os.path.join(rel, f))
+PY
 echo "Готово: $out/it-portal-full-update.zip"

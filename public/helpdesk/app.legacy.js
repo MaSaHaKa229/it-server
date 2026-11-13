@@ -216,6 +216,16 @@
     });
     return h("span.more-wrap", btn, pop);
   }
+  function logoStyle(url) {
+    return url ? { style: {
+      backgroundImage: 'url("' + url + '")',
+      backgroundSize: "contain",
+      backgroundRepeat: "no-repeat",
+      backgroundPosition: "center",
+      backgroundColor: "transparent",
+      color: "transparent"
+    } } : {};
+  }
   function topbar(o) {
     const menuEl = h("div.popover.hidden");
     const closeMenu = () => menuEl.classList.add("hidden");
@@ -246,7 +256,7 @@
       h(
         "a.brand",
         { href: o.brandHref || "/", title: "\u0413\u043B\u0430\u0432\u043D\u0430\u044F \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0430 \u043F\u043E\u0440\u0442\u0430\u043B\u0430" },
-        h("span.brand-logo" + (o.logo === "hd" ? ".hd" : ""), o.logo === "hd" ? "?" : "IT"),
+        h("span.brand-logo" + (o.logo === "hd" ? ".hd" : ""), logoStyle(o.logoUrl), o.logo === "hd" ? "?" : "IT"),
         h("span", o.brandText || "\u041F\u043E\u0440\u0442\u0430\u043B")
       ),
       o.section ? h("a.brand", { href: o.sectionHref || "#/", style: { marginLeft: "-12px" } }, h("span.sep", "/"), h("span", o.section)) : null,
@@ -341,6 +351,7 @@
   var statuses = [];
   async function boot() {
     cfg = await api.get("/config");
+    document.title = brand().helpdesk_title;
     try {
       me = await api.get("/me");
     } catch (e) {
@@ -467,15 +478,20 @@
       shell(h("div.empty-state", "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C: " + e.message));
     }
   }
+  function brand() {
+    const b = cfg && cfg.brand || {};
+    return { helpdesk_title: b.helpdesk_title || "HelpDesk", company: b.company || "", logoUrl: b.logo && b.helpdesk_logo !== false ? b.logo : null };
+  }
   function shell(...content) {
     const nav = [["", "#/", "\u041C\u043E\u0438 \u0437\u0430\u044F\u0432\u043A\u0438"], ["new", "#/new", "\u041D\u043E\u0432\u0430\u044F \u0437\u0430\u044F\u0432\u043A\u0430"], ["profile", "#/profile", "\u041F\u0440\u043E\u0444\u0438\u043B\u044C"]];
     const cur = parseHash().parts[0] || "";
     clear(
       app,
       topbar({
-        brandText: "HelpDesk",
+        brandText: brand().helpdesk_title,
         brandHref: "#/",
         logo: "hd",
+        logoUrl: brand().logoUrl,
         nav,
         active: cur === "tickets" ? "" : cur,
         actions: cur === "new" ? [] : [h("a.btn.primary", { href: "#/new" }, "+ \u041D\u043E\u0432\u0430\u044F \u0437\u0430\u044F\u0432\u043A\u0430")],
@@ -489,7 +505,8 @@
   function authPage(title, ...content) {
     clear(app, h(
       "div.login-page",
-      h("div.login-brand", h("span.brand-logo.hd", "?"), "HelpDesk"),
+      h("div.login-brand", h("span.brand-logo.hd", logoStyle(brand().logoUrl), "?"), brand().helpdesk_title),
+      brand().company ? h("div.muted", { style: { textAlign: "center", margin: "-8px 0 12px" } }, brand().company) : null,
       h(
         "div.login-card",
         { style: title === "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F" ? { width: "560px" } : {} },

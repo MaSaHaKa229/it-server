@@ -19,7 +19,8 @@ const audit = require('./audit');
 const SCHEMAS = ['public', 'docs', 'calendar', 'helpdesk'];
 const SKIP = new Set(['public.session', 'helpdesk.session']); // сессии входа не сохраняем
 const FORMAT = 'it-portal-backup';
-const DEFAULT_DIR = path.join(__dirname, '..', '..', 'backups');
+// Папка по умолчанию; сценарий обновления запускает копию из распакованного архива и указывает папку установленного портала
+const DEFAULT_DIR = process.env.PORTAL_BACKUP_DEFAULT_DIR || path.join(__dirname, '..', '..', 'backups');
 const NAME_RE = /^itportal-[\w.-]+\.itbak$/;
 
 const pool = () => poolFor('public');
@@ -133,7 +134,7 @@ function listFiles(dir) {
   try { names = fs.readdirSync(dir); } catch { return []; }
   return names.filter((n) => NAME_RE.test(n)).map((n) => {
     const st = fs.statSync(path.join(dir, n));
-    const kind = (n.match(/-(auto|manual|before-restore|uploaded)\.itbak$/) || [])[1] || 'manual';
+    const kind = (n.match(/-(auto|manual|before-restore|before-update|uploaded)\.itbak$/) || [])[1] || 'manual';
     return { name: n, size: st.size, mtime: st.mtime, kind };
   }).sort((a, b) => b.mtime - a.mtime);
 }
@@ -180,6 +181,94 @@ async function inspect(file) {
   const header = await readBackup(file, { onTable: (t) => { counts[t.table] = 0; }, onRow: (t) => { counts[t.table]++; } });
   return { created_at: header.created_at, kind: header.kind, host: header.host, tables: Object.keys(counts).length,
     rows: Object.values(counts).reduce((a, b) => a + b, 0), counts };
+}
+
+// ---------------- проверка копии ----------------
+// Копия читается целиком и каждая строка загружается во временную таблицу с устройством текущей таблицы
+// (типы, обязательные поля). Настоящие таблицы не меняются, транзакция в конце откатывается.
+// Так видно, что из копии действительно можно восстановиться — а не только что файл существует.
+const verifyState = () => getSetting('backup_verify', { files: {} });
+
+async function verify(file) {
+  const t0 = Date.now();
+  const client = await pool().connect();
+  let total = 0;
+  let tablesOk = 0;
+  const skipped = [];
+  let header = null;
+  try {
+    await client.query('BEGIN');
+    const list = await tables(client);
+    const byName = new Map(list.map((t) => [`${t.schema}.${t.name}`, t]));
+    let cur = null;
+    let cols = null;
+    let tmp = null;
+    let batch = [];
+    let bytes = 0;
+    let n = 0;
+    const flush = async () => {
+      if (!batch.length) return;
+      const c = cols.map(qi).join(', ');
+      try {
+        await client.query(`INSERT INTO ${tmp} (${c}) SELECT ${c} FROM jsonb_populate_recordset(NULL::${fq(cur)}, $1::jsonb)`, [JSON.stringify(batch)]);
+      } catch (e) {
+        throw new Error(`таблица ${cur.schema}.${cur.name}: ${e.message}`);
+      }
+      total += batch.length;
+      batch = []; bytes = 0;
+    };
+    header = await readBackup(file, {
+      onTable: async (t) => {
+        cur = byName.get(t.table) || null;
+        if (!cur) { skipped.push(t.table); return; }
+        cols = cur.cols.filter((c) => t.columns.includes(c));
+        tmp = `pg_temp.vt_${++n}`;
+        await client.query(`CREATE TEMP TABLE vt_${n} (LIKE ${fq(cur)} INCLUDING DEFAULTS)`);
+      },
+      onRow: async (t, row, size) => {
+        if (!cur) return;
+        batch.push(row); bytes += size;
+        if (batch.length >= 500 || bytes > 16 * 1024 * 1024) await flush();
+      },
+      onEnd: async () => {
+        if (cur) { await flush(); await client.query(`DROP TABLE ${tmp}`); tablesOk++; }
+        cur = null;
+      },
+    });
+  } finally {
+    await client.query('ROLLBACK').catch(() => {});
+    client.release();
+  }
+  return { ok: true, created_at: header && header.created_at, tables: tablesOk, rows: total, skipped, seconds: Math.round((Date.now() - t0) / 1000) };
+}
+
+/** Проверить копию и запомнить итог (для списка копий и «Состояния системы») */
+async function verifyAndSave(name, who) {
+  const f = path.join(dirOf(await settings()), name);
+  let r;
+  try {
+    r = await verify(f);
+  } catch (e) {
+    const m = String(e.message || e);
+    r = { ok: false, error: /unexpected end of file/i.test(m) ? 'файл копии обрезан (неполный) — например, не дописался или скопировался не до конца'
+      : /incorrect header check|invalid (block|stored|distance)/i.test(m) ? 'файл повреждён или это не резервная копия портала'
+        : /Unexpected token|JSON/i.test(m) ? `файл копии повреждён (${m.slice(0, 120)})` : m };
+  }
+  r.at = new Date().toISOString();
+  const vs = await verifyState();
+  const files = {};
+  const existing = new Set(listFiles(dirOf(await settings())).map((x) => x.name));
+  for (const [k, v] of Object.entries(vs.files || {})) if (existing.has(k)) files[k] = v;
+  files[name] = r;
+  await setSetting('backup_verify', { files, last: { name, ...r } });
+  await audit.log(who || { username: 'автоматически' }, r.ok ? 'backup_verified' : 'backup_verify_failed', name,
+    r.ok ? { tables: r.tables, rows: r.rows } : { error: r.error });
+  if (!r.ok) {
+    const N = require('./notify');
+    await N.emit(await N.usersWhere((u) => u.role === 'superadmin'), 'system',
+      { title: 'Резервная копия не прошла проверку', body: `${name}: ${r.error}`, link: '/admin#backup' }).catch(() => {});
+  }
+  return r;
 }
 
 // ---------------- восстановление ----------------
@@ -278,11 +367,21 @@ async function tick() {
   if (st.last_auto_day === today) return;
   await setSetting('backup_state', { ...st, last_auto_day: today });
   try {
-    await require('./health').track('backup', async () => {
+    const made = await require('./health').track('backup', async () => {
       const r = await lock('резервное копирование по расписанию', () => createBackup('auto'));
       cleanup(s);
       return `${r.file}, ${Math.round(r.size / 1024)} КБ`;
     });
+    // Раз в неделю — проверка свежей копии (её можно восстановить)
+    const vs = await verifyState();
+    if (!vs.last || Date.now() - new Date(vs.last.at).getTime() > 6.5 * 864e5) {
+      const name = String(made).split(',')[0];
+      await require('./health').track('backup_verify', async () => {
+        const r = await lock('проверка резервной копии', () => verifyAndSave(name));
+        if (!r.ok) throw new Error(r.error);
+        return `${name}: таблиц ${r.tables}, записей ${r.rows}`;
+      }).catch((e) => console.error('Проверка резервной копии:', e.message));
+    }
   } catch (e) {
     console.error('Резервное копирование:', e.message);
     await setSetting('backup_state', { ...(await state()), last_error: e.message, last_error_at: new Date().toISOString() });
@@ -295,6 +394,7 @@ async function tick() {
 
 function start() {
   require('./health').register('backup', 'Резервная копия по расписанию', 24 * 60);
+  require('./health').register('backup_verify', 'Проверка резервной копии (раз в неделю)', 8 * 24 * 60);
   const run = () => tick().catch((e) => console.error('Резервное копирование:', e.message));
   setTimeout(run, 90 * 1000).unref?.();
   setInterval(run, 60 * 1000).unref?.();
@@ -307,7 +407,7 @@ const upload = multer({ dest: os.tmpdir(), limits: { fileSize: 4 * 1024 * 1024 *
 router.get('/', ah(async (req, res) => {
   const s = await settings();
   const dir = dirOf(s);
-  res.json({ settings: s, dir, default_dir: DEFAULT_DIR, state: await state(), files: listFiles(dir), busy });
+  res.json({ settings: s, dir, default_dir: DEFAULT_DIR, state: await state(), files: listFiles(dir), busy, verify: await verifyState() });
 }));
 
 router.put('/settings', ah(async (req, res) => {
@@ -349,6 +449,11 @@ router.get('/files/:name/info', ah(async (req, res) => {
   res.json(await inspect(await fileIn(req.params.name)));
 }));
 
+router.post('/files/:name/verify', ah(async (req, res) => {
+  await fileIn(req.params.name);
+  res.json(await lock('проверка резервной копии', () => verifyAndSave(req.params.name, req)));
+}));
+
 router.delete('/files/:name', ah(async (req, res) => {
   const f = await fileIn(req.params.name);
   fs.rmSync(f, { force: true });
@@ -379,4 +484,4 @@ router.post('/upload', upload.single('file'), ah(async (req, res) => {
   }
 }));
 
-module.exports = { router, start, createBackup, restore, inspect };
+module.exports = { router, start, createBackup, restore, inspect, verify, verifyState };

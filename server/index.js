@@ -76,6 +76,7 @@ async function main() {
   // ---------- API портала ----------
   const portalApi = express.Router();
   portalApi.use(express.json({ limit: '1mb' }));
+  portalApi.use('/branding', require('./portal/branding').publicRouter); // оформление — открыто (страница входа)
   portalApi.use('/auth', require('./portal/auth').router);
   portalApi.use('/admin', require('./portal/admin'));
   portalApi.use('/summary', require('./portal/summary'));
@@ -104,6 +105,9 @@ async function main() {
   inv.use('/netscan', requireStaff, require('./inventory/netprobe/scan')); // сканирование сети — редакторы и администратор
   inv.use('/audits', requireStaff, require('./inventory/routes/audits')); // инвентаризация — редакторы и администратор
   inv.use('/moves', requireAuth, require('./inventory/routes/moves'));    // перемещения техники
+  inv.use('/stock', requireAuth, require('./inventory/routes/stock'));    // склад расходников
+  inv.use('/licenses', requireAuth, require('./inventory/routes/licenses')); // лицензии ПО (можно скрыть)
+  inv.use('/netinfo', requireAuth, require('./inventory/netprobe/software')); // ПО с компьютера по WMI
   inv.use('/', requireAuth, require('./inventory/routes/catalog'));
   app.use('/inventory/api', inv);
 

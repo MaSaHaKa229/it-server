@@ -38,6 +38,7 @@ router.get('/meta', ah(async (req, res) => {
     coreFields: CORE_FIELDS.filter((f) => canSeeField(P, f.key)),
     statuses,
     softwareFieldDefs: swDefs,
+    features: await require('./licenses').features(),
     types: types.rows,
     lookupKinds: kinds.rows,
     fieldDefs: defs.filter((d) => vis.visibleIds.has(String(d.id))),

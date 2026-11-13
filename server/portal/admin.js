@@ -121,6 +121,8 @@ router.delete('/users/:id', ah(async (req, res) => {
 }));
 
 // ---------------- Состояние системы ----------------
+router.use('/status/windows', require('./wincheck')); // проверка возможностей Windows
+router.use('/branding', require('./branding').adminRouter); // оформление
 router.use('/status', require('./status'));
 
 // ---------------- Резервные копии ----------------

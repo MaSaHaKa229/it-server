@@ -60,6 +60,16 @@ async function selfCheck(backupState) {
   const age = last ? (Date.now() - last.getTime()) / 864e5 : null;
   add(last && age < 2 ? true : last ? 'warn' : false, 'Резервные копии',
     last ? `Последняя: ${last.toLocaleString('ru-RU')}${age >= 2 ? ' — больше двух дней назад' : ''}` : 'Копий ещё не было — создайте во вкладке «Резервные копии»');
+  // Проверка копии: можно ли из неё восстановиться
+  try {
+    const vs = await require('./backup').verifyState();
+    const v = vs.last;
+    const vage = v ? (Date.now() - new Date(v.at).getTime()) / 864e5 : null;
+    add(v ? (v.ok ? (vage < 9 ? true : 'warn') : false) : 'warn', 'Проверка резервной копии',
+      !v ? 'Копии ещё не проверялись — проверка идёт раз в неделю после ночной копии или кнопкой «Проверить» во вкладке «Резервные копии»'
+        : v.ok ? `${new Date(v.at).toLocaleString('ru-RU')}: копия ${v.name} читается целиком, из неё можно восстановиться (таблиц ${v.tables}, записей ${v.rows})${vage >= 9 ? ' — но это было давно' : ''}`
+          : `${new Date(v.at).toLocaleString('ru-RU')}: копия ${v.name} НЕ прошла проверку — ${v.error}`);
+  } catch (e) { add('warn', 'Проверка резервной копии', e.message); }
   // База
   try {
     const { rows } = await query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema IN ('public','docs','calendar','helpdesk')`);

@@ -11,6 +11,8 @@ import { openCreateDevice } from './pages/create.js';
 import { renderImport } from './pages/import.js';
 import { renderWorkplaces, renderWorkplace } from './pages/workplaces.js';
 import { renderMoves } from './pages/moves.js';
+import { renderStock } from './pages/stock.js';
+import { renderLicenses } from './pages/licenses.js';
 import { renderNetscan } from './pages/netscan.js';
 import { renderAudits, renderAudit } from './pages/audits.js';
 
@@ -26,6 +28,9 @@ export function parseHash() {
 export function navigate(path) {
   if (location.hash === '#' + path) route(); else location.hash = path;
 }
+
+// Учёт лицензий: включён администратором портала и пользователю видно ПО
+const licensesOn = () => state.meta && state.meta.features && state.meta.features.licenses !== false && state.perms && state.perms.software;
 
 async function route() {
   if (!state.me) return;
@@ -43,6 +48,8 @@ async function route() {
     else if (section === 'workplaces' && sub) await renderWorkplace(mainEl, Number(sub));
     else if (section === 'workplaces') await renderWorkplaces(mainEl);
     else if (section === 'moves' && isStaff()) await renderMoves(mainEl);
+    else if (section === 'stock') await renderStock(mainEl);
+    else if (section === 'licenses' && licensesOn()) await renderLicenses(mainEl);
     else if (section === 'import' && isStaff()) await renderImport(mainEl);
     else if (section === 'netscan' && isStaff()) await renderNetscan(mainEl);
     else if (section === 'audits' && sub && isStaff()) await renderAudit(mainEl, Number(sub));
@@ -75,6 +82,8 @@ function renderShell() {
     isStaff() && ['netscan', '#/netscan', 'Сканирование сети', true],
     isStaff() && ['audits', '#/audits', 'Инвентаризация', true],
     isStaff() && ['moves', '#/moves', 'Перемещения', true],
+    ['stock', '#/stock', 'Склад', true],
+    licensesOn() && ['licenses', '#/licenses', 'Лицензии ПО', true],
     isStaff() && ['import', '#/import', 'Импорт', true],
     isStaff() && ['catalog', '#/catalog', 'Справочники', true],
     isStaff() && ['settings', '#/settings', 'Настройки', true],
@@ -168,6 +177,7 @@ const refreshSidebar = debounce(async () => {
     link('#/devices', [icon('list'), 'Вся техника'], total),
     link('#/workplaces', [icon('users'), 'Рабочие места']),
     isStaff() ? link('#/moves', [icon('box'), 'Перемещения']) : null,
+    link('#/stock', [icon('box'), 'Склад']),
     h('div.side-section', h('h4', 'Типы техники'),
       state.meta.types.map((t) => link(`#/devices?f=${encodeURIComponent(JSON.stringify({ type: [t.id] }))}`,
         [h('span.type-dot', { style: { background: t.color } }, t.code.slice(0, 2)), t.name], counts[t.id] || 0))),

@@ -115,6 +115,7 @@ function createHelpdeskApp() {
     res.json({
       domains: s.allowed_domains, requireApproval: s.require_approval, welcome: s.welcome_text,
       mailEnabled: L.mailEnabled(), portalUrl: L.portalUrl(), priorities: L.PRIORITIES,
+      brand: require('../portal/branding').publicView(await require('../portal/branding').get()),
     });
   }));
 

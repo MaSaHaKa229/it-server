@@ -14,12 +14,14 @@ export async function renderSettings(root, tab = 'types') {
     h('a.side-link' + (tab === 'statuses' ? '.active' : ''), { href: '#/settings/statuses' }, 'Состояния'),
     h('a.side-link' + (tab === 'fields' ? '.active' : ''), { href: '#/settings/fields' }, 'Дополнительные поля'),
     isSuper() ? h('a.side-link' + (tab === 'netprobe' ? '.active' : ''), { href: '#/settings/netprobe' }, 'Сведения из сети') : null,
-    h('a.side-link' + (tab === 'netformat' ? '.active' : ''), { href: '#/settings/netformat' }, 'Формат данных из сети'));
+    h('a.side-link' + (tab === 'netformat' ? '.active' : ''), { href: '#/settings/netformat' }, 'Формат данных из сети'),
+    isSuper() ? h('a.side-link' + (tab === 'features' ? '.active' : ''), { href: '#/settings/features' }, 'Возможности') : null);
   clear(root,
     h('div.breadcrumbs', h('a', { href: '#/' }, 'Служба ИТ'), h('span.sep', '/'), h('span', 'Настройки')),
     h('div.page-head', h('h1', 'Настройки')),
     h('div.split', nav, body));
   if (tab === 'netprobe' && isSuper()) await renderNetprobeSettings(body);
+  else if (tab === 'features' && isSuper()) await (await import('./licenses.js')).renderFeatures(body);
   else if (tab === 'netformat') await renderNetFormat(body);
   else if (tab === 'fields') await renderFields(body);
   else if (tab === 'statuses') await renderStatuses(body);

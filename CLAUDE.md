@@ -116,6 +116,19 @@ React-клиенты грузят его динамически по адрес�
 **Состояние системы** — `/admin#status`, `server/portal/status.js` (версия из `server/version.json`, который пишет
 `make-update.sh`; диск, база, самопроверка) + `server/portal/health.js` (`register`/`track` фоновых заданий, `captureErrors()`
 — кольцевой буфер `console.error`). Новые фоновые таймеры оборачивать в `track`.
+**Склад** — `stock_items`/`stock_moves` (остаток = сумма), `server/inventory/routes/stock.js` (`matches()`: код в названии
+расходника SNMP или модели; `forSupply` — подсказка в уведомлении о тонере, `lowItems` — уведомление `stock_low`),
+`public/inventory/js/pages/stock.js` (+ `deviceStockPanel` в карточке принтера). **ПО по WMI** — `netprobe/software.js`
+(`PS.softwareCollect`: реестр Uninstall через StdRegProv; сравнение new/version/missing, apply), не зависит от лицензий.
+**Лицензии** — `software_licenses`, `routes/licenses.js` (установки — по `device_software` и шаблону `match`), выключатель
+`portal_settings.inventory_features.licenses` (суперадмин, Настройки инвентаря → «Возможности»; meta.features).
+**Проверка Windows** — `server/portal/wincheck.js` (`/api/admin/status/windows`, фоновая, `PS.psSelfTest` и др.).
+**Проверка копий** — `backup.js` `verify()` (временные таблицы `LIKE`, откат), `portal_settings.backup_verify`, еженедельно после ночной копии.
+**Оформление** — `server/portal/branding.js` (`portal_settings.branding`; `/api/branding` открыт; применяет `prefs.js` к `.brand-logo`,
+подписи рядом, title, крошкам и `[data-brand-company]`; сайт заявок — `cfg.brand` из `/api/config`, `logoStyle` в ui.js).
+**Обновление одной кнопкой** — `scripts/update-portal.ps1` (+ `update-portal.cmd` → «ОБНОВИТЬ ПОРТАЛ.cmd» в корне архива),
+копия — `server/tools/backup-now.js --root`. Архив собирается Python-ом (флаг UTF-8 для русских имён файлов). На Windows не проверялось.
+**Повёрнутые сканы** — `ocr.js` `recognizeOriented()`: при плохом качестве (уверенность/число слов) пробует 90/270/180°.
 **Сканирование по расписанию** — `netprobe_settings.scan_schedule`, `scan.js` `startSchedule()`; новые — уведомление `netscan_new`.
 Предел адресов: вручную `MAX_HOSTS` 4096, по расписанию — без предела (`parseNetworks(text, Infinity)`), список режется на части
 по `PART`=4096 (`splitRanges`, по процессу на часть); одна запись — не шире /16. Сети проверяются при сохранении настроек и
@@ -208,7 +221,6 @@ npm run build:install && npm run build        # только если прави
   `nativeImageDecoderSupport: 'none'`), распознаёт tesseract.js 7 + `@tesseract.js-data/rus|eng` (словари копируются
   в `%TEMP%\it-portal-tessdata`), очередь — `document_files.ocr_status`, один документ за раз. Пользователь говорил,
   что «раньше распознавание работало» (видимо, в прежней программе docsearch) — в этом репозитории его не было.
-  Повёрнутые на 90° сканы не выравниваются (нет osd) — если пожалуются, добавить определение ориентации.
 - Компоненты распознавания (tesseract.js + словари) **едут в архиве обновления** внутри `server/vendor/ocr`
   (`scripts/vendor-ocr.js`, вызывается из `make-update.sh`; в git не хранятся — `.gitignore`). Отдельный архив
   `node_modules` пользователь ставил неверно (компонентов в C:\it-portal не оказалось), поэтому так.

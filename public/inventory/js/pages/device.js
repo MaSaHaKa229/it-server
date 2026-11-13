@@ -11,6 +11,8 @@ import { navigate } from '../app.js';
 import { openFieldModal } from './settings.js';
 import { openNetInfo } from './netinfo.js';
 import { moveDialog, moveStyles } from './moves.js';
+import { deviceStockPanel } from './stock.js';
+import { softwareFromPc } from './licenses.js';
 
 let activeTab = 'software';
 
@@ -138,6 +140,7 @@ export async function renderDevice(root, id) {
           const b = h('button.btn', icon('plus'), 'Добавить ▾');
           b.addEventListener('click', () => menu(b, [
             P.software ? { label: 'Программу (ПО)', icon: 'plus', onClick: () => softwareModal() } : null,
+            P.software && (d.hostname || d.ip_address) ? { label: 'ПО с компьютера (WMI)', icon: 'plus', onClick: () => softwareFromPc(d, changed) } : null,
             { label: 'Пароль', icon: 'lock', onClick: () => credentialModal() },
             { label: 'Поле в карточку', icon: 'plus', onClick: addField },
           ].filter(Boolean)));
@@ -182,6 +185,8 @@ export async function renderDevice(root, id) {
               : f.scope === 'type' ? h('span.scope-tag', 'для типа ' + type.name) : null),
           h('div.dv', editable(f, { multiline: f.kind === 'textarea', block: f.kind === 'textarea' }))))
           : h('p.muted.small', { style: { margin: '8px 0' } }, 'Дополнительных полей нет'))),
+      // Принтеры и МФУ — подходящие расходники со склада
+      (/^(PRN|MFU)$/i.test(type.code) || /принтер|мфу|плоттер/i.test(type.name)) ? deviceStockPanel(d, `${key} ${d.hostname || d.model || ''}`.trim()) : null,
       h('div.dates',
         h('div', 'Создано ', fmtDate(d.created_at)),
         h('div', 'Изменено ', fmtDate(d.updated_at))));
@@ -217,7 +222,8 @@ export async function renderDevice(root, id) {
     if (!rows.length) {
       return h('div.empty-state', { style: { padding: '24px' } },
         h('p', 'На устройстве пока не указано ПО'),
-        staff ? h('button.btn', { onclick: () => softwareModal() }, icon('plus'), 'Добавить ПО') : null);
+        staff ? h('button.btn', { onclick: () => softwareModal() }, icon('plus'), 'Добавить ПО') : null,
+        staff && (data.device.hostname || data.device.ip_address) ? [' ', h('button.btn', { onclick: () => softwareFromPc(data.device, changed) }, 'Собрать с компьютера (WMI)')] : null);
     }
     const instF = softwareFields('install');
     const swF = softwareFields('software');
@@ -245,7 +251,8 @@ export async function renderDevice(root, id) {
               run(async () => { await api.del(`/api/devices/${id}/software/${s.id}`); toast('ПО удалено'); await changed(); });
             },
           }, icon('trash', 14))) : null)))));
-    return h('div', table, staff ? h('div', { style: { marginTop: '8px' } },
+    return h('div', table, staff ? h('div.row', { style: { marginTop: '8px' } },
+      (data.device.hostname || data.device.ip_address) ? h('button.btn.sm', { onclick: () => softwareFromPc(data.device, changed) }, 'Обновить с компьютера (WMI)') : null,
       h('a.small', { href: '#/settings/fields' }, 'Настроить дополнительные поля ПО')) : null);
   }
 
@@ -299,6 +306,8 @@ export async function renderDevice(root, id) {
     ticket_linked: 'привязал(а) к заявке', ticket_unlinked: 'отвязал(а) от заявки',
     remote_connect: 'подключился(-ась) к сеансу пользователя',
     moved: 'переместил(а)',
+    stock_issued: 'выдал(а) со склада',
+    software_synced: 'обновил(а) ПО с компьютера',
     audit: 'провёл(а) инвентаризацию',
   };
   // Заявки helpdesk, к которым привязана эта техника

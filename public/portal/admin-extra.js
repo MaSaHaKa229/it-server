@@ -84,7 +84,7 @@ export async function renderMailNotify(box) {
 }
 
 // ====================== Резервные копии ======================
-const KIND = { auto: 'по расписанию', manual: 'вручную', 'before-restore': 'перед восстановлением', uploaded: 'загружена' };
+const KIND = { auto: 'по расписанию', manual: 'вручную', 'before-restore': 'перед восстановлением', uploaded: 'загружена', 'before-update': 'перед обновлением' };
 
 export async function renderBackup(box) {
   const d = await api.get('/api/admin/backup');
@@ -103,12 +103,29 @@ export async function renderBackup(box) {
   const err = st.last_error && (!st.last_ok_at || new Date(st.last_error_at) > new Date(st.last_ok_at))
     ? h('div.error-box', { style: { marginTop: '8px' } }, `Ошибка ${fmtDateTime(st.last_error_at)}: ${st.last_error}`) : null;
 
+  const vf = (d.verify && d.verify.files) || {};
+  const checked = (f) => {
+    const v = vf[f.name];
+    if (!v) return h('span.muted.small', 'не проверялась');
+    return v.ok
+      ? h('span.small', { title: `Таблиц ${v.tables}, записей ${v.rows}, ${v.seconds} с` }, h('span.lozenge.green', 'можно восстановить'), ' ', h('span.muted', fmtDateTime(v.at)))
+      : h('span.small', { title: v.error }, h('span.lozenge.red', 'ошибка'), ' ', h('span.muted', v.error.slice(0, 80)));
+  };
   const rows = d.files.map((f) => h('tr',
     h('td', h('b', fmtDateTime(f.mtime))),
     h('td', KIND[f.kind] || f.kind),
     h('td.nowrap', fmtSize(f.size)),
     h('td.small.muted', f.name),
+    h('td', checked(f)),
     h('td.nowrap', { style: { textAlign: 'right' } },
+      h('button.btn.sm', {
+        title: 'Прочитать копию целиком и проверить, что из неё можно восстановиться (данные портала не меняются)',
+        onclick: (e) => run(async () => {
+          const r = await api.post(`/api/admin/backup/files/${encodeURIComponent(f.name)}/verify`);
+          if (r.ok) toast(`Копия в порядке: таблиц ${r.tables}, записей ${r.rows}`); else toast(r.error, 'error', 'Копия не прошла проверку');
+          reload();
+        }, e.currentTarget),
+      }, 'Проверить'), ' ',
       h('a.btn.sm', { href: `/api/admin/backup/files/${encodeURIComponent(f.name)}`, download: f.name }, 'Скачать'), ' ',
       h('button.btn.sm', { onclick: () => restoreDialog(f, reload) }, 'Восстановить…'), ' ',
       h('button.btn.sm.subtle', {
@@ -145,8 +162,10 @@ export async function renderBackup(box) {
       h('div.row', h('h3', { style: { margin: 0 } }, `Копии в папке ${d.dir}`), h('span.spacer'),
         h('label.btn', { style: { cursor: 'pointer' } }, 'Загрузить файл копии…', file)),
       h('div.table-wrap', { style: { marginTop: '10px' } }, h('table.list',
-        h('thead', h('tr', h('th', 'Создана'), h('th', 'Как'), h('th', 'Размер'), h('th', 'Файл'), h('th', ''))),
-        h('tbody', rows.length ? rows : h('tr.empty', h('td', { colspan: 5 }, 'Копий пока нет'))))),
+        h('thead', h('tr', h('th', 'Создана'), h('th', 'Как'), h('th', 'Размер'), h('th', 'Файл'), h('th', 'Проверка'), h('th', ''))),
+        h('tbody', rows.length ? rows : h('tr.empty', h('td', { colspan: 6 }, 'Копий пока нет'))))),
+      h('p.hint', 'Раз в неделю свежая копия проверяется автоматически: портал читает её целиком и пробует загрузить во временные таблицы. ',
+        'Если копия повреждена — придёт уведомление, а в «Состоянии системы» будет ошибка.'),
       h('p.hint', 'Восстановление заменяет все данные портала содержимым копии. Перед восстановлением автоматически создаётся копия текущего состояния — ',
         'если восстановили не то, можно вернуться к ней.')));
   file.style.display = 'none';
@@ -258,7 +277,8 @@ const SETTINGS_MAP = [
     ['Уведомления и почта', '/admin#notify', 'почтовый сервер, пороги «за сколько предупреждать»'],
     ['Резервные копии', '/admin#backup', 'расписание, папка, восстановление'],
     ['Журнал входов и действий', '/admin#audit', 'кто и когда входил, что менял'],
-    ['Состояние системы', '/admin#status', 'самопроверка, фоновые задания, ошибки, место на диске'],
+    ['Состояние системы', '/admin#status', 'самопроверка, проверка возможностей Windows, фоновые задания, ошибки'],
+    ['Оформление', '/admin#branding', 'название предприятия, портала и сайта заявок, логотип'],
   ]],
   ['ИТ-инвентарь', [
     ['Типы техники', '/inventory/#/settings/types', 'какие поля у какого типа'],
@@ -269,6 +289,8 @@ const SETTINGS_MAP = [
     ['Формат данных из сети', '/inventory/#/settings/netformat', 'как записывать данные WMI в карточку'],
     ['Сканирование по расписанию', '/inventory/#/netscan', 'строка «По расписанию» на вкладке сканирования'],
     ['Права читателей инвентаря', '/inventory/#/users', 'какие типы, отделы и поля видит читатель'],
+    ['Возможности (учёт лицензий)', '/inventory/#/settings/features', 'показывать или скрыть ото всех раздел «Лицензии ПО»'],
+    ['Склад расходников', '/inventory/#/stock', 'позиции, минимальные остатки для уведомлений'],
   ]],
   ['Заявки', [
     ['Автоназначение', '/helpdesk/#/rules', 'кому сразу попадает новая заявка'],
@@ -303,6 +325,90 @@ const dur = (s) => { const d = Math.floor(s / 86400); const hh = Math.floor((s %
 const MARK = { true: ['✓', '#36B37E'], warn: ['!', '#FF8B00'], false: ['✕', '#DE350B'] };
 const JOB_STATE = { ok: ['работает', '.green'], waiting: ['ещё не запускалось', ''], late: ['давно не запускалось', '.yellow'], error: ['ошибка', '.red'] };
 
+// Оформление: название предприятия, портала и сайта заявок, логотип
+export async function renderBranding(box) {
+  const b = await api.get('/api/branding');
+  const company = h('input', { type: 'text', value: b.company || '', placeholder: 'Например: ООО «Ромашка»' });
+  const title = h('input', { type: 'text', value: b.portal_title || '', placeholder: 'ИТ-портал' });
+  const short = h('input', { type: 'text', value: b.portal_short || '', placeholder: 'Портал', style: { width: '200px' } });
+  const hd = h('input', { type: 'text', value: b.helpdesk_title || '', placeholder: 'HelpDesk' });
+  const hdLogo = h('input', { type: 'checkbox', checked: b.helpdesk_logo !== false });
+  const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/svg+xml,image/webp' });
+  let logo = b.logo || null;
+  const prev = h('span.brand-logo', { style: { width: '48px', height: '48px', fontSize: '18px', borderRadius: '6px' } }, 'IT');
+  const drawLogo = () => Object.assign(prev.style, logo
+    ? { backgroundImage: `url("${logo}")`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center', backgroundColor: 'transparent', color: 'transparent' }
+    : { backgroundImage: '', backgroundColor: '', color: '' });
+  drawLogo();
+  file.addEventListener('change', () => {
+    const f = file.files[0];
+    if (!f) return;
+    if (f.size > 200 * 1024) { toast('Файл больше 200 КБ — уменьшите картинку', 'error'); file.value = ''; return; }
+    const r = new FileReader();
+    r.onload = () => { logo = r.result; drawLogo(); };
+    r.readAsDataURL(f);
+  });
+  file.style.display = 'none';
+  clear(box, h('div.panel',
+    h('p.muted', { style: { marginTop: 0 } }, 'Как портал и сайт заявок называются и выглядят для сотрудников. Меняется сразу у всех (после обновления страницы).'),
+    h('div.stack', { style: { gap: '12px', maxWidth: '640px' } },
+      h('label.field', h('span', 'Название предприятия'), company, h('div.hint', 'Показывается на странице входа, на главной и на сайте заявок. Можно оставить пустым.')),
+      h('label.field', h('span', 'Название портала'), title, h('div.hint', 'На странице входа и в заголовке окна браузера')),
+      h('label.field', h('span', 'Короткое название (в шапке рядом с логотипом)'), short),
+      h('label.field', h('span', 'Название сайта заявок'), hd, h('div.hint', 'Вместо «HelpDesk» — например, «Заявки в службу ИТ»')),
+      h('div.field', h('span', 'Логотип'),
+        h('div.row', { style: { gap: '12px', alignItems: 'center' } }, prev,
+          h('label.btn', { style: { cursor: 'pointer' } }, 'Выбрать картинку…', file),
+          h('button.btn.subtle', { onclick: () => { logo = null; file.value = ''; drawLogo(); } }, 'Убрать')),
+        h('div.hint', 'Квадратная картинка PNG, JPG или SVG до 200 КБ — показывается в шапке всех разделов вместо значка «IT».')),
+      h('label.check', hdLogo, 'Тот же логотип на сайте заявок'),
+      h('div', h('button.btn.primary', { onclick: (e) => run(async () => {
+        const v = await api.put('/api/admin/branding', { company: company.value, portal_title: title.value, portal_short: short.value,
+          helpdesk_title: hd.value, logo, helpdesk_logo: hdLogo.checked });
+        window.portalPrefs && window.portalPrefs.brand && window.portalPrefs.brand(v);
+        toast('Оформление сохранено');
+      }, e.currentTarget) }, 'Сохранить')))));
+}
+
+// Проверка возможностей Windows: PowerShell, AD, WMI, arp/ping, подключение к сеансу
+function winCheckPanel() {
+  const target = h('input', { type: 'text', placeholder: 'Например: BUH-PC01', style: { width: '220px' } });
+  try { target.value = localStorage.getItem('portal.wincheck.target') || ''; } catch { /* нет хранилища */ }
+  const out = h('div');
+  const btn = h('button.btn.primary', 'Проверить');
+  const draw = (j) => {
+    if (!j) { clear(out); return; }
+    clear(out,
+      h('table.list', { style: { marginTop: '10px' } }, h('tbody',
+        j.checks.map((c) => h('tr',
+          h('td', { style: { width: '32px', fontWeight: 700, color: MARK[String(c.ok)][1] } }, MARK[String(c.ok)][0]),
+          h('td', { style: { width: '260px' } }, h('b', c.title)),
+          h('td', c.text, c.ms > 1500 ? h('span.muted.small', ` · ${Math.round(c.ms / 1000)} с`) : null))),
+        j.current ? h('tr', h('td', '…'), h('td', h('b', j.current)), h('td.muted', 'проверяется…')) : null)),
+      j.finished_at ? h('p.muted.small', `Проверено ${fmtDateTime(j.finished_at)}${j.target ? `, компьютер ${j.target}` : ''}.`) : null);
+  };
+  const poll = async () => {
+    const j = await api.get('/api/admin/status/windows');
+    draw(j);
+    if (j && !j.finished_at) setTimeout(() => poll().catch(() => {}), 1500);
+    else btn.disabled = false;
+  };
+  btn.addEventListener('click', () => run(async () => {
+    try { localStorage.setItem('portal.wincheck.target', target.value.trim()); } catch { /* нет хранилища */ }
+    btn.disabled = true;
+    await api.post('/api/admin/status/windows', { target: target.value.trim() });
+    await poll();
+  }));
+  poll().catch(() => {});
+  return h('div.panel',
+    h('h2', { style: { marginTop: 0 } }, 'Проверка возможностей Windows'),
+    h('p.muted', 'Пробует на этом сервере всё, что портал делает средствами Windows: PowerShell, поиск в Active Directory, ',
+      'сбор характеристик и установленного ПО по WMI, команды arp и ping, программы для подключения к сеансу. ',
+      'Укажите имя включённого компьютера сотрудника — на нём проверяются AD и WMI (учётная запись — из настроек «Сведения из сети»).'),
+    h('div.row', h('span', 'Компьютер:'), target, btn),
+    out);
+}
+
 export async function renderStatus(box) {
   const d = await api.get('/api/admin/status');
   const row = (k, v) => h('tr', h('td.muted', { style: { width: '220px' } }, k), h('td', v));
@@ -318,6 +424,7 @@ export async function renderStatus(box) {
         h('td', { style: { width: '32px', fontWeight: 700, color: MARK[String(c.ok)][1] } }, MARK[String(c.ok)][0]),
         h('td', { style: { width: '260px' } }, h('b', c.title)),
         h('td', c.text)))))),
+    winCheckPanel(),
     h('div.panel',
       h('h2', { style: { marginTop: 0 } }, 'Фоновые задания'),
       h('table.list',

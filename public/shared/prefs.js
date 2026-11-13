@@ -75,4 +75,66 @@
     document.body.appendChild(bg);
   }
   window.portalPrefs = { open: open, apply: apply };
+
+  // ---------- Оформление: логотип, название портала, название предприятия (Администрирование → «Оформление») ----------
+  // Применяется ко всем страницам: к значку .brand-logo, подписи рядом с ним, заголовку окна и [data-brand-company].
+  // Последние настройки запоминаются в браузере — страница сразу открывается со своим логотипом, без мигания.
+  var BKEY = 'portal.brand';
+  var brand = null;
+  try { brand = JSON.parse(localStorage.getItem(BKEY)); } catch (e) { brand = null; }
+  var DEF_TITLE = 'ИТ-портал';
+  function applyBrand() {
+    if (!brand || !document.body) return;
+    var logos = document.querySelectorAll('.brand-logo:not(.hd)');
+    for (var i = 0; i < logos.length; i++) {
+      var el = logos[i];
+      if (brand.logo) {
+        if (el.getAttribute('data-brand') !== brand.logo.length + '') {
+          el.style.backgroundImage = 'url("' + brand.logo + '")';
+          el.style.backgroundSize = 'contain'; el.style.backgroundRepeat = 'no-repeat'; el.style.backgroundPosition = 'center';
+          el.style.backgroundColor = 'transparent'; el.style.color = 'transparent';
+          el.setAttribute('data-brand', brand.logo.length + '');
+        }
+      } else if (el.getAttribute('data-brand')) {
+        el.style.backgroundImage = ''; el.style.backgroundColor = ''; el.style.color = ''; el.removeAttribute('data-brand');
+      }
+      // Подпись рядом со значком: «Портал» в шапке, «ИТ-портал» на странице входа
+      var next = el.nextSibling;
+      var want = el.parentNode && el.parentNode.className.indexOf('login-brand') >= 0 ? brand.portal_title : brand.portal_short;
+      if (next && want) {
+        if (next.nodeType === 3) { if (next.nodeValue.trim() !== want) next.nodeValue = ' ' + want; }
+        else if (next.nodeType === 1 && next.tagName === 'SPAN' && !next.className && next.textContent !== want) next.textContent = want;
+      }
+    }
+    // «ИТ-портал» в строке пути (хлебных крошках)
+    if (brand.portal_title && brand.portal_title !== DEF_TITLE) {
+      var crumbs = document.querySelectorAll('.breadcrumbs a[href="/"], .breadcrumbs > span:first-child');
+      for (var k = 0; k < crumbs.length; k++) if (crumbs[k].textContent === DEF_TITLE) crumbs[k].textContent = brand.portal_title;
+    }
+    var comp = document.querySelectorAll('[data-brand-company]');
+    for (var j = 0; j < comp.length; j++) {
+      var txt = brand.company ? (comp[j].getAttribute('data-sep') || '') + brand.company : '';
+      if (comp[j].textContent !== txt) comp[j].textContent = txt;
+      comp[j].style.display = brand.company ? '' : 'none';
+    }
+    if (brand.portal_title && brand.portal_title !== DEF_TITLE && document.title.indexOf(DEF_TITLE) >= 0) {
+      document.title = document.title.split(DEF_TITLE).join(brand.portal_title);
+    }
+  }
+  var pending = false;
+  function later() { if (pending) return; pending = true; setTimeout(function () { pending = false; applyBrand(); }, 30); }
+  function watch() {
+    applyBrand();
+    if (window.MutationObserver) new MutationObserver(later).observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
+  if (window.fetch) {
+    fetch('/api/branding', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (b) {
+      if (!b) return;
+      brand = b;
+      try { localStorage.setItem(BKEY, JSON.stringify(b)); } catch (e) { /* нет места */ }
+      applyBrand();
+    }).catch(function () { /* без оформления */ });
+  }
+  window.portalPrefs.brand = function (b) { brand = b; try { localStorage.setItem(BKEY, JSON.stringify(b)); } catch (e) { /* нет места */ } applyBrand(); };
 })();

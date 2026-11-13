@@ -1,5 +1,5 @@
 // Сайт заявок в службу ИТ для сотрудников предприятия
-import { h, clear, makeApi, run, toast, fmtDateTime, relTime, statusPill, parseHash, topbar } from '/shared/ui.js';
+import { h, clear, makeApi, run, toast, fmtDateTime, relTime, statusPill, parseHash, topbar, logoStyle } from '/shared/ui.js';
 import { thread, fileList, fileInput, historyList } from '/shared/thread.js';
 
 const api = makeApi('/api', { csrf: 'helpdesk', onUnauthorized: () => { if (me) { me = null; location.hash = '#/login'; } } });
@@ -11,6 +11,7 @@ let statuses = [];
 
 async function boot() {
   cfg = await api.get('/config');
+  document.title = brand().helpdesk_title;
   try { me = await api.get('/me'); } catch { me = null; }
   window.addEventListener('hashchange', route);
   route();
@@ -94,13 +95,19 @@ async function route() {
   }
 }
 
+// Оформление из настроек портала: название сайта заявок, логотип, предприятие
+function brand() {
+  const b = (cfg && cfg.brand) || {};
+  return { helpdesk_title: b.helpdesk_title || 'HelpDesk', company: b.company || '', logoUrl: b.logo && b.helpdesk_logo !== false ? b.logo : null };
+}
+
 // ---------------- Каркас ----------------
 function shell(...content) {
   const nav = [['', '#/', 'Мои заявки'], ['new', '#/new', 'Новая заявка'], ['profile', '#/profile', 'Профиль']];
   const cur = parseHash().parts[0] || '';
   clear(app,
     topbar({
-      brandText: 'HelpDesk', brandHref: '#/', logo: 'hd',
+      brandText: brand().helpdesk_title, brandHref: '#/', logo: 'hd', logoUrl: brand().logoUrl,
       nav, active: cur === 'tickets' ? '' : cur,
       actions: cur === 'new' ? [] : [h('a.btn.primary', { href: '#/new' }, '+ Новая заявка')],
       userName: me.full_name, userSub: me.department || me.email,
@@ -111,7 +118,8 @@ function shell(...content) {
 
 function authPage(title, ...content) {
   clear(app, h('div.login-page',
-    h('div.login-brand', h('span.brand-logo.hd', '?'), 'HelpDesk'),
+    h('div.login-brand', h('span.brand-logo.hd', logoStyle(brand().logoUrl), '?'), brand().helpdesk_title),
+    brand().company ? h('div.muted', { style: { textAlign: 'center', margin: '-8px 0 12px' } }, brand().company) : null,
     h('div.login-card', { style: title === 'Регистрация' ? { width: '560px' } : {} },
       h('h1', title), content),
   ));

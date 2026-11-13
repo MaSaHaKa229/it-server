@@ -135,7 +135,8 @@ function scheduleIdle() {
 }
 
 /** Картинка pdf.js → PGM (оттенки серого) — этот формат tesseract читает без преобразований */
-function toPgm(img) {
+/** Картинка pdf.js → оттенки серого { w, h, g } */
+function toGray(img) {
   const { width: w, height: h, kind, data } = img;
   const g = Buffer.alloc(w * h);
   if (kind === 1) { // 1 бит на точку
@@ -145,7 +146,58 @@ function toPgm(img) {
     const n = kind === 3 ? 4 : 3;
     for (let i = 0; i < w * h; i++) g[i] = (data[i * n] * 299 + data[i * n + 1] * 587 + data[i * n + 2] * 114) / 1000;
   }
-  return Buffer.concat([Buffer.from(`P5\n${w} ${h}\n255\n`), g]);
+  return { w, h, g };
+}
+const pgm = ({ w, h, g }) => Buffer.concat([Buffer.from(`P5\n${w} ${h}\n255\n`), g]);
+function toPgm(img) { return pgm(toGray(img)); }
+
+/** Поворот картинки по часовой стрелке на deg (90, 180, 270) */
+function rotate(src, deg) {
+  const { w, h, g } = src;
+  const d = ((deg % 360) + 360) % 360;
+  if (!d) return src;
+  const out = Buffer.alloc(w * h);
+  if (d === 180) {
+    for (let i = 0, n = w * h; i < n; i++) out[n - 1 - i] = g[i];
+    return { w, h, g: out };
+  }
+  // 90: (x, y) → (h-1-y, x); 270: (x, y) → (y, w-1-x); новая ширина — h
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    for (let x = 0; x < w; x++) {
+      const v = g[row + x];
+      if (d === 90) out[x * h + (h - 1 - y)] = v; else out[(w - 1 - x) * h + y] = v;
+    }
+  }
+  return { w: h, h: w, g: out };
+}
+
+// Насколько похоже на нормальный текст: уверенность распознавателя + число «настоящих» слов
+function quality(res) {
+  const text = (res && res.data && res.data.text) || '';
+  const words = (text.match(/[А-Яа-яЁёA-Za-z]{3,}/g) || []).length;
+  return { conf: (res && res.data && res.data.confidence) || 0, words, score: ((res && res.data && res.data.confidence) || 0) + Math.min(words, 60) };
+}
+const goodEnough = (q) => q.conf >= 70 && q.words >= 5;
+
+/**
+ * Распознать картинку с определением ориентации. Сканы, положенные в сканер боком или вверх ногами,
+ * распознаются плохо (мало слов, низкая уверенность) — тогда пробуются повороты 90°, 270° и 180°, берётся лучший.
+ * Сначала — поворот, записанный в самом PDF (pageRotate), он обычно и верный.
+ */
+async function recognizeOriented(w, img, pageRotate = 0) {
+  const gray = toGray(img);
+  const order = [...new Set([pageRotate, 0, 90, 270, 180].map((x) => ((x % 360) + 360) % 360))];
+  let best = null;
+  for (const deg of order) {
+    const res = await w.recognize(pgm(rotate(gray, deg)));
+    const q = quality(res);
+    if (!best || q.score > best.q.score) best = { res, q, deg };
+    if (goodEnough(q)) break;
+    // Пустая страница (почти нет ни слов, ни уверенности) — крутить бессмысленно
+    if (deg === order[0] && q.words === 0 && q.conf < 5) break;
+  }
+  return best;
 }
 
 /** Картинки страницы (крупные) */
@@ -184,6 +236,7 @@ async function processDocument(id) {
   const pdf = await lib.getDocument({ data: new Uint8Array(file.data), nativeImageDecoderSupport: 'none' }).promise;
   const w = await getWorker();
   const recognized = {}; // номер страницы → текст
+  let rotated = 0;       // страниц, распознанных после поворота
   try {
     for (let n = 0; n < r.emptyPages.length; n++) {
       const p = r.emptyPages[n];
@@ -192,9 +245,10 @@ async function processDocument(id) {
         const page = await pdf.getPage(p);
         const parts = [];
         for (const img of await pageImages(lib, page)) {
-          const res = await w.recognize(toPgm(img));
-          const t = cleanup(res.data.text || '');
+          const best = await recognizeOriented(w, img, page.rotate || 0);
+          const t = cleanup((best && best.res.data.text) || '');
           if (t) parts.push(t);
+          if (best && best.deg && best.deg !== (page.rotate || 0)) rotated++;
         }
         page.cleanup?.();
         if (parts.length) recognized[p] = parts.join('\n\n');
@@ -207,6 +261,7 @@ async function processDocument(id) {
     scheduleIdle();
   }
 
+  if (rotated) console.log(`Распознавание текста: документ ${id} — повёрнутых страниц выровнено: ${rotated}`);
   const pages = Object.keys(recognized).map(Number).sort((a, b) => a - b);
   if (pages.length) {
     await withTx(async (c) => {

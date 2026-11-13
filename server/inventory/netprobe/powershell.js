@@ -124,6 +124,57 @@ foreach($t in ($env:NM_TARGETS -split ',')){ if(-not $t){ continue }
   [Console]::Out.WriteLine('@@NM@@'+$t+'@@'+($x | ConvertTo-Json -Depth 4 -Compress)); [Console]::Out.Flush() }
 `;
 
+// ---------- Проверка самого PowerShell (Состояние системы → «Проверка возможностей Windows») ----------
+const SELF_SCRIPT = PREFIX + `
+try { [ordered]@{ ok=$true; version=$PSVersionTable.PSVersion.ToString(); user=[Security.Principal.WindowsIdentity]::GetCurrent().Name
+  host=$env:COMPUTERNAME; domain=$env:USERDNSDOMAIN; culture=(Get-Culture).Name } | ConvertTo-Json -Compress }
+catch { @{ok=$false; error=$_.Exception.Message} | ConvertTo-Json -Compress }
+`;
+
+// ---------- Установленное ПО: из реестра компьютера (ключи Uninstall) через WMI-класс StdRegProv ----------
+// Win32_Product не используем: он медленный и запускает проверку (а иногда восстановление) MSI-пакетов.
+const SOFT_SCRIPT = PREFIX + `
+$cn=$env:NM_TARGET; $cred=$null; $S=$null; $err=''; $proto_used=''
+if($env:NM_USER){ $sec=ConvertTo-SecureString $env:NM_PASS -AsPlainText -Force; $cred=New-Object System.Management.Automation.PSCredential($env:NM_USER,$sec) }
+foreach($proto in 'Wsman','Dcom'){
+  try{ $o=New-CimSessionOption -Protocol $proto
+       $a=@{ComputerName=$cn;SessionOption=$o;OperationTimeoutSec=25;ErrorAction='Stop'}
+       if($cred){$a.Credential=$cred}
+       $S=New-CimSession @a; $proto_used=$proto; break } catch { $err=$_.Exception.Message }
+}
+if(-not $S){ @{error="Не удалось подключиться ни по WinRM, ни по WMI (DCOM): $err"} | ConvertTo-Json -Compress; exit }
+$HKLM=[uint32]2147483650
+function R($m,$args2){ Invoke-CimMethod -CimSession $S -Namespace 'root/default' -ClassName StdRegProv -MethodName $m -Arguments $args2 -ErrorAction Stop }
+$items=New-Object System.Collections.ArrayList
+$seen=@{}
+try {
+  foreach($p in 'SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall','SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall'){
+    $keys=$null
+    try { $keys=(R 'EnumKey' @{hDefKey=$HKLM; sSubKeyName=$p}).sNames } catch { $keys=$null }
+    foreach($k in @($keys)){
+      if(-not $k){ continue }
+      $kp="$p\\$k"
+      $name=(R 'GetStringValue' @{hDefKey=$HKLM; sSubKeyName=$kp; sValueName='DisplayName'}).sValue
+      if(-not $name){ continue }
+      $name=("$name").Trim()
+      $sys=(R 'GetDWORDValue' @{hDefKey=$HKLM; sSubKeyName=$kp; sValueName='SystemComponent'}).uValue
+      if($sys -eq 1){ continue }
+      $parent=(R 'GetStringValue' @{hDefKey=$HKLM; sSubKeyName=$kp; sValueName='ParentKeyName'}).sValue
+      if($parent){ continue }
+      $ver=(R 'GetStringValue' @{hDefKey=$HKLM; sSubKeyName=$kp; sValueName='DisplayVersion'}).sValue
+      $key=($name+'|'+$ver).ToLower()
+      if($seen.ContainsKey($key)){ continue }
+      $seen[$key]=1
+      $pub=(R 'GetStringValue' @{hDefKey=$HKLM; sSubKeyName=$kp; sValueName='Publisher'}).sValue
+      $date=(R 'GetStringValue' @{hDefKey=$HKLM; sSubKeyName=$kp; sValueName='InstallDate'}).sValue
+      [void]$items.Add([ordered]@{ name=$name; version=("$ver").Trim(); publisher=("$pub").Trim(); installed=("$date").Trim() })
+    }
+  }
+} catch { Remove-CimSession $S -ErrorAction SilentlyContinue; @{error="Не удалось прочитать реестр: $($_.Exception.Message)"} | ConvertTo-Json -Compress; exit }
+Remove-CimSession $S -ErrorAction SilentlyContinue
+@{ protocol=$proto_used; items=@($items) } | ConvertTo-Json -Depth 4 -Compress
+`;
+
 function encode(script) {
   return Buffer.from(script, 'utf16le').toString('base64');
 }
@@ -211,4 +262,14 @@ async function wmiCollectMany(s, targets) {
   return out;
 }
 
-module.exports = { adLookup, wmiCollect, wmiCollectMany };
+/** PowerShell на сервере: версия и учётная запись, под которой работает портал */
+function psSelfTest() {
+  return runPS('ps', SELF_SCRIPT, {}, 30000);
+}
+
+/** Установленное ПО компьютера: { items: [{ name, version, publisher, installed }] } */
+function softwareCollect(s, target) {
+  return runPS('software', SOFT_SCRIPT, { NM_TARGET: target, ...credVars(s) }, 180000);
+}
+
+module.exports = { adLookup, wmiCollect, wmiCollectMany, psSelfTest, softwareCollect };

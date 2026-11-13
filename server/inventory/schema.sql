@@ -397,3 +397,45 @@ CREATE INDEX IF NOT EXISTS device_moves_date_idx ON device_moves (moved_on DESC)
 
 -- Итог последнего сканирования по расписанию: { at, ok, error, found, fresh }
 ALTER TABLE netprobe_settings ADD COLUMN IF NOT EXISTS scan_last_auto_result JSONB;
+
+-- Склад расходников и запчастей: позиции и движения (приход +, выдача/списание −); остаток — сумма движений
+CREATE TABLE IF NOT EXISTS stock_items (
+  id         SERIAL PRIMARY KEY,
+  name       TEXT NOT NULL,
+  code       TEXT NOT NULL DEFAULT '',
+  category   TEXT NOT NULL DEFAULT 'cartridge',
+  models     TEXT NOT NULL DEFAULT '',
+  unit       TEXT NOT NULL DEFAULT 'шт.',
+  min_qty    INT NOT NULL DEFAULT 0,
+  note       TEXT NOT NULL DEFAULT '',
+  archived   BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS stock_moves (
+  id         SERIAL PRIMARY KEY,
+  item_id    INT NOT NULL REFERENCES stock_items(id) ON DELETE CASCADE,
+  qty        INT NOT NULL,
+  kind       TEXT NOT NULL CHECK (kind IN ('in', 'out', 'writeoff', 'adjust')),
+  device_id  INT REFERENCES devices(id) ON DELETE SET NULL,
+  comment    TEXT NOT NULL DEFAULT '',
+  user_id    INT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS stock_moves_item_idx ON stock_moves (item_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS stock_moves_device_idx ON stock_moves (device_id);
+
+-- Лицензии ПО: сколько куплено; установки считаются по справочнику ПО (программа и/или шаблон названия)
+CREATE TABLE IF NOT EXISTS software_licenses (
+  id          SERIAL PRIMARY KEY,
+  software_id INT REFERENCES software(id) ON DELETE SET NULL,
+  match       TEXT NOT NULL DEFAULT '',
+  title       TEXT NOT NULL DEFAULT '',
+  qty         INT NOT NULL DEFAULT 0,
+  kind        TEXT NOT NULL DEFAULT 'device',
+  purchased   DATE,
+  expires     DATE,
+  contract    TEXT NOT NULL DEFAULT '',
+  license_key TEXT NOT NULL DEFAULT '',
+  note        TEXT NOT NULL DEFAULT '',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

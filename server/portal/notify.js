@@ -27,6 +27,7 @@ const KINDS = [
   { key: 'task_comment', group: 'Задачи', label: 'Новый комментарий в моей задаче', avail: cal },
   { key: 'task_due', group: 'Задачи', label: 'Срок моей задачи завтра или прошёл', avail: cal, computed: true },
   { key: 'printer_supplies', group: 'Техника', label: 'Заканчиваются расходники принтеров и МФУ', avail: inv, computed: true },
+  { key: 'stock_low', group: 'Техника', label: 'На складе мало расходника (меньше минимума)', avail: invEdit, computed: true },
   { key: 'warranty', group: 'Техника', label: 'Заканчивается гарантия или лицензия', avail: inv, computed: true },
   { key: 'device_offline', group: 'Техника', label: 'Техника давно не появлялась в сети', avail: invEdit, computed: true },
   { key: 'netscan_new', group: 'Техника', label: 'Сканирование по расписанию нашло новую технику', avail: invEdit },
@@ -139,12 +140,29 @@ async function taskDue(u) {
 
 async function supplies(u) {
   const S = require('../inventory/netprobe/supplies');
+  const Stock = require('../inventory/routes/stock');
   const { items } = await S.supplyAlerts(perms(u));
-  return items.map((it) => ({
-    kind: 'printer_supplies', key: `supply:${it.device_id}:${it.supply}:${it.level}`, level: it.level,
-    title: `${it.supply} — ${it.percent}%`, percent: it.percent,
-    text: [`${it.key} ${it.title}`, it.location, it.department].filter(Boolean).join(' · '),
-    link: `/inventory/#/devices/${it.device_id}`, at: it.checked_at,
+  const out = [];
+  for (const it of items) {
+    // Есть ли подходящий расходник на складе
+    const st = await Stock.forSupply({ model: it.model, snmpModel: it.model }, it.supply).catch(() => []);
+    const stockText = st.length ? `на складе: ${st.map((x) => `${x.name} — ${x.qty} ${x.unit}`).join(', ')}` : '';
+    out.push({
+      kind: 'printer_supplies', key: `supply:${it.device_id}:${it.supply}:${it.level}`, level: it.level,
+      title: `${it.supply} — ${it.percent}%`, percent: it.percent,
+      text: [`${it.key} ${it.title}`, it.location, it.department, stockText].filter(Boolean).join(' · '),
+      link: `/inventory/#/devices/${it.device_id}`, at: it.checked_at,
+    });
+  }
+  return out;
+}
+
+async function stockLow() {
+  const rows = await require('../inventory/routes/stock').lowItems();
+  return rows.map((r) => ({
+    kind: 'stock_low', key: `stock:${r.id}:${r.qty}`, level: r.qty === 0 ? 'critical' : 'warning',
+    title: `${r.name}: на складе ${r.qty} ${r.unit}`, text: `минимум — ${r.min_qty} ${r.unit}`,
+    link: '/inventory/#/stock', at: r.last_at || r.created_at,
   }));
 }
 
@@ -224,7 +242,7 @@ async function audits(u, th) {
   }));
 }
 
-const COMPUTE = { hd_due: hdDue, task_due: taskDue, printer_supplies: supplies, warranty, device_offline: offline, audit: audits };
+const COMPUTE = { hd_due: hdDue, task_due: taskDue, printer_supplies: supplies, stock_low: stockLow, warranty, device_offline: offline, audit: audits };
 
 /** Вычисляемые уведомления пользователя по включённым видам (channel: site | email) */
 async function computed(u, channel = 'site') {

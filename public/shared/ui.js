@@ -191,6 +191,12 @@ function moreMenu(items, active) {
   return h('span.more-wrap', btn, pop);
 }
 
+/** Картинка-логотип вместо значка (оформление из настроек) */
+export function logoStyle(url) {
+  return url ? { style: { backgroundImage: 'url("' + url + '")', backgroundSize: 'contain', backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'center', backgroundColor: 'transparent', color: 'transparent' } } : {};
+}
+
 export function topbar(o) {
   const menuEl = h('div.popover.hidden');
   const closeMenu = () => menuEl.classList.add('hidden');
@@ -209,7 +215,7 @@ export function topbar(o) {
   return h('header.topbar',
     o.onBurger ? h('button.btn.subtle.icon.burger', { onclick: o.onBurger, title: 'Меню' }, '☰') : null,
     h('a.brand', { href: o.brandHref || '/', title: 'Главная страница портала' },
-      h('span.brand-logo' + (o.logo === 'hd' ? '.hd' : ''), o.logo === 'hd' ? '?' : 'IT'), h('span', o.brandText || 'Портал')),
+      h('span.brand-logo' + (o.logo === 'hd' ? '.hd' : ''), logoStyle(o.logoUrl), o.logo === 'hd' ? '?' : 'IT'), h('span', o.brandText || 'Портал')),
     o.section ? h('a.brand', { href: o.sectionHref || '#/', style: { marginLeft: '-12px' } }, h('span.sep', '/'), h('span', o.section)) : null,
     h('nav.topnav.row', { style: { gap: '2px' } },
       (o.nav || []).filter((x) => !x[3]).map(([k, href, label]) => h('a' + (k === o.active ? '.active' : ''), { href }, label)),
