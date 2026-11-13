@@ -12,14 +12,15 @@ const P = require('./probes');
 const NP = require('./index');
 
 const router = express.Router();
-const MAX_HOSTS = 4096;
+const MAX_HOSTS = 4096;   // за одно ручное сканирование; по расписанию — без предела, по частям
+const PART = 4096;        // адресов в одной части (один процесс сканирования)
 
 // ---------------- Диапазоны адресов ----------------
 const ipToInt = (ip) => ip.split('.').reduce((a, b) => a * 256 + Number(b), 0);
 const intToIp = (n) => [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
 
 /** «10.0.1.0/24, 10.0.2.10-10.0.2.50, 10.0.3.7» → [[начало, конец], …] */
-function parseNetworks(text) {
+function parseNetworks(text, max = MAX_HOSTS) {
   const ranges = [];
   for (const part of String(text || '').split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean)) {
     let m;
@@ -42,7 +43,7 @@ function parseNetworks(text) {
   }
   const total = ranges.reduce((a, [s, e]) => a + e - s + 1, 0);
   if (!total) throw new HttpError(400, 'Укажите сети для сканирования');
-  if (total > MAX_HOSTS) throw new HttpError(400, `Слишком много адресов (${total}). За раз — не больше ${MAX_HOSTS} (например, 16 сетей /24)`);
+  if (total > max) throw new HttpError(400, `Слишком много адресов (${total}). Вручную за раз — не больше ${max} (например, 16 сетей /24); по расписанию ограничения нет`);
   return ranges;
 }
 
@@ -83,14 +84,31 @@ function guessKind(h) {
  * Сеть опрашивает отдельный процесс (scan-worker.js) с пониженным приоритетом — портал при этом не тормозит.
  * Ход работы приходит сообщениями и попадает в job; результат — список устройств.
  */
-function runWorker(task) {
+/** Диапазоны → части не больше size адресов: [[[начало, конец], …], …] */
+function splitRanges(ranges, size) {
+  const parts = [];
+  let cur = [];
+  let n = 0;
+  for (const [a, b] of ranges) {
+    let s = a;
+    while (s <= b) {
+      const e = Math.min(b, s + (size - n) - 1);
+      cur.push([s, e]); n += e - s + 1; s = e + 1;
+      if (n >= size) { parts.push(cur); cur = []; n = 0; }
+    }
+  }
+  if (cur.length) parts.push(cur);
+  return parts;
+}
+
+function runWorker(task, label = '', foundBefore = 0) {
   return new Promise((resolve, reject) => {
     const { fork } = require('child_process');
     const child = fork(require('path').join(__dirname, 'scan-worker.js'), [], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
     try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* не удалось — работает и так */ }
     let result = null;
     child.on('message', (m) => {
-      if (m.type === 'progress') Object.assign(job, { phase: m.phase, done: m.done, total: m.total, found: m.found });
+      if (m.type === 'progress') Object.assign(job, { phase: label + m.phase, done: m.done, total: m.total, found: foundBefore + m.found });
       else if (m.type === 'done') result = { hosts: m.hosts };
       else if (m.type === 'error') result = { error: m.error };
     });
@@ -117,13 +135,20 @@ async function wmiCache() {
 async function runScan(networks, ranges, { wmi, fresh }, userId) {
   const s = await NP.loadSettings({ withPassword: true });
   const useWmi = !!(wmi && s.wmi_enabled);
-  const hosts = await runWorker({
-    ranges,
-    snmp: s.snmp_enabled ? NP.communities(s) : null,
-    wmi: useWmi,
-    cred: { username: s.username || '', password: s.password || '' },
-    cache: useWmi && !fresh ? await wmiCache() : [],
-  });
+  const cache = useWmi && !fresh ? await wmiCache() : [];
+  // Большой список сетей (по расписанию) — по частям: так меньше памяти и записи ARP не успевают устареть
+  const parts = splitRanges(ranges, PART);
+  const hosts = [];
+  for (let i = 0; i < parts.length; i++) {
+    const label = parts.length > 1 ? `Часть ${i + 1} из ${parts.length} · ` : '';
+    hosts.push(...await runWorker({
+      ranges: parts[i],
+      snmp: s.snmp_enabled ? NP.communities(s) : null,
+      wmi: useWmi,
+      cred: { username: s.username || '', password: s.password || '' },
+      cache,
+    }, label, hosts.length));
+  }
   for (const h of hosts) {
     if (h.wmi_raw) {
       if (h.wmi_raw.error) h.wmi_error = NP.wmiError(h.wmi_raw.error);
@@ -306,14 +331,14 @@ router.get('/', ah(async (req, res) => {
     job: job ? { ...job, fresh: undefined } : null,
     result,
     pending,
-    schedule: { ...SCHEDULE_DEF, ...(s.scan_schedule || {}), last_auto: s.scan_last_auto || null },
+    schedule: { ...SCHEDULE_DEF, ...(s.scan_schedule || {}), last_auto: s.scan_last_auto || null, last_result: s.scan_last_auto_result || null },
   });
 }));
 
 /** Запустить сканирование в фоне; userId = null — по расписанию */
-function startScan(networks, wmi, userId, fresh = false) {
+function startScan(networks, wmi, userId, fresh = false, max = MAX_HOSTS) {
   if (job && !job.finished_at) throw new HttpError(409, 'Сканирование уже идёт');
-  const ranges = parseNetworks(networks);
+  const ranges = parseNetworks(networks, max);
   job = { started_at: new Date().toISOString(), phase: 'Подготовка', done: 0, total: 0, found: 0, networks, error: null, finished_at: null, auto: !userId };
   const j = job;
   const p = runScan(networks, ranges, { wmi: !!wmi, fresh: !!fresh }, userId)
@@ -340,6 +365,12 @@ router.put('/schedule', ah(async (req, res) => {
     weekday: Math.min(7, Math.max(1, Number(b.weekday) || 1)),
     wmi: !!b.wmi,
   };
+  if (v.mode !== 'off') {
+    const s = await NP.loadSettings();
+    const nets = (s.scan_networks || localNetworks()).trim();
+    if (!nets) throw new HttpError(400, 'Укажите сети для сканирования: Инвентарь → Настройки → «Сведения из сети»');
+    try { parseNetworks(nets, Infinity); } catch (e) { throw new HttpError(400, `Сети для сканирования в настройках «Сведения из сети»: ${e.message}`); }
+  }
   await query(`INSERT INTO netprobe_settings (id) VALUES (1) ON CONFLICT DO NOTHING`);
   await query('UPDATE netprobe_settings SET scan_schedule = $1 WHERE id = 1', [JSON.stringify(v)]);
   await require('../../portal/audit').log(req, 'netscan_schedule', null, v);
@@ -363,18 +394,25 @@ async function scheduleTick() {
   lastAutoDay = today;
   await query('UPDATE netprobe_settings SET scan_last_auto = now() WHERE id = 1');
   const networks = (s.scan_networks || localNetworks()).trim();
-  if (!networks) return;
-  const { job: j, done } = startScan(networks, sch.wmi && s.wmi_enabled, null);
-  await require('../../portal/health').track('netscan_auto', async () => {
-    await done;
-    if (j.error) throw new Error(j.error);
-    return `найдено устройств: ${j.found ?? '—'}, новых: ${(j.fresh || []).length}`;
-  }).catch(() => {});
-  if (j.error) {
-    console.error('Сканирование по расписанию:', j.error);
+  const saveResult = (r) => query('UPDATE netprobe_settings SET scan_last_auto_result = $1 WHERE id = 1',
+    [JSON.stringify({ at: new Date().toISOString(), ...r })]).catch(() => {});
+  let j = null;
+  try {
+    await require('../../portal/health').track('netscan_auto', async () => {
+      if (!networks) throw new Error('Не указаны сети: Инвентарь → Настройки → «Сведения из сети» → «Сети для сканирования»');
+      const started = startScan(networks, sch.wmi && s.wmi_enabled, null, false, Infinity);
+      j = started.job;
+      await started.done;
+      if (j.error) throw new Error(j.error);
+      return `найдено устройств: ${j.found ?? '—'}, новых: ${(j.fresh || []).length}`;
+    });
+  } catch (e) {
+    console.error('Сканирование по расписанию:', e.message);
+    await saveResult({ ok: false, error: e.message });
     return;
   }
   const fresh = j.fresh || [];
+  await saveResult({ ok: true, found: j.found ?? null, fresh: fresh.length });
   if (fresh.length) {
     const N = require('../../portal/notify');
     const names = fresh.slice(0, 10).map((m) => [m.ip, m.hostname || m.netbios_name || m.vendor || ''].filter(Boolean).join(' ')).join('\n');
@@ -420,4 +458,5 @@ router.post('/ignore', ah(async (req, res) => {
 
 module.exports = router;
 module.exports.parseNetworks = parseNetworks;
+module.exports.countAddresses = (text) => parseNetworks(text, Infinity).reduce((a, [x, y]) => a + y - x + 1, 0);
 module.exports.startSchedule = startSchedule;

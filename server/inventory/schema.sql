@@ -394,3 +394,6 @@ CREATE TABLE IF NOT EXISTS device_moves (
 );
 CREATE INDEX IF NOT EXISTS device_moves_device_idx ON device_moves (device_id, moved_on DESC);
 CREATE INDEX IF NOT EXISTS device_moves_date_idx ON device_moves (moved_on DESC);
+
+-- Итог последнего сканирования по расписанию: { at, ok, error, found, fresh }
+ALTER TABLE netprobe_settings ADD COLUMN IF NOT EXISTS scan_last_auto_result JSONB;

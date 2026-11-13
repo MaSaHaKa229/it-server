@@ -117,6 +117,9 @@ React-клиенты грузят его динамически по адрес�
 `make-update.sh`; диск, база, самопроверка) + `server/portal/health.js` (`register`/`track` фоновых заданий, `captureErrors()`
 — кольцевой буфер `console.error`). Новые фоновые таймеры оборачивать в `track`.
 **Сканирование по расписанию** — `netprobe_settings.scan_schedule`, `scan.js` `startSchedule()`; новые — уведомление `netscan_new`.
+Предел адресов: вручную `MAX_HOSTS` 4096, по расписанию — без предела (`parseNetworks(text, Infinity)`), список режется на части
+по `PART`=4096 (`splitRanges`, по процессу на часть); одна запись — не шире /16. Сети проверяются при сохранении настроек и
+включении расписания; итог планового запуска — `netprobe_settings.scan_last_auto_result` (страница сканирования) и `health.track`.
 Главная — `public/portal/home.js` + `/api/summary/my` (мои заявки, мои задачи на сегодня, уведомления).
 Значения для карточки — `netprobe/format.js`: шаблоны (`netprobe_settings.formats`) и замены (`netprobe_replacements`). Поиск в AD: база из настроек → домен контроллера → GC:// леса
 (ReferralChasing=All; у пользователя была ошибка «A referral was returned from the server»). Без Windows AD/WMI не работают: для проверки

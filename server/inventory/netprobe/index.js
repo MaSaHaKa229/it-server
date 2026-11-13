@@ -23,7 +23,7 @@ async function loadSettings({ withPassword = false } = {}) {
     ad_enabled: s.ad_enabled, wmi_enabled: s.wmi_enabled, snmp_enabled: s.snmp_enabled,
     ad_server: s.ad_server, ad_base_dn: s.ad_base_dn, username: s.username, has_password: !!s.password_enc,
     snmp_communities: s.snmp_communities, scan_networks: s.scan_networks || '', updated_at: s.updated_at || null,
-    scan_schedule: s.scan_schedule || { mode: 'off' }, scan_last_auto: s.scan_last_auto || null,
+    scan_schedule: s.scan_schedule || { mode: 'off' }, scan_last_auto: s.scan_last_auto || null, scan_last_auto_result: s.scan_last_auto_result || null,
     remote_connect: Remote.settingsOf(s),
     supply_threshold: s.supply_threshold ?? 15,
   };
@@ -46,7 +46,11 @@ router.put('/settings', requireSuperadmin, require('../../portal/audit').trackCh
   if (server && !/^[A-Za-z0-9_.:-]+$/.test(server)) throw new HttpError(400, 'Адрес контроллера домена: имя или IP, например dc01.corp.local');
   const base = str(b.ad_base_dn, 500) || '';
   const comm = (str(b.snmp_communities, 200) || 'public').trim();
-  const nets = (str(b.scan_networks, 1000) || '').trim();
+  const nets = (str(b.scan_networks, 4000) || '').trim();
+  // Сети для сканирования проверяются сразу — иначе ошибка всплыла бы только ночью, при плановом сканировании
+  if (nets) {
+    try { require('./scan').parseNetworks(nets, Infinity); } catch (e) { throw new HttpError(400, `Сети для сканирования: ${e.message}`); }
+  }
   const thr = Math.max(1, Math.min(90, Math.round(Number(b.supply_threshold) || 15)));
   const vals = [!!b.ad_enabled, !!b.wmi_enabled, !!b.snmp_enabled, server, base, username, comm, req.user.id, nets, thr];
   // Пароль: не прислан — не меняется; пустая строка с clear_password — удалить

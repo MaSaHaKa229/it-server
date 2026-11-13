@@ -118,8 +118,12 @@ export async function renderNetscan(root) {
       schLoaded = true;
       schMode.value = data.schedule.mode; schDay.value = String(data.schedule.weekday); schTime.value = data.schedule.time; schWmi.checked = !!data.schedule.wmi;
       syncSch();
-      clear(schInfo, 'Сети — из настроек «Сведения из сети» (или сеть сервера). Новая техника попадёт в «Ждут решения», редакторам придёт уведомление.',
-        data.schedule.last_auto ? ` Последний запуск: ${new Date(data.schedule.last_auto).toLocaleString('ru-RU')}.` : '');
+      const lr = data.schedule.last_result;
+      clear(schInfo, 'Сети — из настроек «Сведения из сети» (или сеть сервера), количество адресов не ограничено: большой список сканируется по частям. ',
+        'Новая техника попадёт в «Ждут решения», редакторам придёт уведомление.',
+        data.schedule.last_auto ? ` Последний запуск: ${new Date(data.schedule.last_auto).toLocaleString('ru-RU')}` : '',
+        lr && lr.ok ? ` — найдено устройств: ${lr.found ?? '—'}, новых: ${lr.fresh ?? 0}.` : data.schedule.last_auto ? '.' : '',
+        lr && !lr.ok ? h('div.error-box.small', { style: { marginTop: '6px' } }, h('b', 'Последнее сканирование по расписанию не выполнено: '), lr.error) : null);
     }
     // Сети: последнего сканирования, иначе — из настроек или сети самого сервера
     if (!nets.value) nets.value = data.result?.networks || data.defaults.networks;
