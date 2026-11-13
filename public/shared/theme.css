@@ -138,7 +138,7 @@ label.field > span, .field-label { display: block; font-size: 12px; font-weight:
 .lozenge.green { background: var(--g50); color: var(--g500); }
 .lozenge.red { background: var(--r50); color: var(--r500); }
 .lozenge.purple { background: var(--p50); color: var(--p400); }
-.lozenge.yellow { background: var(--y50); color: #974F0C; }
+.lozenge.yellow { background: var(--y50); color: var(--y600,#974F0C); }
 .badge { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--n40); color: var(--n800); font-size: 12px; text-align: center; line-height: 18px; }
 .status-btn { height: 32px; padding: 0 10px; font-weight: 600; text-transform: uppercase; font-size: 12px; letter-spacing: .02em; }
 .status-btn:hover { filter: brightness(1.08); }
@@ -349,7 +349,7 @@ table.review tr.row-need:hover { background: #FFF4CC; }
 table.review tr.row-err { background: var(--r50); }
 select.need { border-color: var(--y300); background-color: #FFFDF5; }
 .text-err { color: var(--r500); }
-.text-warn { color: #974F0C; margin-top: 4px; }
+.text-warn { color: var(--y600,#974F0C); margin-top: 4px; }
 details.diff { margin-bottom: 6px; }
 details.diff summary { cursor: pointer; list-style: none; }
 details.diff summary::-webkit-details-marker { display: none; }

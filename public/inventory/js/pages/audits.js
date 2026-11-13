@@ -47,7 +47,7 @@ export async function renderAudits(root) {
   const list = await api.get('/api/audits');
   const rows = list.map((a) => h('tr', { style: { cursor: 'pointer' }, onclick: () => { location.hash = `#/audits/${a.id}`; } },
     h('td.nowrap', h('b', fmtDay(a.planned_date)),
-      a.status === 'open' && a.planned_date < today() ? h('div.small', { style: { color: '#DE350B' } }, 'дата прошла') : null),
+      a.status === 'open' && a.planned_date < today() ? h('div.small', { style: { color: 'var(--r400,#DE350B)' } }, 'дата прошла') : null),
     h('td', h('a', { href: `#/audits/${a.id}` }, a.title), a.note ? h('div.small.muted', a.note) : null),
     h('td', h('span.lozenge' + (a.status === 'open' ? '.blue' : '.green'), a.status === 'open' ? 'идёт' : 'завершена')),
     h('td', { style: { minWidth: '180px' } }, progressBar(a),

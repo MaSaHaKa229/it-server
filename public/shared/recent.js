@@ -4,20 +4,20 @@
 
 const STYLE = `
 .rc-wrap { position: relative; display: inline-flex; margin-right: 2px; }
-.rc-btn { width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; color: #42526E; display: inline-grid; place-items: center; }
-.rc-btn:hover { background: #F4F5F7; color: #172B4D; }
-.rc-pop { position: absolute; right: 0; top: 40px; z-index: 505; width: 380px; max-height: 75vh; overflow: auto; background: #fff; border-radius: 3px;
-  box-shadow: 0 8px 16px -4px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31); font: 14px/20px -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; color: #172B4D; text-align: left; }
+.rc-btn { width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; color: var(--n500,#42526E); display: inline-grid; place-items: center; }
+.rc-btn:hover { background: var(--n20,#F4F5F7); color: var(--n800,#172B4D); }
+.rc-pop { position: absolute; right: 0; top: 40px; z-index: 505; width: 380px; max-height: 75vh; overflow: auto; background: var(--n0,#fff); border-radius: 3px;
+  box-shadow: 0 8px 16px -4px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31); font: 14px/20px -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; color: var(--n800,#172B4D); text-align: left; }
 .rc-pop[hidden] { display: none; }
-.rc-sec { padding: 10px 14px 4px; font-size: 11px; font-weight: 700; color: #6B778C; text-transform: uppercase; letter-spacing: .03em; }
+.rc-sec { padding: 10px 14px 4px; font-size: 11px; font-weight: 700; color: var(--n200,#6B778C); text-transform: uppercase; letter-spacing: .03em; }
 .rc-item { display: flex; gap: 8px; align-items: center; padding: 6px 14px; color: inherit; text-decoration: none; }
-.rc-item:hover { background: #F4F5F7; text-decoration: none; }
+.rc-item:hover { background: var(--n20,#F4F5F7); text-decoration: none; }
 .rc-item b { flex: 1; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rc-item small { color: #6B778C; white-space: nowrap; }
-.rc-empty { padding: 8px 14px 12px; color: #6B778C; font-size: 13px; }
-.rc-star { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; cursor: pointer; color: #6B778C; font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 3px; }
-.rc-star:hover { background: #F4F5F7; color: #172B4D; }
-.rc-star.on { color: #FF8B00; }
+.rc-item small { color: var(--n200,#6B778C); white-space: nowrap; }
+.rc-empty { padding: 8px 14px 12px; color: var(--n200,#6B778C); font-size: 13px; }
+.rc-star { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; cursor: pointer; color: var(--n200,#6B778C); font: inherit; font-size: 13px; padding: 4px 6px; border-radius: 3px; }
+.rc-star:hover { background: var(--n20,#F4F5F7); color: var(--n800,#172B4D); }
+.rc-star.on { color: var(--y500,#FF8B00); }
 .rc-star .s { font-size: 18px; line-height: 1; }
 `;
 const ICON = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>';

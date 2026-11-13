@@ -188,7 +188,8 @@
   function shade(hex) {
     const n = parseInt(String(hex).slice(1), 16);
     if (Number.isNaN(n)) return hex;
-    const f = (v) => Math.round(v * 0.75).toString(16).padStart(2, "0");
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    const f = (v) => Math.round(dark ? v + (255 - v) * 0.5 : v * 0.75).toString(16).padStart(2, "0");
     return "#" + f(n >> 16 & 255) + f(n >> 8 & 255) + f(n & 255);
   }
   function parseHash() {

@@ -109,7 +109,7 @@ table.list td.access-cell { font-size: 12px; }
 .pstep.cur { color: var(--n800); font-weight: 600; }
 .pstep.cur::after { background: var(--b400); box-shadow: 0 0 0 3px var(--b75); }
 .code-input { font-size: 22px !important; letter-spacing: .3em; text-align: center; }
-.brand-logo.hd { background: linear-gradient(135deg, #FF8B00, #FFAB00); }
+.brand-logo.hd { background: linear-gradient(135deg, var(--y500,#FF8B00), var(--y300,#FFAB00)); }
 
 @media (max-width: 900px) {
   .main.full { padding: 16px; }
@@ -130,11 +130,11 @@ a.tab:hover { text-decoration: none; }
 /* Выбор отдела из справочника (сайт заявок) */
 .dp { position: relative; }
 .dp-list { position: absolute; left: 0; right: 0; top: 100%; z-index: 60; max-height: 300px; overflow-y: auto; margin-top: 2px;
-  background: #fff; border: 1px solid var(--border); border-radius: 3px; box-shadow: 0 8px 16px -4px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31); }
+  background: var(--n0,#fff); border: 1px solid var(--border); border-radius: 3px; box-shadow: 0 8px 16px -4px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31); }
 .dp-item { padding: 7px 12px; cursor: pointer; border-left: 2px solid transparent; }
-.dp-item:hover, .dp-item.active { background: #F4F5F7; border-left-color: #0052CC; }
+.dp-item:hover, .dp-item.active { background: var(--n20,#F4F5F7); border-left-color: var(--b400,#0052CC); }
 .dp-empty { padding: 8px 12px; color: var(--text-subtle); font-size: 13px; }
-.hint.dp-ok { color: #006644; }
+.hint.dp-ok { color: var(--g500,#006644); }
 
 /* Блок настроек на страницах администрирования */
 .panel h2 { font-size: 18px; }

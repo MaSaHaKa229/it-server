@@ -6,13 +6,13 @@ const STYLE = `
   box-shadow: 0 8px 16px -4px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31); font: 13px/18px -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   pointer-events: none; animation: pk-in .12s; }
 @keyframes pk-in { from { opacity: 0; transform: translateY(4px); } }
-.pk-kind { font-size: 11px; font-weight: 700; color: #6B778C; text-transform: uppercase; letter-spacing: .03em; display: flex; align-items: center; gap: 6px; }
+.pk-kind { font-size: 11px; font-weight: 700; color: var(--n200,#6B778C); text-transform: uppercase; letter-spacing: .03em; display: flex; align-items: center; gap: 6px; }
 .pk-kind i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
 .pk-title { font-size: 14px; font-weight: 600; margin: 4px 0 6px; }
 .pk-badge { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 6px; }
 .pk-rows { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; }
-.pk-rows span { color: #6B778C; }
-.pk-text { margin-top: 6px; color: #5E6C84; max-height: 54px; overflow: hidden; }
+.pk-rows span { color: var(--n200,#6B778C); }
+.pk-text { margin-top: 6px; color: var(--n300,#5E6C84); max-height: 54px; overflow: hidden; }
 `;
 
 // Какие ссылки показывают карточку: [вид, проверка адреса → id]
@@ -70,7 +70,7 @@ function show(a, d) {
   card.append(kind, el('div', 'pk-title', d.title));
   if (d.badge && d.badge.text) {
     const b = el('span', 'pk-badge', d.badge.text);
-    b.style.background = (d.badge.color || '#6B778C') + '26'; b.style.color = d.badge.color || '#42526E';
+    b.style.background = (d.badge.color || '#6B778C') + '26'; b.style.color = d.badge.color || 'var(--n500,#42526E)';
     card.append(b);
   }
   if (d.rows && d.rows.length) {

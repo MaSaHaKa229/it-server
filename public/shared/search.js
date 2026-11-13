@@ -4,24 +4,24 @@
 const STYLE = `
 .gs-wrap { position: relative; display: inline-block; width: 34px; height: 34px; margin-right: 2px; }
 .gs-wrap input.gs-input { position: absolute; right: 0; top: 1px; z-index: 2; width: 34px !important; height: 32px !important; min-width: 0 !important; padding: 0 30px 0 10px !important; border: 2px solid transparent !important;
-  border-radius: 16px !important; background: transparent !important; box-shadow: none !important; font: 14px -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; color: #172B4D; outline: none;
+  border-radius: 16px !important; background: transparent !important; box-shadow: none !important; font: 14px -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; color: var(--n800,#172B4D); outline: none;
   cursor: pointer; transition: width .15s, background .15s; }
 .gs-wrap input.gs-input::placeholder { color: transparent; }
-.gs-wrap input.gs-input:hover { background: #F4F5F7 !important; }
-.gs-wrap.open input.gs-input { width: 340px !important; border-radius: 3px !important; border-color: #4C9AFF !important; background: #fff !important; cursor: text; box-shadow: 0 4px 8px -2px rgba(9,30,66,.25) !important; }
-.gs-wrap.open input.gs-input::placeholder { color: #7A869A; }
-.gs-ico { position: absolute; right: 10px; top: 10px; z-index: 3; color: #42526E; pointer-events: none; }
-.gs-pop { position: absolute; right: 0; top: 38px; z-index: 510; width: 460px; max-height: 75vh; overflow: auto; background: #fff; border-radius: 3px;
-  box-shadow: 0 8px 16px -4px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31); font: 14px/20px -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; color: #172B4D; text-align: left; }
+.gs-wrap input.gs-input:hover { background: var(--n20,#F4F5F7) !important; }
+.gs-wrap.open input.gs-input { width: 340px !important; border-radius: 3px !important; border-color: var(--b100,#4C9AFF) !important; background: var(--n0,#fff) !important; cursor: text; box-shadow: 0 4px 8px -2px rgba(9,30,66,.25) !important; }
+.gs-wrap.open input.gs-input::placeholder { color: var(--n200,#7A869A); }
+.gs-ico { position: absolute; right: 10px; top: 10px; z-index: 3; color: var(--n500,#42526E); pointer-events: none; }
+.gs-pop { position: absolute; right: 0; top: 38px; z-index: 510; width: 460px; max-height: 75vh; overflow: auto; background: var(--n0,#fff); border-radius: 3px;
+  box-shadow: 0 8px 16px -4px rgba(9,30,66,.25), 0 0 1px rgba(9,30,66,.31); font: 14px/20px -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; color: var(--n800,#172B4D); text-align: left; }
 .gs-pop[hidden] { display: none; }
-.gs-sec { display: flex; justify-content: space-between; padding: 8px 14px 4px; font-size: 11px; font-weight: 700; color: #6B778C; text-transform: uppercase; letter-spacing: .03em; }
-.gs-sec a { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12px; color: #0052CC; text-decoration: none; }
+.gs-sec { display: flex; justify-content: space-between; padding: 8px 14px 4px; font-size: 11px; font-weight: 700; color: var(--n200,#6B778C); text-transform: uppercase; letter-spacing: .03em; }
+.gs-sec a { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12px; color: var(--b400,#0052CC); text-decoration: none; }
 .gs-item { display: block; padding: 6px 14px; color: inherit; text-decoration: none; }
-.gs-item:hover, .gs-item.sel { background: #DEEBFF; text-decoration: none; }
+.gs-item:hover, .gs-item.sel { background: var(--b50,#DEEBFF); text-decoration: none; }
 .gs-item b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gs-item small { display: block; color: #6B778C; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gs-item.muted b { color: #6B778C; font-weight: 400; }
-.gs-empty { padding: 14px; color: #6B778C; }
+.gs-item small { display: block; color: var(--n200,#6B778C); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-item.muted b { color: var(--n200,#6B778C); font-weight: 400; }
+.gs-empty { padding: 14px; color: var(--n200,#6B778C); }
 `;
 
 const ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';

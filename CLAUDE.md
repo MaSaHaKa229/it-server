@@ -106,8 +106,10 @@ React-клиенты грузят его динамически по адрес�
 **Сохранённые фильтры, избранное, недавние** — `server/portal/views.js` (`/api/my/views`, `/api/my/items`; таблицы
 `saved_views`, `user_items`), клиент — `public/shared/recent.js` (`starButton`, `mountRecent` в `mountHeaderTools`).
 **Excel** — `server/portal/xlsx.js` `sendXlsx()`; маршруты `…/export.xlsx` используют те же отборы, что списки.
-**UI-общее:** `/shared/prefs.js` — обычный скрипт в `<head>` всех страниц портала (тема `data-theme=dark` — инверсия
-через `filter`, плотность `data-density=compact`, окно `window.portalPrefs.open()`; в календаре больше не ставить
+**UI-общее:** `/shared/prefs.js` — обычный скрипт в `<head>` всех страниц портала (тема `data-theme=dark` — своя палитра
+`/shared/dark.css` по мотивам тёмной темы Atlassian: переопределяет токены `--n*/--b*/…` и календарные `--bg/--surface/…`;
+цвета в CSS — только через токены `var(--n500,#42526E)`, в JS-метках учитывать тему (`softColors`, `shade`); раньше была
+инверсия `filter` — пользователь жаловался на серые буквы; плотность `data-density=compact`, окно `window.portalPrefs.open()`; в календаре больше не ставить
 `data-theme` в main.jsx); `/shared/peek.js` — карточка по наведению (`/api/peek`, ссылки или `data-peek="kind:id"`);
 меню «Ещё ▾» — 4-й элемент `true` в nav (`topbar` в ui.js, инвентарь, календарь); `toast(text, type, title, { undo })`;
 инструкция — `public/portal/help.js` (`/help#раздел/подраздел`; `SECTIONS`: разделы → подразделы → шаги/советы, у каждого

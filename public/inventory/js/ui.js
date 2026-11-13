@@ -316,12 +316,15 @@ const mix = (hex, to, k) => {
   return `rgb(${[r, g, b].map((c) => Math.round(c + (to - c) * k)).join(',')})`;
 };
 /** Светлый фон + тёмный текст того же оттенка — как лозенджи в Jira */
-export const softColors = (hex) => ({ background: mix(hex, 255, 0.82), color: mix(hex, 0, 0.45) });
+const dark = () => document.documentElement.getAttribute('data-theme') === 'dark';
+export const softColors = (hex) => (dark()
+  ? { background: mix(hex, 29, 0.72), color: mix(hex, 255, 0.45) } // тёмная тема: тёмный фон того же оттенка, светлый текст
+  : { background: mix(hex, 255, 0.82), color: mix(hex, 0, 0.45) });
 /** Насыщенный фон с читаемым текстом (для кнопки состояния) */
 export function solidColors(hex) {
   const [r, g, b] = hexRgb(hex);
   const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return { background: hex, color: lum > 0.62 ? '#172B4D' : '#FFFFFF' };
+  return { background: hex, color: lum > (dark() ? 0.45 : 0.62) ? (dark() ? '#1D2125' : '#172B4D') : '#FFFFFF' };
 }
 
 export function lozenge(status) {

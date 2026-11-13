@@ -128,7 +128,7 @@ input[type=checkbox], input[type=radio] { accent-color: var(--b400); width: 16px
 .status { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
 .status-active { color: var(--g500); }
 .status-inactive { color: var(--r500); }
-.status-draft { color: #974F0C; }
+.status-draft { color: var(--y600,#974F0C); }
 
 /* ---------- Поиск ---------- */
 .search-row { display: flex; gap: 8px; }
@@ -232,7 +232,7 @@ details summary { cursor: pointer; font-weight: 600; font-size: 13px; }
 /* ---------- Папки и теги ---------- */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
-.alert-warn { background: var(--y50); color: #974F0C; }
+.alert-warn { background: var(--y50); color: var(--y600,#974F0C); }
 .folder-ico { flex: none; font-size: 13px; }
 .side-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .side-link { min-width: 0; }
@@ -257,7 +257,7 @@ a.tag:hover, .tag.on { text-decoration: none; border-color: var(--tag); color: v
 .breadcrumbs > span { display: inline-flex; gap: 6px; }
 
 /* Распознавание текста сканов */
-.alert-info { background: var(--b50, #DEEBFF); color: #0747A6; }
+.alert-info { background: var(--b50, #DEEBFF); color: var(--b500,#0747A6); }
 .ocr-note { display: flex; align-items: center; gap: 8px; }
 .ocr-spin { width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ocr-spin .8s linear infinite; flex-shrink: 0; }
 @keyframes ocr-spin { to { transform: rotate(360deg); } }

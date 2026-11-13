@@ -1,0 +1,93 @@
+/* ============ Тёмная тема портала ============
+   Настоящая тёмная палитра вместо «переворота» светлой (filter: invert давал серые буквы на тёмном фоне).
+   Основа — тёмная тема Atlassian (стиль портала — как Jira) и рекомендации Material Design:
+   • фон — тёмно-серый, не чёрный (#1D2125): на чёрном резче контраст и «плывут» буквы, не видны тени;
+   • слои светлее фона: панели #22272B, всплывающие окна #282E33, подложки #2C333A;
+   • основной текст — светлый, но не чисто белый (#DEE4EA, контраст с фоном ≈ 12:1),
+     второстепенный — #B6C2CF (≈ 9:1), самый бледный — #9FADBC (≈ 7:1); норма доступности WCAG AA — не меньше 4,5:1;
+   • цветные акценты светлее и мягче, чем в светлой теме (синий #579DFF, зелёный #4BCE97, красный #F87168);
+   • на ярких кнопках — тёмный текст.
+   Подключается всегда (prefs.js), действует только при html[data-theme=dark]. */
+
+html[data-theme=dark] {
+  color-scheme: dark;
+  /* Нейтральные: в светлой теме n0 — белый фон, n800 — тёмный текст; здесь наоборот */
+  --n0: #1D2125; --n10: #22272B; --n20: #2C333A; --n30: #38414A; --n40: #454F59; --n50: #596773;
+  --n200: #9FADBC; --n300: #B6C2CF; --n500: #C7D1DB; --n800: #DEE4EA;
+  /* Синие: b50 — подложка выбранного, b400 — кнопки и ссылки */
+  --b50: #1C2B41; --b75: #09326C; --b100: #579DFF; --b300: #85B8FF; --b400: #579DFF; --b500: #85B8FF;
+  --g50: #1C3329; --g300: #4BCE97; --g500: #7EE2B8;
+  --r50: #42221F; --r300: #F87168; --r400: #F87168; --r500: #FD9891;
+  --y50: #3D3008; --y300: #F5CD47; --y500: #FEC57B;
+  --p50: #2B273F; --p400: #B8ACF6;
+  --g400: #4BCE97; --y600: #F5CD47; --hl-bg: #1C2B41;
+  --n70: #8C9BAB;
+  --text: #DEE4EA; --text-subtle: #B6C2CF; --text-subtlest: #9FADBC;
+  --border: #454F59;
+  --shadow-overlay: 0 8px 12px rgba(1,4,4,.36), 0 0 1px rgba(1,4,4,.5);
+  --shadow-raised: 0 1px 1px rgba(1,4,4,.5), 0 0 1px rgba(1,4,4,.5);
+  /* «Задачи и календарь» (свои имена переменных) */
+  --bg: #1D2125; --surface: #22272B; --surface-2: #2C333A; --muted: #B6C2CF;
+  --accent: #579DFF; --accent-soft: #1C2B41; --danger: #F87168; --ok: #4BCE97; --weekend: #191C1F;
+  --shadow: 0 1px 1px rgba(1,4,4,.5), 0 0 1px rgba(1,4,4,.5);
+  background: #1D2125;
+}
+html[data-theme=dark] body { background: #1D2125; color: #DEE4EA; }
+
+/* Поля ввода, списки, кнопки */
+html[data-theme=dark] input, html[data-theme=dark] select, html[data-theme=dark] textarea {
+  background-color: #22272B; color: #DEE4EA; border-color: #596773;
+}
+html[data-theme=dark] input::placeholder, html[data-theme=dark] textarea::placeholder { color: #8C9BAB; }
+html[data-theme=dark] input:focus, html[data-theme=dark] select:focus, html[data-theme=dark] textarea:focus { background-color: #1D2125; border-color: #85B8FF; }
+html[data-theme=dark] input:disabled, html[data-theme=dark] select:disabled, html[data-theme=dark] textarea:disabled { background-color: #2C333A; color: #8C9BAB; }
+html[data-theme=dark] option { background: #22272B; color: #DEE4EA; }
+/* Яркие кнопки — с тёмным текстом (белый на светло-синем плохо читается) */
+html[data-theme=dark] .btn.primary, html[data-theme=dark] .btn.primary:hover, html[data-theme=dark] .btn-primary, html[data-theme=dark] .btn-primary:hover,
+html[data-theme=dark] button.primary, html[data-theme=dark] .inline-editor.block .ie-actions .btn.primary,
+html[data-theme=dark] .btn.danger, html[data-theme=dark] .btn-danger, html[data-theme=dark] .badge.err,
+html[data-theme=dark] .step.cur .num, html[data-theme=dark] .step.done .num { color: #1D2125; }
+html[data-theme=dark] .btn.selected { background: #DEE4EA; color: #1D2125; }
+html[data-theme=dark] .bulkbar { background: #38414A; color: #DEE4EA; }
+
+/* Слои: панели, окна, меню, всплывающие подсказки */
+html[data-theme=dark] .panel, html[data-theme=dark] .details, html[data-theme=dark] .tile, html[data-theme=dark] .login-card,
+html[data-theme=dark] .card, html[data-theme=dark] .hp-body { background-color: #22272B; }
+html[data-theme=dark] .modal, html[data-theme=dark] .popover, html[data-theme=dark] .dp-pop, html[data-theme=dark] .menu,
+html[data-theme=dark] .combo-pop, html[data-theme=dark] .toast, html[data-theme=dark] .flag { background-color: #282E33; color: #DEE4EA; }
+html[data-theme=dark] .modal-backdrop { background: rgba(3,4,4,.6); }
+html[data-theme=dark] .topbar, html[data-theme=dark] .sidebar { background-color: #1D2125; }
+
+/* Подсветка найденного, предупреждения */
+html[data-theme=dark] mark { background: #7F5F01; color: #FFFFFF; }
+html[data-theme=dark] .lozenge.yellow, html[data-theme=dark] .text-warn { color: #F5CD47; }
+html[data-theme=dark] table.review tr.row-need:hover { background: #3D3008; }
+html[data-theme=dark] select.need { background-color: #3D3008; }
+html[data-theme=dark] .msg.internal .msg-body { border-color: #7F5F01; }
+html[data-theme=dark] .dp-item:hover, html[data-theme=dark] .dp-item.active { background: #2C333A; border-left-color: #579DFF; }
+html[data-theme=dark] .hint.dp-ok { color: #7EE2B8; }
+
+/* Картинки и логотипы — без изменений; полосы прокрутки — тёмные */
+html[data-theme=dark] ::-webkit-scrollbar { background: #1D2125; }
+html[data-theme=dark] ::-webkit-scrollbar-thumb { background: #454F59; border-radius: 6px; }
+
+/* Всплывающие окна общих компонентов (колокольчик, поиск, избранное, карточка по наведению) */
+html[data-theme=dark] .nb-pop, html[data-theme=dark] .nb-modal, html[data-theme=dark] .gs-pop, html[data-theme=dark] .rc-pop,
+html[data-theme=dark] .pk-card, html[data-theme=dark] .peek-card { background: #282E33; }
+html[data-theme=dark] .nb-modal .nb-ok button, html[data-theme=dark] .nb-count { color: #1D2125; }
+
+/* Календарь: выходные, виды отсутствий, «сегодня» */
+html[data-theme=dark] .weekend { color: #FD9891; }
+/* Цвет задаётся переменной (--k, --p) — в тёмной теме осветляем его, чтобы текст читался */
+html[data-theme=dark] .abs-kind { color: color-mix(in srgb, var(--k) 55%, #ffffff); }
+html[data-theme=dark] .pill[style*="--p"] { color: color-mix(in srgb, var(--p) 55%, #ffffff) !important; }
+html[data-theme=dark] .day-num.today, html[data-theme=dark] .today .day-num, html[data-theme=dark] button.day-num[style] { color: #1D2125; }
+html[data-theme=dark] .sidebar-project .icon { filter: brightness(.82); }
+
+/* Цветные метки с цветом из справочника (тип техники, аватар) — фон чуть темнее, чтобы белые буквы читались */
+html[data-theme=dark] .type-dot, html[data-theme=dark] .avatar { filter: brightness(.82); }
+
+/* Календарь: отсутствия (пунктирные плашки внизу дня) — тёмная подложка своего цвета */
+html[data-theme=dark] .abs-chip { background: color-mix(in srgb, var(--k) 16%, #22272B) !important; }
+html[data-theme=dark] .abs-chip:hover { background: color-mix(in srgb, var(--k) 28%, #22272B) !important; }
+html[data-theme=dark] .abs-who { color: #DEE4EA; }

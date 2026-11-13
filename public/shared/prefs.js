@@ -7,10 +7,9 @@
   function save(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch (e) { /* нет места */ } }
 
   var CSS = [
-    /* Тёмная тема: инверсия яркости с сохранением оттенков; картинки и цветные метки возвращаются как были */
-    'html[data-theme=dark]{filter:invert(.9) hue-rotate(180deg);background:#fff}',
-    'html[data-theme=dark] img,html[data-theme=dark] video,html[data-theme=dark] canvas,html[data-theme=dark] iframe,',
-    'html[data-theme=dark] .avatar,html[data-theme=dark] .brand-logo{filter:invert(1) hue-rotate(180deg)}',
+    /* Тёмная тема — своя палитра в /shared/dark.css (раньше была инверсия цветов — серые буквы на тёмном фоне) */
+    'html[data-theme=dark] .pv-box{background:#282E33;color:#DEE4EA}html[data-theme=dark] .pv-box h3,html[data-theme=dark] .pv-box p{color:#9FADBC!important}',
+    'html[data-theme=dark] .pv-box button{background:#579DFF;color:#1D2125}',
     /* Компактные таблицы и списки */
     'html[data-density=compact] table.list td,html[data-density=compact] table.list th{padding-top:3px!important;padding-bottom:3px!important}',
     'html[data-density=compact] table.list td{height:auto!important}',
@@ -25,6 +24,12 @@
     '.pv-box label{display:block;margin:4px 0;cursor:pointer}.pv-box input{margin-right:8px}',
     '.pv-box .pv-ok{display:flex;justify-content:flex-end;margin-top:16px}.pv-box button{background:#0052CC;color:#fff;border:0;border-radius:3px;padding:6px 14px;font:inherit;cursor:pointer}',
   ].join('\n');
+
+  // Палитра тёмной темы — отдельным файлом; подключается сразу (действует только при data-theme=dark)
+  if (!document.getElementById('pv-dark')) {
+    if (document.readyState === 'loading') document.write('<link rel="stylesheet" id="pv-dark" href="/shared/dark.css">');
+    else { var dl = document.createElement('link'); dl.rel = 'stylesheet'; dl.id = 'pv-dark'; dl.href = '/shared/dark.css'; document.head.appendChild(dl); }
+  }
 
   var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   function apply() {
@@ -51,6 +56,7 @@
   }
   function open() {
     var v = read();
+    var themeWas = v.theme || 'light';
     var bg = document.createElement('div'); bg.className = 'pv-bg';
     var box = document.createElement('div'); box.className = 'pv-box';
     var h = document.createElement('h2'); h.textContent = 'Вид портала';
@@ -69,7 +75,8 @@
     var b = document.createElement('button'); b.type = 'button'; b.textContent = 'Готово';
     ok.appendChild(b); box.appendChild(ok);
     bg.appendChild(box);
-    function close() { bg.remove(); }
+    // Сменили тему — перерисовать страницу: цветные метки (статусы, виды) строятся под тему
+    function close() { bg.remove(); if ((read().theme || 'light') !== themeWas) location.reload(); }
     b.addEventListener('click', close);
     bg.addEventListener('mousedown', function (e) { if (e.target === bg) close(); });
     document.body.appendChild(bg);

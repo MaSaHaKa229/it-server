@@ -3,7 +3,9 @@ import { useAuth } from '../auth.jsx';
 // Цвет текста на светлой плашке — темнее цвета вида
 function shade(hex) {
   const n = parseInt(String(hex || '#6B778C').slice(1), 16);
-  const f = (v) => Math.round(v * 0.72).toString(16).padStart(2, '0');
+  // Тёмная тема: текст светлее цвета вида (на тёмной плашке)
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const f = (v) => Math.round(dark ? v + (255 - v) * 0.5 : v * 0.72).toString(16).padStart(2, '0');
   return '#' + f((n >> 16) & 255) + f((n >> 8) & 255) + f(n & 255);
 }
 
