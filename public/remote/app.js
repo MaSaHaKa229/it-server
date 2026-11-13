@@ -223,8 +223,11 @@ async function renderInstall() {
 
   const viewer = h('div.panel',
     h('h3', 'Программа специалиста'),
-    h('p', 'Ставится на компьютер каждого специалиста ИТ-отдела (Windows 10/11, 64 бита). Установка не требует прав администратора: достаточно скопировать файл, например, в «Документы» и запустить.'),
-    file('ITRemoteViewer.exe', 'ITRemoteViewer.exe', 'программа специалиста'),
+    h('p', 'Ставится на компьютер каждого специалиста ИТ-отдела. ',
+      rme.isAdmin ? ['Проще всего — удалённо, без участия специалиста: ', h('a', { href: '#/settings' }, '«Настройки» → «Установить RemoteSupport»'), '. '] : null,
+      'Вручную: скачайте файл, скопируйте, например, в «Документы» и запустите — права администратора не нужны.'),
+    file('ITRemoteViewer.exe', 'ITRemoteViewer.exe', 'Windows 10/11, 64 бита'),
+    file('ITRemoteViewer-win7.exe', 'ITRemoteViewer-win7.exe', 'Windows 7, 8.1 и 32-битные Windows'),
     h('ol',
       h('li', 'Скачайте и запустите ITRemoteViewer.exe. Если Windows покажет «Windows защитила ваш компьютер» — «Подробнее» → «Выполнить в любом случае» (у программы пока нет цифровой подписи).'),
       h('li', 'В окне программы нажмите «Открывать ссылки из портала этой программой».'),
@@ -309,7 +312,9 @@ async function renderSettings() {
     },
   }, 'Сменить код');
   page('settings',
+    await installPanel(),
     h('div.panel.stack', { style: { gap: '14px', maxWidth: '760px' } },
+      h('h3', 'Подключение'),
       h('label.field', h('span', 'Перед подключением'), consent),
       h('p.hint', 'В любом режиме у пользователя на экране видна плашка «Подключён специалист: ФИО» с кнопкой «Отключить». Если в Windows никто не вошёл (экран входа), разрешение не спрашивается.'),
       h('label.check', silent, 'Разрешить администраторам удалённого доступа подключаться без уведомления пользователя'),
@@ -320,6 +325,160 @@ async function renderSettings() {
       h('h3', 'Код регистрации агентов'),
       h('div.row', codeEl, regen),
       h('p.hint', 'Код нужен только при установке агента. Его знание не даёт доступа к компьютерам: подключиться можно только через портал.')));
+}
+
+// ---------------- Установить RemoteSupport (удалённая установка программы специалиста) ----------------
+const INSTALL_STATUS = { running: ['идёт установка', '.blue'], ok: ['установлено', '.green'], failed: ['ошибка', '.red'] };
+const LEVEL_TEXT = { view: 'только просмотр', control: 'управление', admin: 'администратор' };
+
+async function installPanel() {
+  const box = h('div.panel.stack', { style: { gap: '10px' } });
+  const draw = async () => {
+    const list = await api.get('/remote/api/specialists');
+    clear(box,
+      h('div.row', h('h3', { style: { margin: 0 } }, 'Установить RemoteSupport'), h('span.spacer'),
+        h('button.btn.subtle.sm', { onclick: () => installHistory() }, 'Журнал установок')),
+      h('p.hint', 'Программа специалиста ставится на его компьютер удалённо, от имени администратора этого компьютера — ',
+        'специалисту ничего делать не нужно. Windows 7, 8.1, 10, 11. После установки у него на рабочем столе ярлык ',
+        '«ИТ Удалённый доступ», а кнопка «Подключиться» на портале открывает программу без вопросов. ',
+        h('a', { href: '#', onclick: (e) => { e.preventDefault(); requirementsDialog(); } }, 'Что нужно на компьютере специалиста')),
+      list.length ? h('div.table-wrap', h('table.list',
+        h('thead', h('tr', h('th', 'Специалист'), h('th', 'Права'), h('th', 'Компьютер'), h('th', 'Установка'), h('th', ''))),
+        h('tbody', list.map((u) => {
+          const [label, cls] = INSTALL_STATUS[u.status] || ['не устанавливалась', ''];
+          return h('tr',
+            h('td', h('strong', u.name), h('div.muted.small', u.username)),
+            h('td', LEVEL_TEXT[u.level] || u.level || ''),
+            h('td', u.computer || h('span.muted', '—'), u.os ? h('div.muted.small', u.os) : null),
+            h('td', h('span.lozenge' + cls, label),
+              u.installed_at ? h('div.muted.small', fmtDateTime(u.installed_at) + (u.version ? ' · версия ' + u.version : '')) : null),
+            h('td', { style: { textAlign: 'right' } },
+              u.install_id ? h('button.btn.sm.subtle', { onclick: () => installProgress(u.install_id, draw) }, 'Подробности') : null,
+              h('button.btn.sm' + (u.status === 'ok' ? '' : '.primary'), { onclick: () => installDialog(u, draw) },
+                u.status === 'ok' ? 'Переустановить' : 'Установить')));
+        })))) : h('p.muted', 'Нет сотрудников с доступом к удалённому подключению. Выдайте права в «Администрировании».'));
+  };
+  await draw();
+  return box;
+}
+
+function requirementsDialog() {
+  const m = modal({
+    title: 'Что нужно на компьютере специалиста',
+    body: h('div.stack', { style: { gap: '8px' } },
+      h('ol',
+        h('li', 'Компьютер включён и в сети; известно его сетевое имя (или IP-адрес).'),
+        h('li', 'Учётная запись администратора этого компьютера. Лучше всего — доменный администратор (ДОМЕН\\admin). ',
+          'С локальной учётной записью Windows по умолчанию не даёт удалённых прав администратора.'),
+        h('li', 'В брандмауэре Windows на компьютере специалиста разрешены входящие правила ',
+          h('b', '«Общий доступ к файлам и принтерам»'), ' и ', h('b', '«Инструментарий управления Windows (WMI)»'), '. ',
+          'В домене это удобно включить групповой политикой (Конфигурация компьютера → Политики → Конфигурация Windows → ',
+          'Параметры безопасности → Брандмауэр Защитника Windows → Правила для входящих подключений → Создать правило → Предопределённые). ',
+          'На одном компьютере — командой от имени администратора:'),
+      ),
+      h('pre', { style: { whiteSpace: 'pre-wrap', background: 'var(--n20)', padding: '8px 10px', borderRadius: '3px', fontSize: '12px', userSelect: 'all' } },
+        'netsh advfirewall firewall set rule group="@FirewallAPI.dll,-28502" new enable=yes\r\n' +
+        'netsh advfirewall firewall set rule group="@FirewallAPI.dll,-34251" new enable=yes'),
+      h('p.hint', 'Первая строка — «Общий доступ к файлам и принтерам», вторая — «Инструментарий управления Windows (WMI)»; работает в любой языковой версии Windows.'),
+      h('p.hint', 'Для Windows 7 должны быть установлены обновления KB2533623 и KB2999226 (обычно уже есть, если компьютер получал обновления).'),
+      h('p.hint', 'Пароль администратора используется только для этой установки: он не сохраняется на портале и не попадает в журналы.')),
+    footer: [h('button.btn', { onclick: () => m.close() }, 'Закрыть')],
+  });
+}
+
+function installDialog(u, onDone) {
+  let lastAdmin = '';
+  try { lastAdmin = localStorage.getItem('remote-install-admin') || ''; } catch { /* не страшно */ }
+  const computer = h('input', { type: 'text', value: u.computer || '', placeholder: 'IT-PC07 или 10.0.1.57', list: 'remote-pcs', autocomplete: 'off' });
+  const datalist = h('datalist#remote-pcs');
+  const adminUser = h('input', { type: 'text', value: lastAdmin, placeholder: 'ДОМЕН\\admin', autocomplete: 'off' });
+  const password = h('input', { type: 'password', autocomplete: 'new-password' });
+  // Подсказки компьютеров — техника инвентаря (сетевые имена)
+  let timer;
+  const suggest = async () => {
+    const r = await fetch('/inventory/api/devices?' + new URLSearchParams({ q: computer.value, limit: '20' }), { credentials: 'same-origin' })
+      .then((x) => (x.ok ? x.json() : { items: [] })).catch(() => ({ items: [] }));
+    const items = Array.isArray(r) ? r : r.items || [];
+    clear(datalist, items.filter((d) => d.hostname).map((d) => h('option', { value: d.hostname }, [d.employee, d.location].filter(Boolean).join(' · '))));
+  };
+  computer.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(suggest, 250); });
+  suggest();
+  const start = h('button.btn.primary', {
+    onclick: () => run(async () => {
+      const r = await api.post('/remote/api/installs', { userId: u.id, computer: computer.value.trim(), adminUser: adminUser.value.trim(), password: password.value });
+      try { localStorage.setItem('remote-install-admin', adminUser.value.trim()); } catch { /* не страшно */ }
+      m.close();
+      installProgress(r.id, onDone);
+    }, start),
+  }, 'Установить');
+  const m = modal({
+    title: 'Установить RemoteSupport — ' + u.name,
+    body: h('div.stack', { style: { gap: '12px' } },
+      h('label.field', h('span', 'Компьютер специалиста (сетевое имя или IP-адрес)'), computer, datalist),
+      h('div.form-grid',
+        h('label.field', h('span', 'Администратор этого компьютера'), adminUser),
+        h('label.field', h('span', 'Пароль'), password)),
+      h('p.hint', 'Пароль не сохраняется. Программа ставится в «Program Files\\ITRemote» для всех пользователей компьютера; ',
+        'если она открыта у специалиста — попросите закрыть её на время установки. ',
+        h('a', { href: '#', onclick: (e) => { e.preventDefault(); requirementsDialog(); } }, 'Требования'))),
+    footer: [h('button.btn.subtle', { onclick: () => m.close() }, 'Отмена'), start],
+  });
+  setTimeout(() => (computer.value ? (adminUser.value ? password : adminUser) : computer).focus(), 50);
+}
+
+/** Окно с ходом установки (обновляется раз в секунду, пока установка идёт) */
+function installProgress(id, onDone) {
+  const body = h('div.stack', { style: { gap: '6px', minHeight: '160px' } });
+  let stopped = false;
+  const ICON = { run: '…', ok: '✓', warn: '!', fail: '✕' };
+  const COLOR = { ok: 'var(--g500)', warn: '#974F0C', fail: 'var(--r500)' };
+  const tick = async () => {
+    if (stopped) return;
+    let x;
+    try { x = await api.get('/remote/api/installs/' + id); } catch (e) { clear(body, h('div.error-box', e.message)); return; }
+    // Шаг «идёт» скрываем, если по нему уже есть итог
+    // (после окончания установки незавершённые шаги не показываем — итог виден в последней строке)
+    const steps = x.steps.filter((s, i) => !(s.state === 'run' && (x.status !== 'running' || x.steps.slice(i + 1).some((n) => n.step === s.step))));
+    const [label, cls] = INSTALL_STATUS[x.status] || [x.status, ''];
+    clear(body,
+      h('div.row', h('strong', x.computer), h('span.muted', '· ' + x.user_name), h('span.spacer'), h('span.lozenge' + cls, label)),
+      x.os ? h('div.muted.small', x.os) : null,
+      h('ul', { style: { listStyle: 'none', padding: 0, margin: '8px 0 0' } }, steps.map((s) => h('li', { style: { display: 'flex', gap: '8px', padding: '3px 0' } },
+        h('span', { style: { width: '16px', fontWeight: 700, color: COLOR[s.state] || 'var(--b400)' } }, ICON[s.state] || '·'),
+        h('span', { style: { color: s.state === 'fail' ? 'var(--r500)' : '' } }, s.text)))),
+      x.status === 'running' ? h('div.muted.small', 'Установка обычно занимает 1–2 минуты (копируется около 45 МБ).') : null);
+    if (x.status === 'running') setTimeout(tick, 1000);
+    else if (onDone) onDone();
+  };
+  const m = modal({
+    title: 'Установка RemoteSupport',
+    body,
+    footer: [h('button.btn', { onclick: () => m.close() }, 'Закрыть')],
+    onClose: () => { stopped = true; },
+  });
+  tick();
+}
+
+async function installHistory() {
+  const rows = await api.get('/remote/api/installs');
+  const m = modal({
+    title: 'Журнал установок RemoteSupport',
+    wide: true,
+    body: rows.length ? h('div.table-wrap', h('table.list',
+      h('thead', h('tr', h('th', 'Время'), h('th', 'Специалист'), h('th', 'Компьютер'), h('th', 'Результат'), h('th', 'Кто запустил'), h('th', ''))),
+      h('tbody', rows.map((x) => {
+        const [label, cls] = INSTALL_STATUS[x.status] || [x.status, ''];
+        const err = x.status === 'failed' ? (x.steps.filter((s) => s.state === 'fail').pop() || {}).text : null;
+        return h('tr',
+          h('td', fmtDateTime(x.created_at)),
+          h('td', x.user_name),
+          h('td', x.computer, x.os ? h('div.muted.small', x.os) : null),
+          h('td', { style: { whiteSpace: 'normal', maxWidth: '360px' } }, h('span.lozenge' + cls, label), err ? h('div.muted.small', err) : null),
+          h('td', x.started_by_name),
+          h('td', h('button.btn.sm.subtle', { onclick: () => { m.close(); installProgress(x.id); } }, 'Подробности')));
+      })))) : h('p.muted', 'Установок ещё не было'),
+    footer: [h('button.btn', { onclick: () => m.close() }, 'Закрыть')],
+  });
 }
 
 boot().catch((e) => {

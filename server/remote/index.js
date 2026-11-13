@@ -228,6 +228,52 @@ function apiRouter() {
     res.json({ ok: true });
   }));
 
+  // ---------- Удалённая установка программы специалиста ----------
+  // Специалисты — пользователи портала с доступом к удалённому доступу; к каждому — последняя установка
+  r.get('/specialists', admin, ah(async (req, res) => {
+    const { rows } = await L.query(
+      `SELECT u.id, COALESCE(NULLIF(u.full_name, ''), u.username) AS name, u.username,
+              CASE WHEN u.role = 'superadmin' THEN 'admin' ELSE u.modules->>'remote' END AS level,
+              i.id AS install_id, i.computer, i.status, i.os, i.version, i.created_at AS installed_at, i.started_by_name
+         FROM public.users u
+         LEFT JOIN LATERAL (SELECT * FROM remote.installs WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) i ON TRUE
+        WHERE u.is_active AND (u.role = 'superadmin' OR u.modules->>'remote' IN ('view', 'control', 'admin'))
+        ORDER BY 2`);
+    res.json(rows);
+  }));
+
+  r.get('/installs', admin, ah(async (req, res) => {
+    const { rows } = await L.query(
+      `SELECT id, user_id, user_name, computer, status, os, version, started_by_name, created_at, finished_at, steps
+         FROM remote.installs ORDER BY created_at DESC LIMIT 100`);
+    res.json(rows);
+  }));
+
+  r.get('/installs/:id', admin, ah(async (req, res) => {
+    const { rows } = await L.query('SELECT * FROM remote.installs WHERE id = $1', [intOrNull(req.params.id)]);
+    if (!rows[0]) throw new HttpError(404, 'Не найдено');
+    res.json(rows[0]);
+  }));
+
+  r.post('/installs', admin, ah(async (req, res) => {
+    const b = req.body || {};
+    const userId = intOrNull(b.userId);
+    const u = userId && (await L.query(
+      `SELECT id, COALESCE(NULLIF(full_name, ''), username) AS name FROM public.users WHERE id = $1 AND is_active`, [userId])).rows[0];
+    if (!u) throw new HttpError(400, 'Выберите специалиста');
+    const computer = String(b.computer || '').trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/.test(computer)) throw new HttpError(400, 'Укажите сетевое имя или IP-адрес компьютера');
+    const adminUser = String(b.adminUser || '').trim();
+    if (!adminUser || adminUser.length > 200 || /["\r\n]/.test(adminUser)) throw new HttpError(400, 'Укажите учётную запись администратора (ДОМЕН\\имя)');
+    const password = String(b.password || '');
+    if (!password || password.length > 256) throw new HttpError(400, 'Укажите пароль администратора');
+    const id = await require('./install').startInstall({
+      specialist: u, computer, adminUser, password, server: serverAddress(req),
+      startedBy: { id: req.user.id, name: displayName(req.user) },
+    });
+    res.status(202).json({ id });
+  }));
+
   return r;
 }
 

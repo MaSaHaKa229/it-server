@@ -50,6 +50,10 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
 (`POST /remote/api/connect`, без сессии, заголовок `X-Requested-With: ITRemoteViewer`). Ключ подписи — `remote.settings`,
 зашифрован `APP_SECRET_KEY`. Кнопка для страниц — `public/shared/remote.js`. Программы для скачивания (`public/remote/downloads/*.exe`)
 в git не хранятся: `scripts/make-update.sh` берёт их из `../RemoteSupport-/dist` (или `REMOTE_DIST`) — перед архивом соберите RemoteSupport (`./build.sh`).
+Удалённая установка программы специалиста («Настройки» → «Установить RemoteSupport»): `server/remote/install.js` запускает
+`install-viewer.ps1` (powershell.exe на Windows, `pwsh` при разработке), параметры и пароль — через stdin, ход — JSON-строки в
+`remote.installs.steps`. Проверка в Linux: `dotnet tool install --global PowerShell`, портал с `REMOTE_INSTALL_DRYRUN=1`
+(шаги без настоящего подключения; имя `win7…` — ветка Windows 7, `offline…` — ошибка связи). Настоящие WMI/SMB проверить в сессии нельзя.
 
 ## Интерфейсы
 

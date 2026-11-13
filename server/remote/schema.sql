@@ -54,3 +54,24 @@ CREATE TABLE IF NOT EXISTS remote.settings (
   key   TEXT PRIMARY KEY,
   value JSONB NOT NULL
 );
+
+-- Удалённая установка программы специалиста на компьютеры ИТ-отдела
+CREATE TABLE IF NOT EXISTS remote.installs (
+  id             SERIAL PRIMARY KEY,
+  user_id        INT REFERENCES public.users(id) ON DELETE SET NULL,   -- специалист
+  user_name      TEXT NOT NULL,
+  computer       TEXT NOT NULL,
+  status         TEXT NOT NULL DEFAULT 'running',                      -- running, ok, failed
+  steps          JSONB NOT NULL DEFAULT '[]'::jsonb,                    -- ход установки (без пароля)
+  os             TEXT,
+  version        TEXT,
+  started_by     INT REFERENCES public.users(id) ON DELETE SET NULL,
+  started_by_name TEXT NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at    TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS installs_user_idx ON remote.installs (user_id, created_at DESC);
+-- Установки, прерванные перезапуском портала, не должны «висеть» в состоянии «идёт»
+UPDATE remote.installs SET status = 'failed', finished_at = now(),
+       steps = steps || '[{"step":"error","state":"fail","text":"Портал был перезапущен во время установки — повторите"}]'::jsonb
+ WHERE status = 'running';

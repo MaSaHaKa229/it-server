@@ -16,7 +16,7 @@ cp "$root/scripts/UPDATE-README.txt" "$tmp/it-portal/УСТАНОВКА.txt"
 # Папку можно указать переменной REMOTE_DIST; по умолчанию — RemoteSupport-/dist рядом с этим репозиторием.
 remote_dist="${REMOTE_DIST:-$root/../RemoteSupport-/dist}"
 mkdir -p "$tmp/it-portal/public/remote/downloads"
-for f in ITRemoteViewer.exe ITRemoteAgent-x64.exe ITRemoteAgent-x86.exe; do
+for f in ITRemoteViewer.exe ITRemoteViewer-win7.exe ITRemoteAgent-x64.exe ITRemoteAgent-x86.exe; do
   if [[ -f "$remote_dist/$f" ]]; then
     cp "$remote_dist/$f" "$tmp/it-portal/public/remote/downloads/"
   else
