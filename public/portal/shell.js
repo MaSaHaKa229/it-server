@@ -21,6 +21,7 @@ export function sections(me) {
     me.access.docs !== 'none' && ['docs', '/docs/', 'Документы'],
     me.access.calendar !== 'none' && ['calendar', '/calendar/', 'Задачи'],
     me.access.helpdesk !== 'none' && ['helpdesk', '/helpdesk/', 'Заявки'],
+    me.access.remote && me.access.remote !== 'none' && ['remote', '/remote/', 'Удалённый доступ'],
     me.user.isAdmin && ['admin', '/admin', 'Администрирование'],
     ['help', '/help', 'Инструкция'],
   ].filter(Boolean);

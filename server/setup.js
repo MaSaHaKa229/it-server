@@ -36,6 +36,8 @@ async function initAll({ demo = false, quiet = false } = {}) {
   log('  ✓ Задачи и календарь');
   await require('./helpdesk/lib').migrate();
   log('  ✓ Helpdesk');
+  await require('./remote').migrate();
+  log('  ✓ Удалённый доступ');
 
   // 4. Пользователи портала → модули
   await require('./portal/sync').syncAll();

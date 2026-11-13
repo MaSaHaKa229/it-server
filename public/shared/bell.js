@@ -231,7 +231,7 @@ export function mountBell(host) {
 function helpHref() {
   const p = location.pathname;
   const sec = p.startsWith('/inventory') ? 'inventory' : p.startsWith('/helpdesk') ? 'helpdesk' : p.startsWith('/calendar') ? 'calendar'
-    : p.startsWith('/docs') ? 'docs' : p.startsWith('/admin') ? 'admin' : '';
+    : p.startsWith('/docs') ? 'docs' : p.startsWith('/admin') ? 'admin' : p.startsWith('/remote') ? 'remote' : '';
   return '/help' + (sec ? '#' + sec : '');
 }
 

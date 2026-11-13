@@ -64,7 +64,7 @@ async function main() {
   }));
 
   // Защита от CSRF: изменяющие запросы к API должны прийти из нашего фронтенда
-  const API = /^\/(api|inventory\/api|docs\/api|calendar\/api|helpdesk\/api)(\/|$)/;
+  const API = /^\/(api|inventory\/api|docs\/api|calendar\/api|helpdesk\/api|remote\/api)(\/|$)/;
   app.use((req, res, next) => {
     if (!API.test(req.path) || ['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
     if (!req.get('X-Requested-With')) return res.status(403).json({ error: 'Запрос отклонён' });
@@ -116,7 +116,12 @@ async function main() {
   app.use('/calendar/api', calendar.apiRouter());
   app.use('/helpdesk/api', require('./helpdesk/staff'));
 
-  const API_ONLY = /^\/(api|inventory\/api|docs\/api|calendar\/api|helpdesk\/api)(\/|$)/;
+  // ---------- Удалённый доступ ----------
+  const remote = require('./remote');
+  app.use('/remote/api', remote.apiRouter());
+  app.use('/remote/agent-api', remote.agentRouter());  // агенты на компьютерах пользователей (без сессии)
+
+  const API_ONLY = /^\/(api|inventory\/api|docs\/api|calendar\/api|helpdesk\/api|remote\/api|remote\/agent-api)(\/|$)/;
   app.use((req, res, next) => (API_ONLY.test(req.path) ? res.status(404).json({ error: 'Не найдено' }) : next()));
 
   // ---------- Страницы ----------
@@ -170,6 +175,9 @@ async function main() {
   mountSpa('/docs', 'docs', 'docs', 'view');
   mountSpa('/calendar', 'calendar', 'calendar', 'view');
   mountSpa('/helpdesk', 'helpdesk-staff', 'helpdesk', 'executor');
+  // Загрузки (просмотрщик, агент) — файлы большие и неизменные внутри версии, отдаются как есть
+  app.use('/remote/downloads', guard('remote', 'view'), express.static(path.join(PUB, 'remote', 'downloads'), { index: false }));
+  mountSpa('/remote', 'remote', 'remote', 'view');
 
   app.use((req, res) => res.redirect('/'));
 
@@ -210,7 +218,7 @@ function cacheHeaders(res, filePath) {
 }
 
 // Папки интерфейса, без которых портал не работает
-const PUBLIC_DIRS = ['portal', 'shared', 'inventory', 'docs', 'calendar', 'helpdesk-staff', 'helpdesk'];
+const PUBLIC_DIRS = ['portal', 'shared', 'inventory', 'docs', 'calendar', 'helpdesk-staff', 'helpdesk', 'remote'];
 
 /** Проверка при запуске: все ли папки интерфейса на месте (частая ошибка при ручном обновлении) */
 function checkPublic() {

@@ -19,6 +19,17 @@ cp "$root/scripts/update-portal.cmd" "$tmp/it-portal/ОБНОВИТЬ ПОРТА
 printf '{"built":"%s","commit":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(git -C "$root" rev-parse --short HEAD)" > "$tmp/it-portal/server/version.json"
 # Компоненты распознавания сканов PDF — внутри server (папку server пользователь заменяет целиком)
 node "$root/scripts/vendor-ocr.js" "$tmp/it-portal/server/vendor/ocr"
+# Программы удалённого доступа (в git не хранятся): сборка репозитория RemoteSupport (./build.sh → dist/).
+# Папку можно указать переменной REMOTE_DIST; по умолчанию — RemoteSupport-/dist рядом с этим репозиторием.
+remote_dist="${REMOTE_DIST:-$root/../RemoteSupport-/dist}"
+mkdir -p "$tmp/it-portal/public/remote/downloads"
+for f in ITRemoteViewer.exe ITRemoteViewer-win7.exe ITRemoteAgent-x64.exe ITRemoteAgent-x86.exe; do
+  if [[ -f "$remote_dist/$f" ]]; then
+    cp "$remote_dist/$f" "$tmp/it-portal/public/remote/downloads/"
+  else
+    echo "ВНИМАНИЕ: нет $remote_dist/$f — в архиве не будет этой программы удалённого доступа" >&2
+  fi
+done
 # nginx.conf для Windows — с переводами строк CRLF
 sed -i 's/\r$//; s/$/\r/' "$tmp/it-portal/scripts/nginx.conf"
 rm -f "$out/it-portal-full-update.zip"

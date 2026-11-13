@@ -3,6 +3,7 @@ import { h, clear, makeApi, modal, run, toast, confirmDialog, avatar, fmtDateTim
 import { thread, fileList, fileInput, historyList } from '/shared/thread.js';
 import { loadMe, portalTopbar, helpdeskUrl } from '/portal/shell.js';
 import { renderReports, renderRules, newTicketDialog } from './extra.js';
+import { remotePanel } from '/shared/remote.js';
 
 const api = makeApi('/helpdesk/api', {
   onUnauthorized: () => { location.href = '/login?next=' + encodeURIComponent('/helpdesk/' + location.hash); },
@@ -348,6 +349,7 @@ async function renderTicket(id) {
           ? h('a', { href: '/inventory/#/devices/' + d.id, target: '_blank' }, `${d.key} · ${d.hostname || d.inv_number || d.type_name}`)
           : h('b', `${d.key} · ${d.hostname || d.inv_number || d.type_name}`),
         h('div.muted.small', [d.type_name, d.model, d.employee, d.ip_address].filter(Boolean).join(' · ')),
+        remotePanel(d.id, { ticketId: t.id, title: false }),
         canLink ? h('button.btn.sm.subtle', { style: { alignSelf: 'flex-start' }, onclick: () => unlink(d) }, 'Отвязать') : null)),
       !devs.length && !canLink ? h('span.muted', '—') : null,
       canLink ? h('button.btn.sm', { style: { alignSelf: 'flex-start' }, onclick: pickDevice }, devs.length ? 'Привязать ещё' : 'Привязать технику') : null));

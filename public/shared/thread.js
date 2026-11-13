@@ -44,6 +44,7 @@ const ACTION = {
   category: (d) => ['вид проблемы: ', h('b', d.to || '—')],
   device: (d) => (d.added ? `привязана техника ${d.added}` : d.removed ? `отвязана техника ${d.removed}`
     : d.to ? 'привязана техника из инвентаря' : 'отвязана техника'),
+  remote: (d) => ['удалённое подключение к компьютеру ', h('b', d.computer || '—'), d.mode === 'view' ? ' (только просмотр)' : ''],
 };
 export function historyList(items) {
   if (!items.length) return null;

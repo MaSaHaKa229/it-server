@@ -23,17 +23,17 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
 
 | Порт | Что | Код |
 |---|---|---|
-| `PORT` (3000) | портал службы ИТ: `/`, `/admin`, `/inventory/`, `/docs/`, `/calendar/`, `/helpdesk/` | `server/portal`, `server/inventory`, `server/docs`, `server/calendar` (ES-модули), `server/helpdesk/staff.js` |
-| `HELPDESK_PORT` (3100) | сайт заявок для всех сотрудников | `server/helpdesk/public.js` |
+| `PORT` (3000) | портал службы ИТ: `/`, `/admin`, `/inventory/`, `/docs/`, `/calendar/`, `/helpdesk/`, `/remote/` | `server/portal`, `server/inventory`, `server/docs`, `server/calendar` (ES-модули), `server/helpdesk/staff.js`, `server/remote` |
+| `HELPDESK_PORT` (3100) | сайт заявок для всех сотрудников (+ `/remote/agent-api` для агентов, обращающихся по IP) | `server/helpdesk/public.js` |
 
-Одна база, схемы: `public` — инвентарь и пользователи портала, `docs`, `calendar`, `helpdesk`
+Одна база, схемы: `public` — инвентарь и пользователи портала, `docs`, `calendar`, `helpdesk`, `remote`
 (`server/db.js`: `poolFor(schema)` ставит `search_path`). Миграции — идемпотентные `schema.sql` в каждом модуле,
 выполняются **при каждом запуске** (`server/setup.js`). Новые изменения схемы — только через
 `CREATE … IF NOT EXISTS` / `ALTER … ADD COLUMN IF NOT EXISTS` в конце соответствующего `schema.sql`.
 
 **Пользователи и права.** Источник истины — `public.users` (таблица инвентаря): `role` (`superadmin` — администратор
 портала; `editor`/`reader` — уровень в инвентаре), `permissions` (тонкие права читателя инвентаря), `modules` (JSONB):
-`inventory`, `docs`, `calendar`, `helpdesk` — уровни из `server/portal/modules.js`; плюс `docs_types`, `docs_folders`,
+`inventory`, `docs`, `calendar`, `helpdesk`, `remote` — уровни из `server/portal/modules.js`; плюс `docs_types`, `docs_folders`,
 `calendar_own_only`, для уровня «Просмотр» календаря — `calendar_cats`/`calendar_people` (null — все, 0 — «без категории»/
 «без исполнителя») и `calendar_absences` ('all'/'none'/[id]); применяются в `server/calendar/scope.js` (`taskCond`,
 `absenceCond`) во всех запросах задач, серий, отсутствий и счётчиков, включая главную. Сессия общая (cookie `itdb.sid`, express-session в PostgreSQL). `server/portal/sync.js` копирует
@@ -54,6 +54,22 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
 - заявка → техника инвентаря: `helpdesk.ticket_devices` (несколько устройств; `tickets.device_id` — первое, для совместимости);
   привязка/отвязка — исполнитель или админ helpdesk, пишется в `history` заявки и `public.device_history` (ticket_linked/unlinked);
 - срок заявки выставляет администратор helpdesk (или он ставится по нормативу вида проблемы и подтверждается администратором);
+- удалённый доступ: агент ↔ техника (`remote.agents.device_id`), подключение из заявки → `helpdesk.history` (action `remote`).
+
+**Удалённый доступ (`server/remote`)** — сделан в другой сессии (ветка `claude/epic-goldberg-m3jwqw`, объединена 13.11).
+Программы — в репозитории `RemoteSupport` (агент C++ для XP…11, просмотрщик .NET),
+протокол и HTTP-API агентов — его `protocol/PROTOCOL.md`. Портал: агенты регистрируются кодом (`/remote/agent-api/register`),
+шлют пульс раз в 30 с; «Подключиться» → `POST /remote/api/sessions` → ссылка `itremote://connect?server&session&token` →
+просмотрщик меняет одноразовый пропуск на адрес, отпечаток сертификата агента и подписанный ECDSA P-256 токен
+(`POST /remote/api/connect`, без сессии, заголовок `X-Requested-With: ITRemoteViewer`). Ключ подписи — `remote.settings`,
+зашифрован `APP_SECRET_KEY`. Кнопка для страниц — `public/shared/remote.js` (в карточке техники и у каждого устройства заявки).
+Программы для скачивания (`public/remote/downloads/*.exe`) в git не хранятся: `scripts/make-update.sh` берёт их из
+`../RemoteSupport-/dist` (или `REMOTE_DIST`) — перед архивом соберите RemoteSupport (`./build.sh`).
+Удалённая установка программы специалиста («Настройки» → «Установить RemoteSupport»): `server/remote/install.js` запускает
+`install-viewer.ps1` (powershell.exe на Windows, `pwsh` при разработке), параметры и пароль — через stdin, ход — JSON-строки в
+`remote.installs.steps`. Проверка в Linux: `dotnet tool install --global PowerShell`, портал с `REMOTE_INSTALL_DRYRUN=1`
+(шаги без настоящего подключения; имя `win7…` — ветка Windows 7, `offline…` — ошибка связи). Настоящие WMI/SMB проверить в сессии нельзя.
+Не путать с «Подключением к сеансу» (RDP shadow, `netprobe/remote.js`) — это отдельная, более простая возможность.
 
 **Регулярные задачи календаря** — `calendar.task_series` (шаблон, `every_months` — помесячные, либо `every_days` 1/7/14 + `weekdays` (isodow) — ежедневные/по будням/еженедельные/через неделю; `until`, `tz`; ключ частоты для клиента — `FREQ_SQL`); повторы — обычные
 строки `tasks` с `series_id`/`series_idx`, создаются по требованию `ensureOccurrences()` (`server/calendar/series.js`)
@@ -228,5 +244,6 @@ npm run build:install && npm run build        # только если прави
   `node_modules` пользователь ставил неверно (компонентов в C:\it-portal не оказалось), поэтому так.
   `server/docs/ocr.js` ищет их в `node_modules`, затем в `server/vendor/ocr/node_modules` и во «вложенных» папках.
   Ядра tesseract-core нужны все варианты: на Node 22 выбирался relaxedsimd без LSTM.
-- Название сайта заявок («HelpDesk») зашито в `public/helpdesk/app.js`; предлагалось вынести в настройки.
+- Удалённый доступ (этап 3 из `RemoteSupport/PROMPT.md`) проверен только в Linux и под Wine; ретранслятор для недоступных
+  напрямую компьютеров (этап 6), буфер обмена, файлы, чат (этап 4) и инструменты администратора (этап 5) не сделаны.
 - Основной веткой репозитория на GitHub должна быть `main` (Settings → General → Default branch).

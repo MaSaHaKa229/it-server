@@ -50,6 +50,13 @@ router.get('/', requireAuth, ah(async (req, res) => {
               count(*) FILTER (WHERE NOT s.is_closed AND t.due_at < now())::int AS overdue
          FROM helpdesk.tickets t JOIN helpdesk.statuses s ON s.id = t.status_id`, [u.id])).rows[0]);
   }
+  if (level(u, 'remote') !== 'none') {
+    out.remote = await safe(async () => (await query(
+      `SELECT (SELECT count(*)::int FROM remote.agents WHERE last_seen > now() - interval '90 seconds') AS online,
+              (SELECT count(*)::int FROM remote.sessions WHERE created_at >= date_trunc('day', now())
+                 AND status NOT IN ('issued') AND ($1::int IS NULL OR user_id = $1)) AS today`,
+      [level(u, 'remote') === 'admin' ? null : u.id])).rows[0]);
+  }
   res.json(out);
 }));
 

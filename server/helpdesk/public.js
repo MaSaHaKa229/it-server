@@ -75,6 +75,8 @@ function createHelpdeskApp() {
       },
     },
   }));
+  // Агенты удалённого доступа обращаются к серверу и по IP-адресу — nginx отправляет такие запросы сюда
+  app.use('/remote/agent-api', require('../remote').agentRouter());
   app.use(express.json({ limit: '1mb' }));
   app.use(session({
     name: 'helpdesk.sid',

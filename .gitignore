@@ -8,3 +8,5 @@ dist-offline/
 server/vendor/
 backups/
 server/version.json
+# Программы удалённого доступа — собираются в репозитории RemoteSupport, в архив обновления добавляет scripts/make-update.sh
+public/remote/downloads/*.exe
