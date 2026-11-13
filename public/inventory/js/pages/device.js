@@ -9,13 +9,18 @@ import {
 } from '../store.js';
 import { navigate } from '../app.js';
 import { openFieldModal } from './settings.js';
+import { remotePanel } from '/shared/remote.js';
 
 let activeTab = 'software';
+
+// Типы техники, на которые ставится агент удалённого доступа: для них показываем «агент не установлен»
+const REMOTE_TYPES = ['PC', 'NB', 'SRV'];
 
 export async function renderDevice(root, id) {
   const P = state.perms;
   const staff = isStaff();
   let data;
+  let remoteBlock = null; // блок «Удалённый доступ» создаётся один раз, чтобы не мигал при перерисовке
 
   async function reload() {
     data = await api.get('/api/devices/' + id);
@@ -148,7 +153,16 @@ export async function renderDevice(root, id) {
         onclick: () => { showAllChars = !showAllChars; render(); },
       }, showAllChars ? 'Скрыть поля, не используемые для этого типа' : `Показать все поля (+${restChars.length})`) : null,
     ];
+    if (!remoteBlock) {
+      remoteBlock = h('div.details', { style: { marginBottom: '16px', display: 'none' } },
+        h('div.d-head', 'Удалённый доступ'),
+        h('div.d-body', { style: { padding: '10px 12px' } }, remotePanel(d.id, {
+          title: false, hideIfMissing: !REMOTE_TYPES.includes(type.code),
+          onShow: () => { remoteBlock.style.display = ''; },
+        })));
+    }
     const right = h('div',
+      remoteBlock,
       h('div.details',
         h('div.d-head', 'Сведения'),
         h('div.d-body',

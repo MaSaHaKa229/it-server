@@ -3,3 +3,5 @@ clients/*/node_modules/
 .env
 *.log
 dist-offline/
+# Программы удалённого доступа — собираются в репозитории RemoteSupport, в архив обновления добавляет scripts/make-update.sh
+public/remote/downloads/*.exe

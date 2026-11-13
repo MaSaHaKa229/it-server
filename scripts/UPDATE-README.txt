@@ -22,8 +22,10 @@
    папки server, public, scripts и файлы package.json, package-lock.json,
    start-portal.bat, README.md, INSTALL.md, .env.example.
 
-4. Проверьте: в C:\it-portal\public должно быть 7 папок:
-   calendar, docs, helpdesk, helpdesk-staff, inventory, portal, shared
+4. Проверьте: в C:\it-portal\public должно быть 8 папок:
+   calendar, docs, helpdesk, helpdesk-staff, inventory, portal, remote, shared
+   В public\remote\downloads — программы удалённого доступа (ITRemoteViewer.exe,
+   ITRemoteAgent-x64.exe, ITRemoteAgent-x86.exe).
 
 5. Запустите портал:
    Start-ScheduledTask -TaskName 'IT Portal'
@@ -36,6 +38,12 @@
 6. Откройте http://it-portal и войдите.
 
 7. Если всё работает — папки *.bak можно удалить.
+
+НОВОЕ: раздел «Удалённый доступ» (подключение к компьютерам пользователей).
+Как начать — INSTALL.md, шаг 10а: выдать права, поставить программу специалиста
+и агент на тестовый компьютер (портал → Удалённый доступ → Установка).
+Программу специалиста можно поставить удалённо: Удалённый доступ → Настройки →
+«Установить RemoteSupport» (нужен пароль администратора компьютера специалиста).
 
 nginx: готовая настройка — scripts\nginx.conf (http://it-portal — портал,
 http://helpdesk и обращение по IP — сайт заявок). Порядок установки —

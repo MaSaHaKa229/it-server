@@ -18,6 +18,10 @@ const MODULES = {
     label: 'Заявки (Helpdesk)',
     levels: { none: 'Нет доступа', executor: 'Исполнитель', admin: 'Администратор' },
   },
+  remote: {
+    label: 'Удалённый доступ',
+    levels: { none: 'Нет доступа', view: 'Только просмотр', control: 'Управление', admin: 'Администратор' },
+  },
 };
 
 

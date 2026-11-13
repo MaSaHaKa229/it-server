@@ -20,17 +20,17 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
 
 | Порт | Что | Код |
 |---|---|---|
-| `PORT` (3000) | портал ИТ-отдела: `/`, `/admin`, `/inventory/`, `/docs/`, `/calendar/`, `/helpdesk/` | `server/portal`, `server/inventory`, `server/docs`, `server/calendar` (ES-модули), `server/helpdesk/staff.js` |
-| `HELPDESK_PORT` (3100) | сайт заявок для всех сотрудников | `server/helpdesk/public.js` |
+| `PORT` (3000) | портал ИТ-отдела: `/`, `/admin`, `/inventory/`, `/docs/`, `/calendar/`, `/helpdesk/`, `/remote/` | `server/portal`, `server/inventory`, `server/docs`, `server/calendar` (ES-модули), `server/helpdesk/staff.js`, `server/remote` |
+| `HELPDESK_PORT` (3100) | сайт заявок для всех сотрудников (+ `/remote/agent-api` для агентов, обращающихся по IP) | `server/helpdesk/public.js` |
 
-Одна база, схемы: `public` — инвентарь и пользователи портала, `docs`, `calendar`, `helpdesk`
+Одна база, схемы: `public` — инвентарь и пользователи портала, `docs`, `calendar`, `helpdesk`, `remote`
 (`server/db.js`: `poolFor(schema)` ставит `search_path`). Миграции — идемпотентные `schema.sql` в каждом модуле,
 выполняются **при каждом запуске** (`server/setup.js`). Новые изменения схемы — только через
 `CREATE … IF NOT EXISTS` / `ALTER … ADD COLUMN IF NOT EXISTS` в конце соответствующего `schema.sql`.
 
 **Пользователи и права.** Источник истины — `public.users` (таблица инвентаря): `role` (`superadmin` — администратор
 портала; `editor`/`reader` — уровень в инвентаре), `permissions` (тонкие права читателя инвентаря), `modules` (JSONB):
-`inventory`, `docs`, `calendar`, `helpdesk` — уровни из `server/portal/modules.js`; плюс `docs_types`, `docs_folders`,
+`inventory`, `docs`, `calendar`, `helpdesk`, `remote` — уровни из `server/portal/modules.js`; плюс `docs_types`, `docs_folders`,
 `calendar_own_only`. Сессия общая (cookie `itdb.sid`, express-session в PostgreSQL). `server/portal/sync.js` копирует
 пользователей в `docs.users` и `calendar.users` с теми же id (нужны для связей «автор», «исполнитель»).
 Заявители helpdesk — отдельная таблица `helpdesk.requesters` и своя сессия (`helpdesk.sid`).
@@ -40,7 +40,20 @@ Node.js (Express) + PostgreSQL. Описание возможностей — `R
 **Связи между модулями:**
 - заявка helpdesk ↔ задача календаря (`server/helpdesk/calendar-sync.js`, односторонняя синхронизация из заявки);
 - заявка → техника инвентаря (`tickets.device_id`);
-- срок заявки выставляет только администратор helpdesk при назначении исполнителя.
+- срок заявки выставляет только администратор helpdesk при назначении исполнителя;
+- удалённый доступ: агент ↔ техника (`remote.agents.device_id`), подключение из заявки → `helpdesk.history` (action `remote`).
+
+**Удалённый доступ (`server/remote`).** Программы — в репозитории `RemoteSupport` (агент C++ для XP…11, просмотрщик .NET),
+протокол и HTTP-API агентов — его `protocol/PROTOCOL.md`. Портал: агенты регистрируются кодом (`/remote/agent-api/register`),
+шлют пульс раз в 30 с; «Подключиться» → `POST /remote/api/sessions` → ссылка `itremote://connect?server&session&token` →
+просмотрщик меняет одноразовый пропуск на адрес, отпечаток сертификата агента и подписанный ECDSA P-256 токен
+(`POST /remote/api/connect`, без сессии, заголовок `X-Requested-With: ITRemoteViewer`). Ключ подписи — `remote.settings`,
+зашифрован `APP_SECRET_KEY`. Кнопка для страниц — `public/shared/remote.js`. Программы для скачивания (`public/remote/downloads/*.exe`)
+в git не хранятся: `scripts/make-update.sh` берёт их из `../RemoteSupport-/dist` (или `REMOTE_DIST`) — перед архивом соберите RemoteSupport (`./build.sh`).
+Удалённая установка программы специалиста («Настройки» → «Установить RemoteSupport»): `server/remote/install.js` запускает
+`install-viewer.ps1` (powershell.exe на Windows, `pwsh` при разработке), параметры и пароль — через stdin, ход — JSON-строки в
+`remote.installs.steps`. Проверка в Linux: `dotnet tool install --global PowerShell`, портал с `REMOTE_INSTALL_DRYRUN=1`
+(шаги без настоящего подключения; имя `win7…` — ветка Windows 7, `offline…` — ошибка связи). Настоящие WMI/SMB проверить в сессии нельзя.
 
 ## Интерфейсы
 
@@ -119,4 +132,6 @@ npm run build:install && npm run build        # только если прави
   предупреждение о сканах и «Открыть оригинал». Если повторится — попросить файл-пример.
 - Распознавание текста на сканах (OCR) не реализовано.
 - Название сайта заявок («HelpDesk») зашито в `public/helpdesk/app.js`; предлагалось вынести в настройки.
+- Удалённый доступ (этап 3 из `RemoteSupport/PROMPT.md`) проверен только в Linux и под Wine; ретранслятор для недоступных
+  напрямую компьютеров (этап 6), буфер обмена, файлы, чат (этап 4) и инструменты администратора (этап 5) не сделаны.
 - Основной веткой репозитория на GitHub должна быть `main` (Settings → General → Default branch).

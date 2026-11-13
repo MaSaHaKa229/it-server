@@ -7,11 +7,12 @@ const ICONS = {
   docs: '<svg viewBox="0 0 24 24"><path d="M6 2h8l6 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 1.5V9h5.5zM8 12v2h8v-2zm0 4v2h8v-2z"/></svg>',
   calendar: '<svg viewBox="0 0 24 24"><path d="M7 2a1 1 0 0 1 1 1v1h8V3a1 1 0 1 1 2 0v1h1a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1V3a1 1 0 0 1 1-1zM5 9v10h14V9zm2 2h4v4H7z"/></svg>',
   helpdesk: '<svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 0-8 8v4a3 3 0 0 0 3 3h1v-7H6a6 6 0 0 1 12 0h-2v7h2v1a2 2 0 0 1-2 2h-3a1 1 0 1 0 0 2h3a4 4 0 0 0 4-4v-1.2A3 3 0 0 0 20 14v-4a8 8 0 0 0-8-8z"/></svg>',
+  remote: '<svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6v2h3a1 1 0 1 1 0 2H7a1 1 0 1 1 0-2h3v-2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v9h16V6zm6 1.5 6 3-2.6.9 1.5 2.7-1.3.7-1.5-2.7L10 13.5z"/></svg>',
   admin: '<svg viewBox="0 0 24 24"><path d="M12 2l8 3v6c0 5-3.4 9.5-8 11-4.6-1.5-8-6-8-11V5zm0 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm-4.5 9.5c1 1.3 2.6 2.4 4.5 3 1.9-.6 3.5-1.7 4.5-3-1-1-2.7-1.6-4.5-1.6s-3.5.6-4.5 1.6z"/></svg>',
 };
 
 const LEVEL = {
-  view: 'просмотр', edit: 'редактирование', admin: 'администратор', executor: 'исполнитель',
+  view: 'просмотр', edit: 'редактирование', admin: 'администратор', executor: 'исполнитель', control: 'управление',
 };
 
 // Старые закладки ИТ-инвентаря (http://сервер:3000/#/devices/5) ведут теперь в /inventory/
@@ -49,17 +50,22 @@ async function main() {
       stats: s.helpdesk && [stat(s.helpdesk.open, 'открыто'), stat(s.helpdesk.mine, 'на мне'),
         stat(s.helpdesk.unassigned, 'без исполнителя', true), stat(s.helpdesk.overdue, 'просрочено', true)],
     },
+    a.remote && a.remote !== 'none' && {
+      key: 'remote', href: '/remote/', title: 'Удалённый доступ', color: '#00A3BF',
+      text: 'Подключение к компьютерам пользователей для помощи: экран, мышь, клавиатура. Пользователь продолжает работать.',
+      stats: s.remote && [stat(s.remote.online, 'компьютеров в сети'), stat(s.remote.today, 'подключений сегодня')],
+    },
     me.user.isAdmin && {
       key: 'admin', href: '/admin', title: 'Администрирование', color: '#5E6C84',
       text: 'Пользователи портала и права: что каждый сотрудник может просматривать и редактировать.',
     },
   ].filter(Boolean);
 
-  const deniedLabel = { inventory: 'ИТ-инвентарь', docs: 'Документы', calendar: 'Задачи и календарь', helpdesk: 'Заявки', admin: 'Администрирование' }[params.get('denied')];
+  const deniedLabel = { inventory: 'ИТ-инвентарь', docs: 'Документы', calendar: 'Задачи и календарь', helpdesk: 'Заявки', remote: 'Удалённый доступ', admin: 'Администрирование' }[params.get('denied')];
   const hour = new Date().getHours();
   const greet = hour < 5 ? 'Доброй ночи' : hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер';
 
-  const LZ = { view: '', edit: '.green', admin: '.purple', executor: '.blue' };
+  const LZ = { view: '', edit: '.green', admin: '.purple', executor: '.blue', control: '.green' };
   clear(app,
     portalTopbar(me, 'home'),
     h('div.layout', h('main.main.full', h('div.page',
