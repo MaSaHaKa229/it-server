@@ -22,6 +22,7 @@ node "$root/scripts/vendor-ocr.js" "$tmp/it-portal/server/vendor/ocr"
 # Программы удалённого доступа (в git не хранятся): сборка репозитория RemoteSupport (./build.sh → dist/).
 # Папку можно указать переменной REMOTE_DIST; по умолчанию — RemoteSupport-/dist рядом с этим репозиторием.
 remote_dist="${REMOTE_DIST:-$root/../RemoteSupport-/dist}"
+[[ -d "$remote_dist" ]] || remote_dist="$root/../remotesupport-/dist"
 mkdir -p "$tmp/it-portal/public/remote/downloads"
 for f in ITRemoteViewer.exe ITRemoteViewer-win7.exe ITRemoteAgent-x64.exe ITRemoteAgent-x86.exe; do
   if [[ -f "$remote_dist/$f" ]]; then

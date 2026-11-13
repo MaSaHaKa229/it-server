@@ -12,7 +12,7 @@ const mail = require('./mail');
 const router = express.Router();
 const ROOT = path.join(__dirname, '..', '..');
 const PUB = path.join(ROOT, 'public');
-const PUBLIC_DIRS = ['portal', 'shared', 'inventory', 'docs', 'calendar', 'helpdesk-staff', 'helpdesk'];
+const PUBLIC_DIRS = ['portal', 'shared', 'inventory', 'docs', 'calendar', 'helpdesk-staff', 'helpdesk', 'remote'];
 
 function version() {
   let v = {};

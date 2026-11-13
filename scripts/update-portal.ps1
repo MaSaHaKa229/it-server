@@ -149,7 +149,15 @@ foreach ($d in $dirs) {
   if ($rc -ge 8) { Fail "Ошибка копирования папки $d (код robocopy $rc)"; $copyOk = $false }
 }
 foreach ($f in $files) { if (Test-Path (Join-Path $src $f)) { Copy-Item (Join-Path $src $f) (Join-Path $Target $f) -Force } }
-$pub = @('portal', 'shared', 'inventory', 'docs', 'calendar', 'helpdesk-staff', 'helpdesk')
+# Программы удалённого доступа (*.exe) в git не хранятся: если в новом архиве их нет — оставить прежние
+$oldDl = Join-Path $keep 'public\remote\downloads'
+$newDl = Join-Path $Target 'public\remote\downloads'
+if (Test-Path $oldDl) {
+  New-Item -ItemType Directory -Path $newDl -Force | Out-Null
+  Get-ChildItem $oldDl -Filter *.exe | Where-Object { -not (Test-Path (Join-Path $newDl $_.Name)) } |
+    ForEach-Object { Copy-Item $_.FullName $newDl; Say "     прежняя программа удалённого доступа сохранена: $($_.Name)" }
+}
+$pub = @('portal', 'shared', 'inventory', 'docs', 'calendar', 'helpdesk-staff', 'helpdesk', 'remote')
 $lost = @($pub | Where-Object { -not (Test-Path (Join-Path $Target "public\$_")) })
 if ($lost.Count) { Fail "После копирования нет папок public: $($lost -join ', ')"; $copyOk = $false }
 if (-not $copyOk) {
